@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -2441,6 +2442,95 @@ func TestMailDeleteMultiPartialFailure(t *testing.T) {
 	}
 }
 
+func TestMailDeleteWhitespaceJoinedIDs(t *testing.T) {
+	store := beads.NewMemStore()
+	mp := beadmail.New(store)
+	for i := 0; i < 3; i++ {
+		if _, err := mp.Send("sender", "recipient", "", "batch me"); err != nil {
+			t.Fatalf("Send %d: %v", i, err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	rec := &memRecorder{}
+	code := doMailDelete(mp, rec, []string{"gc-1 gc-2\tgc-3"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("doMailDelete = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	for _, want := range []string{"Deleted message gc-1", "Deleted message gc-2", "Deleted message gc-3"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	if n := len(rec.events); n != 3 {
+		t.Errorf("recorded events = %d, want 3", n)
+	}
+	for _, id := range []string{"gc-1", "gc-2", "gc-3"} {
+		b, err := store.Get(id)
+		if err != nil {
+			t.Fatalf("Get(%s) after delete: %v", id, err)
+		}
+		if b.Status != "closed" {
+			t.Errorf("bead %s status = %q, want closed", id, b.Status)
+		}
+	}
+}
+
+func TestMailDeleteWhitespaceJoinedIDsJSON(t *testing.T) {
+	store := beads.NewMemStore()
+	mp := beadmail.New(store)
+	for i := 0; i < 2; i++ {
+		if _, err := mp.Send("sender", "recipient", "", "batch me"); err != nil {
+			t.Fatalf("Send %d: %v", i, err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doMailDeleteJSON(mp, events.Discard, []string{"gc-1 gc-2"}, true, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("doMailDeleteJSON = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	var got mailActionResult
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal result: %v; stdout: %s", err, stdout.String())
+	}
+	if want := []string{"gc-1", "gc-2"}; !slices.Equal(got.IDs, want) {
+		t.Errorf("result IDs = %v, want %v", got.IDs, want)
+	}
+	if got.Count == nil || *got.Count != 2 {
+		t.Errorf("result Count = %v, want 2", got.Count)
+	}
+}
+
+func TestMailArchiveAndDeleteWhitespaceOnlyArg(t *testing.T) {
+	tests := []struct {
+		name    string
+		archive bool
+		wantErr string
+	}{
+		{name: "archive", archive: true, wantErr: "gc mail archive: missing message ID\n"},
+		{name: "delete", wantErr: "gc mail delete: missing message ID\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			var code int
+			if tt.archive {
+				code = doMailArchive(mail.NewFake(), events.Discard, []string{" \t\n "}, &stdout, &stderr)
+			} else {
+				code = doMailDelete(mail.NewFake(), events.Discard, []string{" \t\n "}, &stdout, &stderr)
+			}
+			if code != 1 {
+				t.Fatalf("exit code = %d, want 1; stdout: %s", code, stdout.String())
+			}
+			if got := stderr.String(); got != tt.wantErr {
+				t.Errorf("stderr = %q, want %q", got, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestMailDeleteMultiExecProviderUsesDeleteCommand(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "ops.log")
@@ -2738,6 +2828,36 @@ func TestMailArchiveSuccess(t *testing.T) {
 	}
 	if b.Status != "closed" {
 		t.Errorf("bead status = %q, want \"closed\"", b.Status)
+	}
+}
+
+func TestMailArchiveWhitespaceJoinedIDs(t *testing.T) {
+	store := beads.NewMemStore()
+	mp := beadmail.New(store)
+	for i := 0; i < 3; i++ {
+		if _, err := mp.Send("sender", "recipient", "", "batch me"); err != nil {
+			t.Fatalf("Send %d: %v", i, err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := doMailArchive(mp, events.Discard, []string{"gc-1 gc-2\ngc-3"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("doMailArchive = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	for _, want := range []string{"Archived message gc-1", "Archived message gc-2", "Archived message gc-3"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	for _, id := range []string{"gc-1", "gc-2", "gc-3"} {
+		b, err := store.Get(id)
+		if err != nil {
+			t.Fatalf("Get(%s) after archive: %v", id, err)
+		}
+		if b.Status != "closed" {
+			t.Errorf("bead %s status = %q, want closed", id, b.Status)
+		}
 	}
 }
 
@@ -3186,6 +3306,57 @@ func TestMailSendSubjectAndMessage(t *testing.T) {
 	}
 	if b.Description != "Token refresh fails after 30min" {
 		t.Errorf("bead Description = %q, want %q", b.Description, "Token refresh fails after 30min")
+	}
+}
+
+// TestMailSendSubjectOnlyKeepsBody covers `gc mail send <to> -s "text"` with no
+// -m and no positional body. The flag path hands doMailSend [to, subject, ""],
+// and the empty body used to be stored verbatim: the message arrived as a
+// subject line with its content silently gone. The subject IS the message here,
+// exactly as in the positional form.
+func TestMailSendSubjectOnlyKeepsBody(t *testing.T) {
+	store := beads.NewMemStore()
+	mp := beadmail.New(store)
+	recipients := map[string]bool{"human": true, "mayor": true}
+
+	var stdout bytes.Buffer
+	code := doMailSend(mp, events.Discard, recipients, "human", []string{"mayor", "Build is green", ""}, nil, &stdout, &bytes.Buffer{})
+	if code != 0 {
+		t.Fatalf("doMailSend = %d, want 0", code)
+	}
+
+	b, err := store.Get("gc-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Title != "Build is green" {
+		t.Errorf("bead Title = %q, want %q", b.Title, "Build is green")
+	}
+	if b.Description != "Build is green" {
+		t.Errorf("bead Description = %q, want %q (subject-only mail must not arrive empty)", b.Description, "Build is green")
+	}
+}
+
+// TestMailSendAllSubjectOnlyKeepsBody covers the same defect on the broadcast
+// path: `gc mail send --all -s "text"` reaches doMailSendAllJSON as
+// [subject, ""].
+func TestMailSendAllSubjectOnlyKeepsBody(t *testing.T) {
+	store := beads.NewMemStore()
+	mp := beadmail.New(store)
+	recipients := map[string]bool{"mayor": true}
+
+	var stdout bytes.Buffer
+	code := doMailSendAllJSON(mp, events.Discard, recipients, "human", []string{"Fleet is green", ""}, nil, false, &stdout, &bytes.Buffer{})
+	if code != 0 {
+		t.Fatalf("doMailSendAllJSON = %d, want 0", code)
+	}
+
+	b, err := store.Get("gc-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Description != "Fleet is green" {
+		t.Errorf("bead Description = %q, want %q (subject-only broadcast must not arrive empty)", b.Description, "Fleet is green")
 	}
 }
 
@@ -4828,7 +4999,11 @@ func TestCmdMailSendFlagBodyWinsOverPositional(t *testing.T) {
 }
 
 func TestCmdMailSendNoBodyStillWorks(t *testing.T) {
-	// No positional body and no -m flag: empty body is valid.
+	// No positional body and no -m flag: the send still succeeds, and the
+	// subject is carried into the body rather than stored empty. Completes the
+	// #3331 family (positional body dropped when -s set): the remaining arm was
+	// "no body from any source", which used to persist an empty description and
+	// deliver a subject line with nothing behind it (ga-6eukj0).
 	cityPath := mailSendTestCity(t, "mayor")
 
 	var stdout, stderr bytes.Buffer
@@ -4841,8 +5016,8 @@ func TestCmdMailSendNoBodyStillWorks(t *testing.T) {
 	if msg.Title != "subject" {
 		t.Errorf("Title = %q, want %q", msg.Title, "subject")
 	}
-	if msg.Description != "" {
-		t.Errorf("Description = %q, want empty", msg.Description)
+	if msg.Description != "subject" {
+		t.Errorf("Description = %q, want %q (subject-only mail must not arrive empty)", msg.Description, "subject")
 	}
 }
 

@@ -349,7 +349,19 @@ func doMailArchiveSelectedJSON(mp mail.Provider, rec events.Recorder, args []str
 	return exit
 }
 
+// splitMessageIDArgs splits every argument on whitespace and drops empty
+// tokens. Message IDs never contain whitespace, and some shells can preserve a
+// variable containing multiple IDs as one argument.
+func splitMessageIDArgs(args []string) []string {
+	ids := make([]string, 0, len(args))
+	for _, arg := range args {
+		ids = append(ids, strings.Fields(arg)...)
+	}
+	return ids
+}
+
 func doMailArchiveJSON(mp mail.Provider, rec events.Recorder, args []string, jsonOut bool, stdout, stderr io.Writer) int {
+	args = splitMessageIDArgs(args)
 	if len(args) < 1 {
 		fmt.Fprintln(stderr, "gc mail archive: missing message ID") //nolint:errcheck // best-effort stderr
 		return 1
@@ -1842,6 +1854,15 @@ func doMailSendJSON(mp mail.Provider, rec events.Recorder, validRecipients map[s
 		// [to, body] — positional arg, no subject.
 		body = strings.Join(args[1:], " ")
 	}
+	// `-s "text"` with neither -m nor a positional body: the subject IS the
+	// message. Storing the empty body verbatim delivers a subject line with its
+	// content missing — and a bodyless mail does not read as broken, so the
+	// recipient acts on the subject and never learns anything was lost
+	// (ga-6eukj0). The positional form already behaves this way: beadmail.Send
+	// backfills an empty title from the body, and this is the mirror of it.
+	if body == "" {
+		body = subject
+	}
 
 	if validRecipients != nil && !validRecipients[to] {
 		fmt.Fprintf(stderr, "gc mail send: unknown recipient %q\n", to) //nolint:errcheck // best-effort stderr
@@ -1899,6 +1920,11 @@ func doMailSendAllJSON(mp mail.Provider, rec events.Recorder, validRecipients ma
 		body = args[1]
 	} else {
 		body = args[0]
+	}
+	// Same subject-only backfill as doMailSendJSON: `--all -s "text"` arrives
+	// here as [subject, ""] and must not broadcast an empty body (ga-6eukj0).
+	if body == "" {
+		body = subject
 	}
 
 	// Collect recipients in sorted order for deterministic output.
@@ -2396,6 +2422,7 @@ func doMailDelete(mp mail.Provider, rec events.Recorder, args []string, stdout, 
 }
 
 func doMailDeleteJSON(mp mail.Provider, rec events.Recorder, args []string, jsonOut bool, stdout, stderr io.Writer) int {
+	args = splitMessageIDArgs(args)
 	if len(args) < 1 {
 		fmt.Fprintln(stderr, "gc mail delete: missing message ID") //nolint:errcheck // best-effort stderr
 		return 1
