@@ -1133,7 +1133,7 @@ func (t *Tmux) KillPaneProcesses(pane string) error {
 
 // KillPaneProcessesExcluding is like KillPaneProcesses but excludes specified PIDs
 // from being killed. This is essential for self-handoff scenarios where the calling
-// process (e.g., gt handoff running inside Claude Code) needs to survive long enough
+// process (e.g., gc handoff running inside Claude Code) needs to survive long enough
 // to call RespawnPane. Without exclusion, the caller would be killed before completing.
 //
 // The excluded PIDs should include the calling process and any ancestors that must
@@ -3915,8 +3915,8 @@ func (t *Tmux) SetDynamicStatus(session string) error {
 	}
 
 	// tmux calls this command every status-interval seconds
-	// gt status-line reads env vars and mail to build the status
-	right := fmt.Sprintf(`#(gt status-line --session=%s 2>/dev/null) %%H:%%M`, session)
+	// gc status-line reads env vars and mail to build the status
+	right := fmt.Sprintf(`#(gc status-line --session=%s 2>/dev/null) %%H:%%M`, session)
 
 	if _, err := t.run("set-option", "-t", session, "status-right-length", "80"); err != nil {
 		return err
@@ -3999,7 +3999,7 @@ func (t *Tmux) SetMailClickBinding(_ string) error {
 	}
 	_, err := t.run("bind-key", "-T", "root", "MouseDown1StatusRight",
 		"if-shell", ifShell,
-		"display-popup -E -w 60 -h 15 'gt mail peek || echo No unread mail'",
+		"display-popup -E -w 60 -h 15 'gc mail peek || echo No unread mail'",
 		fallback)
 	return err
 }
@@ -4373,7 +4373,7 @@ func CurrentSessionName() string {
 
 // CleanupOrphanedSessions scans for zombie Gas Town sessions and kills them.
 // A zombie session is one where tmux is alive but the Claude process has died.
-// This runs at `gt start` time to prevent session name conflicts and resource accumulation.
+// This runs at `gc start` time to prevent session name conflicts and resource accumulation.
 //
 // The isGTSession predicate identifies Gas Town sessions (e.g. runtime.IsKnownSession).
 // It is passed as a parameter to avoid a circular import from tmux → session.
