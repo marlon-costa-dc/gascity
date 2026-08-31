@@ -48,16 +48,36 @@ func TestBDVersionPins(t *testing.T) {
 	if !regexp.MustCompile(`^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`).MatchString(bdCurrent) {
 		t.Fatalf("deps.env BD_CURRENT_VERSION = %q, want a semver token", bdCurrent)
 	}
-	// The native Go store, the bleeding-edge contract-matrix cell, and the
-	// source-built agent image must all use the same upstream commit. A drift
-	// here can pair one schema catalog with another version's write behavior.
-	goMod := readFile(t, root, "go.mod")
-	goModMatch := regexp.MustCompile(`(?m)^\s*github\.com/steveyegge/beads\s+v\S+-([0-9a-f]{12})\s*$`).FindStringSubmatch(goMod)
-	if goModMatch == nil {
-		t.Fatal("go.mod missing a pseudo-version pin for github.com/steveyegge/beads")
+	// The native Go store links the beads library via go.mod. This city pins
+	// the FORK line (BD_LIBRARY_VERSION): the stable base plus the bd list
+	// cycle guard, whose commit exists only in the fork, so go.mod carries a
+	// replace directive naming the fork repo. The shape is therefore
+	// "vX.Y.Z" required + "replace => github.com/marlon-costa-dc/beads v<same>-suffix"
+	// rather than an upstream pseudo-version; the migration-ceiling rationale
+	// is documented in deps.env next to BD_LIBRARY_VERSION. A drift here can
+	// pair one schema catalog with another version's write behavior, exactly
+	// like the upstream-cell drift check above.
+	bdLibrary := env["BD_LIBRARY_VERSION"]
+	if bdLibrary == "" {
+		t.Fatal("deps.env missing BD_LIBRARY_VERSION (the beads library the native store links)")
 	}
-	if got, want := goModMatch[1], bdCurrentRef[:12]; got != want {
-		t.Fatalf("go.mod beads pseudo-version commit = %q, want BD_CURRENT_REF prefix %q", got, want)
+	goMod := readFile(t, root, "go.mod")
+	goModRequire := regexp.MustCompile(`(?m)^\s*github\.com/steveyegge/beads\s+(\S+)\s*$`).FindStringSubmatch(goMod)
+	if goModRequire == nil {
+		t.Fatal("go.mod missing a require pin for github.com/steveyegge/beads")
+	}
+	// The require line stays at the stable base even when BD_LIBRARY_VERSION
+	// carries a fork suffix: the module content resolves through the replace
+	// below, and the base is what the go proxy serves for the canonical path.
+	if !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(goModRequire[1]) {
+		t.Fatalf("go.mod beads require = %q, want the stable vX.Y.Z base (fork suffixes resolve via replace)", goModRequire[1])
+	}
+	goModReplace := regexp.MustCompile(`(?m)^\s*replace\s+github\.com/steveyegge/beads\s*=>\s*github\.com/marlon-costa-dc/beads\s+(\S+)\s*$`).FindStringSubmatch(goMod)
+	if goModReplace == nil {
+		t.Fatalf("go.mod missing `replace github.com/steveyegge/beads => github.com/marlon-costa-dc/beads <version>`; the fork pin BD_LIBRARY_VERSION=%s resolves only through it", bdLibrary)
+	}
+	if got, want := goModReplace[1], bdLibrary; got != want {
+		t.Fatalf("go.mod replaces beads with %q but deps.env BD_LIBRARY_VERSION = %q; the native store and deps.env must name the same fork build", got, want)
 	}
 	dockerfile := readFile(t, root, "contrib/k8s/Dockerfile.agent")
 	if !strings.Contains(dockerfile, "ARG BD_SOURCE_REF="+bdCurrentRef) {
