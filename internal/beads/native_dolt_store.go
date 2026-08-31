@@ -1388,22 +1388,21 @@ func (s *NativeDoltStore) Ready(queries ...ReadyQuery) ([]Bead, error) {
 		var beads []Bead
 		seen := make(map[string]bool)
 		now := time.Now().UTC()
-		// One GetReadyWork call covers every open-class backing status via
-		// WorkFilter.Statuses. The previous one-call-per-status loop re-paid
-		// the deferred-parents pre-query, the wisp arm, and the transaction
-		// round trips seven times per Ready() (sr-5rz: ~30-70ms per call on
-		// a live server-mode store). The backing Limit stays 0 because the
-		// gc-side post-filter below (tier, excluded types/labels, defer)
-		// discards rows the store cannot, so a server-side limit could
-		// under-fill the result.
-		filter := beadslib.WorkFilter{Statuses: nativeDoltOpenReadyStatuses}
+		// getReadyWorkForOpenStatuses covers every open-class backing status.
+		// On a library line with WorkFilter.Statuses that is a single call; on
+		// the pinned 1.2.2 line it is one call per status. Either way the
+		// seen[] de-duplication below makes repeats harmless. The backing Limit
+		// stays 0 because the gc-side post-filter below (tier, excluded
+		// types/labels, defer) discards rows the store cannot, so a server-side
+		// limit could under-fill the result.
+		filter := beadslib.WorkFilter{}
 		if q.TierMode == TierBoth || q.TierMode == TierWisps {
 			filter.IncludeEphemeral = true
 		}
 		if q.Assignee != "" {
 			filter.Assignee = &q.Assignee
 		}
-		issues, err := storage.GetReadyWork(ctx, filter)
+		issues, err := getReadyWorkForOpenStatuses(ctx, storage, filter)
 		if err != nil {
 			return err
 		}
@@ -2104,8 +2103,8 @@ func nativeIssueFromBead(b Bead) (*beadslib.Issue, error) {
 		Ephemeral:   b.Ephemeral,
 		NoHistory:   b.NoHistory,
 		DeferUntil:  cloneTimePtr(b.DeferUntil),
-		RowVersion:  b.Revision,
 	}
+	setIssueRowVersion(issue, b.Revision)
 	if b.Priority != nil {
 		issue.Priority = *b.Priority
 	} else {
@@ -2169,7 +2168,7 @@ func beadFromNativeIssue(issue *beadslib.Issue) (Bead, error) {
 		Ephemeral:   issue.Ephemeral,
 		NoHistory:   issue.NoHistory,
 		DeferUntil:  cloneTimePtr(issue.DeferUntil),
-		Revision:    issue.RowVersion,
+		Revision:    issueRowVersion(issue),
 	}
 	for _, dep := range issue.Dependencies {
 		if dep == nil {

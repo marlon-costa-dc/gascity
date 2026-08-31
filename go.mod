@@ -24,7 +24,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
-	github.com/steveyegge/beads v1.1.1-0.20260805093327-bf97b73749ac
+	github.com/steveyegge/beads v1.2.2
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.19.0
@@ -251,3 +251,20 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+// The bd CLI in this city is the fork build v1.2.2-fd1: the stable v1.2.2 base
+// plus the bd list cycle guard (upstream gastownhall/beads#6085, issue #5887).
+// That commit exists only in the fork, so the module path stays canonical and
+// the replace supplies the code.
+//
+// Version parity is load-bearing: internal/beads/contract/preflight_checker.go
+// compares the bd CLI version against this linked library version exactly, and
+// a mismatch drops every scope to the per-op BdStore fallback (fork a bd
+// process per operation).
+//
+// Schema safety: this line embeds migrations topping out at 0053, matching all
+// 16 live stores. The library runs MigrateUp on open (ungated except for
+// ReadOnly/Gateway), so a line embedding 0054+ would migrate every database
+// forward one way on first open. Do NOT retarget this at a -dc build (0062) or
+// at the 0059 pseudo-version this pin replaced. See beads gc-5oauf, gct-83zky.
+replace github.com/steveyegge/beads => github.com/marlon-costa-dc/beads v1.2.2-fd1
