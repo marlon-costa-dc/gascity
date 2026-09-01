@@ -10,6 +10,7 @@ jobs:
   request-docs-review:
     # pull_request_target is safe here because this job never checks out or runs
     # pull request code; it only requests review from trusted event metadata.
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write

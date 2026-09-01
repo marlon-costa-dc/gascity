@@ -1131,9 +1131,31 @@ func TestForkVerifyRunsOnlyInForks(t *testing.T) {
 		t.Fatal("fork-verify workflow has no verify job")
 	}
 
-	const want = "${{ github.repository != 'gastownhall/gascity' }}"
+	const want = "${{ github.repository != 'gastownhall/gascity' && !contains(github.event.head_commit.message, '[WIP]') }}"
 	if strings.TrimSpace(job.If) != want {
-		t.Fatalf("fork verify job condition = %q, want %q so canonical PRs do not duplicate CI", job.If, want)
+		t.Fatalf("fork verify job condition = %q, want %q so WIP pushes and canonical PRs do not duplicate CI", job.If, want)
+	}
+}
+
+func TestDraftPullRequestsSelectNoWorkflowJobs(t *testing.T) {
+	const pullRequestGuard = "github.event_name != 'pull_request' || github.event.pull_request.draft == false"
+	for _, workflow := range []string{"ci.yml", "codeql.yml", "govulncheck.yml", "mac-regression.yml", "review-formulas.yml"} {
+		job := readCriticalPathWorkflow(t, workflow).Jobs["runner-policy"]
+		if strings.TrimSpace(job.If) != pullRequestGuard {
+			t.Errorf("%s runner-policy condition = %q, want %q", workflow, job.If, pullRequestGuard)
+		}
+	}
+
+	for workflow, jobName := range map[string]string{
+		"complexity.yml":           "report",
+		"docs-title-review.yml":    "request-docs-review",
+		"pr-evidence-watchdog.yml": "evidence",
+		"triage-label.yml":         "add-triage-label",
+	} {
+		job := readCriticalPathWorkflow(t, workflow).Jobs[jobName]
+		if !strings.Contains(job.If, "github.event.pull_request.draft == false") {
+			t.Errorf("%s job %s does not reject drafts: %q", workflow, jobName, job.If)
+		}
 	}
 }
 
