@@ -288,3 +288,24 @@ func TestMolScopedWorkResolvesRepoBeforeRemovingWorktree(t *testing.T) {
 		t.Error("cleanup-worktree runs rm -rf before the linked-worktree check; the check must gate the delete, not follow it")
 	}
 }
+
+func TestMolScopedWorkDescribesItsDetachedWorkspaceHonestly(t *testing.T) {
+	formula := readFormula(t, "mol-scoped-work.toml")
+	setup := formulaStep(t, formula, "workspace-setup")
+	implement := formulaStep(t, formula, "implement")
+
+	for _, step := range formula.Steps {
+		if step.ID == "workspace-setup" && step.Title != "Set up a detached worktree" {
+			t.Fatalf("workspace-setup title promises a branch the formula does not create: %q", step.Title)
+		}
+	}
+	if !strings.Contains(setup, `git worktree add "$WORKTREE_PATH" --detach`) {
+		t.Fatal("workspace-setup must retain the implemented detached-worktree command")
+	}
+	if strings.Contains(implement, "keep the branch scoped") {
+		t.Fatal("implement must not claim that mol-scoped-work created a branch")
+	}
+	if !strings.Contains(implement, "landing owner") {
+		t.Fatal("implement must assign branch and publication responsibility to the repository landing owner")
+	}
+}

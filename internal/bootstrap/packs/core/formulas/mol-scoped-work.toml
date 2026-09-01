@@ -1,5 +1,5 @@
 description = """
-Graph-first worktree lifecycle.
+Graph-first detached-worktree lifecycle.
 
 This is the built-in v2 workflow prototype for Gas City. It models work as an
 explicit DAG with:
@@ -18,7 +18,7 @@ formula_compiler = ">=2.0.0"
 
 [vars]
 [vars.base_branch]
-description = "Base branch to branch from"
+description = "Base branch whose remote head supplies the detached worktree"
 default = "main"
 
 [vars.setup_command]
@@ -83,7 +83,7 @@ metadata = { "gc.kind" = "scope", "gc.scope_name" = "worktree", "gc.scope_role" 
 
 [[steps]]
 id = "workspace-setup"
-title = "Set up a worktree and branch"
+title = "Set up a detached worktree"
 needs = ["load-context"]
 description = """
 Ensure there is an isolated worktree for this work item.
@@ -137,8 +137,10 @@ id = "implement"
 title = "Implement the requested change"
 needs = ["preflight-tests"]
 description = """
-Make the code changes for convoy `{{convoy_id}}` in the worktree. Commit focused changes
-as needed and keep the branch scoped to this work.
+Make the code changes for convoy `{{convoy_id}}` in the worktree. Keep every
+change scoped to this tracked item. This formula creates a detached worktree;
+any branch and publication lane remain responsibilities of the repository's
+declared landing owner.
 """
 metadata = { "gc.scope_ref" = "body", "gc.scope_role" = "member", "gc.on_fail" = "abort_scope", "gc.continuation_group" = "main", "gc.session_affinity" = "require" }
 
@@ -175,7 +177,7 @@ needs = ["self-review"]
 description = """
 Perform the city-specific finalization for this work item. Examples:
 
-- push the branch and hand off to a reviewer
+- record the detached commit for the repository's landing owner
 - close the original work bead
 - update metadata for downstream systems
 
