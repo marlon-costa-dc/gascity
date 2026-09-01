@@ -2001,7 +2001,9 @@ Runs a managed gc hook command in a child process with a hard timeout.
 
 This protects provider hook callbacks from wedged data-plane commands. The
 child process is the current gc executable, and &lt;gc args...&gt; are passed to it
-verbatim.
+verbatim. With --when-managed-session, the child runs only when the callback
+has a complete Gas City session identity. An unmanaged callback is not selected
+and exits successfully; a partial identity fails before the child starts.
 
 ```
 gc hook run -- <gc args...> [flags]
@@ -2011,6 +2013,7 @@ gc hook run -- <gc args...> [flags]
 |------|------|---------|-------------|
 | `--timeout` | duration | `15s` | hard timeout for the managed hook command |
 | `--timeout-exit-code` | int | `124` | exit code to return when the managed hook command times out |
+| `--when-managed-session` | bool |  | run only with complete Gas City managed-session context |
 
 ## gc import
 

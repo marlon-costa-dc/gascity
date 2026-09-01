@@ -11,7 +11,7 @@
     "preCompact": [
       {
         "type": "command",
-        "bash": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc handoff --auto \"context cycle\"",
+        "bash": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc hook run --when-managed-session -- handoff --auto \"context cycle\"",
         "timeoutSec": 30
       }
     ],

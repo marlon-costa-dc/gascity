@@ -1,7 +1,7 @@
 # Hook Event Vocabulary
 
 Gas City wires per-provider hook configs into a small set of coordination
-commands (`gc prime --hook`, `gc handoff --auto`, and prompt-submit
+commands (`gc prime --hook`, managed-session-selected auto handoff, and prompt-submit
 `gc hook run --timeout 15s --timeout-exit-code 0 -- ...` wrappers around
 `gc nudge drain --inject` / `gc mail check --inject`). Each provider names its hook events differently;
 this document maps Gas City's canonical events to the provider's native
@@ -28,20 +28,22 @@ materializing the per-provider files into each agent's working directory.
 ✓ = wired today. — = not wired (either the provider does not expose
 the event, or it does but Gas City has not opted in yet).
 
-| Canonical event | claude | codex | cursor | copilot | gemini | antigravity | opencode | omp | pi | kimi |
-|---|---|---|---|---|---|---|---|---|---|---|
-| session start    | `SessionStart` ✓ | `SessionStart` ✓ | `sessionStart` ✓ | `sessionStart` ✓ | `SessionStart` ✓ | `PreInvocation` ✓ | `session.created` ✓ | `session_start` ✓ | `session_start` ✓ | `SessionStart` ✓ |
-| pre-compaction   | `PreCompact` ✓   | `PreCompact` ✓   | `preCompact` ✓   | `preCompact` ✓   | `PreCompress` ✓  | — | `session.compacted` ✓ | `session_compact` ✓ | `session_compact` ✓ | — |
-| user prompt submit | `UserPromptSubmit` ✓ | `UserPromptSubmit` ✓ | `beforeSubmitPrompt` ✓ | `userPromptSubmitted` ✓ | — | — | — | — | — | — |
-| before agent run | —                | —                | —                | —                | `BeforeAgent` ✓  | `PreInvocation` ✓ | —                | `before_agent_start` ✓ | `before_agent_start` ✓ | — |
+| Canonical event | claude | codex | cursor | copilot | gemini | antigravity | opencode | mimocode | omp | pi | kimi |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| session start    | `SessionStart` ✓ | `SessionStart` ✓ | `sessionStart` ✓ | `sessionStart` ✓ | `SessionStart` ✓ | `PreInvocation` ✓ | `session.created` ✓ | `session.created` ✓ | `session_start` ✓ | `session_start` ✓ | `SessionStart` ✓ |
+| pre-compaction   | `PreCompact` ✓   | `PreCompact` ✓   | `preCompact` ✓   | `preCompact` ✓   | `PreCompress` ✓  | — | `experimental.session.compacting` ✓ | `experimental.session.compacting` ✓ | `session_compact` ✓ | `session_compact` ✓ | — |
+| user prompt submit | `UserPromptSubmit` ✓ | `UserPromptSubmit` ✓ | `beforeSubmitPrompt` ✓ | `userPromptSubmitted` ✓ | — | — | — | — | — | — | — |
+| before agent run | —                | —                | —                | —                | `BeforeAgent` ✓  | `PreInvocation` ✓ | —                | — | `before_agent_start` ✓ | `before_agent_start` ✓ | — |
 
 ### Gas City command bindings
 
 For each provider where a row above is ✓, the wired command is one of:
 
 - **session start** → `gc prime --hook` (loads context, drains hooks).
-- **pre-compaction** → `gc handoff --auto "context cycle"` (capture state
-  before the provider compacts the conversation).
+- **pre-compaction** → `gc hook run --when-managed-session -- handoff --auto
+  "context cycle"` (capture state before a managed provider compacts the
+  conversation; warn and remain functional when the project hook is invoked
+  outside Gas City).
 - **user prompt submit** / **before agent run** → bounded `gc hook run`
   wrappers around `gc nudge drain --inject` and/or `gc mail check --inject`
   (inject pending agent-to-agent messages into the upcoming prompt without
@@ -75,5 +77,5 @@ pre-compaction hook is installed because Antigravity does not expose one.
   `.kiro/agents/gascity.json`) wires `agentSpawn` and `userPromptSubmit`
   but has no pre-compaction event. Kiro does not currently document a
   hook fired before context compaction; add a row here and wire
-  `gc handoff --auto` if/when Kiro exposes one. Tracked under the parent
+  the managed-session-selected auto handoff if/when Kiro exposes one. Tracked under the parent
   audit (#672 gap 3).

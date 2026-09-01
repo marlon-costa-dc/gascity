@@ -289,23 +289,43 @@ func TestMolScopedWorkResolvesRepoBeforeRemovingWorktree(t *testing.T) {
 	}
 }
 
-func TestMolScopedWorkDescribesItsDetachedWorkspaceHonestly(t *testing.T) {
+func TestMolScopedWorkCreatesTrackedBranchWithoutRetry(t *testing.T) {
 	formula := readFormula(t, "mol-scoped-work.toml")
 	setup := formulaStep(t, formula, "workspace-setup")
 	implement := formulaStep(t, formula, "implement")
 
 	for _, step := range formula.Steps {
-		if step.ID == "workspace-setup" && step.Title != "Set up a detached worktree" {
-			t.Fatalf("workspace-setup title promises a branch the formula does not create: %q", step.Title)
+		if step.ID == "workspace-setup" && step.Title != "Set up a worktree and branch" {
+			t.Fatalf("workspace-setup must state the tracked-branch contract: %q", step.Title)
 		}
 	}
-	if !strings.Contains(setup, `git worktree add "$WORKTREE_PATH" --detach`) {
-		t.Fatal("workspace-setup must retain the implemented detached-worktree command")
+	if strings.Contains(setup, "--detach") {
+		t.Fatal("workspace-setup must not create a detached implementation worktree")
 	}
-	if strings.Contains(implement, "keep the branch scoped") {
-		t.Fatal("implement must not claim that mol-scoped-work created a branch")
+	if !strings.Contains(setup, `git worktree add -b "$WORK_BRANCH" "$WORKTREE_PATH" "origin/{{base_branch}}"`) {
+		t.Fatal("workspace-setup must atomically create the deterministic work branch with the worktree")
 	}
-	if !strings.Contains(implement, "landing owner") {
-		t.Fatal("implement must assign branch and publication responsibility to the repository landing owner")
+	if !strings.Contains(setup, `--set-metadata gc.work_branch="$WORK_BRANCH"`) {
+		t.Fatal("workspace-setup must publish the branch identity on the source bead")
+	}
+	if !strings.Contains(setup, `git -C "$WORKTREE" switch -c "$WORK_BRANCH"`) {
+		t.Fatal("workspace-setup must attach a previously recorded detached worktree through the formula owner")
+	}
+	if !strings.Contains(setup, `"$ACTUAL_BRANCH" != "$WORK_BRANCH"`) {
+		t.Fatal("workspace-setup must reject an existing worktree on a foreign branch")
+	}
+	if !strings.Contains(setup, `"$RECORDED_BRANCH" != "$WORK_BRANCH"`) {
+		t.Fatal("workspace-setup must reject contradictory bead branch metadata")
+	}
+	if !strings.Contains(implement, "branch") {
+		t.Fatal("implement must direct work onto the branch created by workspace-setup")
+	}
+
+	data, err := fs.ReadFile(PackFS, "formulas/mol-scoped-work.toml")
+	if err != nil {
+		t.Fatalf("reading mol-scoped-work formula: %v", err)
+	}
+	if strings.Contains(string(data), "[steps.retry]") {
+		t.Fatal("mol-scoped-work must propagate the first failure without formula retries")
 	}
 }
