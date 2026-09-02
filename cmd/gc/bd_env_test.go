@@ -363,7 +363,7 @@ func TestRuntimeEnvDelegatesCompleteStorageBindingToBd(t *testing.T) {
 				continue
 			}
 			if got := env[key]; got != "" {
-				t.Errorf("env[%q] = %q, want absent for bd-owned storage binding", key, got)
+				t.Errorf("env[%q] = %q, want absent for dcdoc-owned storage binding", key, got)
 			}
 		}
 		if got := env["BEADS_CREDENTIALS_FILE"]; got != credentialsPath {
