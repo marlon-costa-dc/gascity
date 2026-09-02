@@ -17,7 +17,7 @@
 #   - Status bar colors (10-color palette with FNV-32a consistent hashing)
 #   - Special role themes (Mayor=gold, Deacon=purple, Dog=brown)
 #   - Role emoji in status bar (Mayor=hat, Crew=construction worker, etc.)
-#   - Dynamic status-right with gt status-line output + clock
+#   - Dynamic status-right with gc status-line output + clock
 #   - Screen's hardstatus/caption could support a subset of this.
 #
 # NOT IMPLEMENTED — Keybindings:

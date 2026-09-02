@@ -363,7 +363,7 @@ func TestRuntimeEnvDelegatesCompleteStorageBindingToBd(t *testing.T) {
 				continue
 			}
 			if got := env[key]; got != "" {
-				t.Errorf("env[%q] = %q, want absent for bd-owned storage binding", key, got)
+				t.Errorf("env[%q] = %q, want absent for dcdoc-owned storage binding", key, got)
 			}
 		}
 		if got := env["BEADS_CREDENTIALS_FILE"]; got != credentialsPath {
@@ -4893,6 +4893,22 @@ func TestMergeRuntimeEnvStripsInheritedBeadsBackend(t *testing.T) {
 			if strings.HasPrefix(entry, key+"=") {
 				t.Fatalf("%s leaked into merged runtime env: %v", key, result)
 			}
+		}
+	}
+	if !slices.Contains(result, "PATH=/usr/bin") {
+		t.Fatalf("PATH was not preserved in merged runtime env: %v", result)
+	}
+}
+
+func TestMergeRuntimeEnvStripsInheritedBeadsDoltServerDatabase(t *testing.T) {
+	result := mergeRuntimeEnv([]string{
+		"BEADS_DOLT_SERVER_DATABASE=foreign_scope",
+		"PATH=/usr/bin",
+	}, nil)
+
+	for _, entry := range result {
+		if strings.HasPrefix(entry, "BEADS_DOLT_SERVER_DATABASE=") {
+			t.Fatalf("inherited BEADS_DOLT_SERVER_DATABASE leaked into scoped runtime env: %v", result)
 		}
 	}
 	if !slices.Contains(result, "PATH=/usr/bin") {

@@ -329,8 +329,13 @@ func gcBeadsBdTestHomeEnv(t *testing.T) []string {
 	if err := writeTestGitIdentity(homeDir); err != nil {
 		t.Fatalf("write test git identity for beads-bd: %v", err)
 	}
+	xdgConfigHome := filepath.Join(homeDir, ".config")
+	if err := os.MkdirAll(xdgConfigHome, 0o755); err != nil {
+		t.Fatalf("MkdirAll(beads-bd test XDG config home): %v", err)
+	}
 	return []string{
 		"HOME=" + homeDir,
+		"XDG_CONFIG_HOME=" + xdgConfigHome,
 		"GIT_CONFIG_GLOBAL=" + filepath.Join(homeDir, ".gitconfig"),
 	}
 }

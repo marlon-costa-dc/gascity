@@ -286,16 +286,6 @@ const (
 
 const supervisorPreserveSessionsOnSignalEnv = "GC_SUPERVISOR_PRESERVE_SESSIONS_ON_SIGNAL"
 
-// supervisorOmitProviderCredsEnv, when set to "1" at the time the supervisor
-// service file is generated, causes env vars matched by the shared
-// provider-credential predicate to be excluded from the generated launchd
-// plist or systemd unit. The source of truth is internal/processenv. Default
-// behavior is unchanged.
-// When opted out, the user is responsible for delivering provider creds to
-// the supervisor's environment via some other mechanism (e.g. a wrapper
-// around `gc supervisor run` that sources a credentials file).
-const supervisorOmitProviderCredsEnv = "GC_SUPERVISOR_OMIT_PROVIDER_CREDS"
-
 // 32768 is the Linux kernel default for net.ipv4.ip_local_port_range lower bound.
 const supervisorEphemeralPortWarningThreshold = 32768
 

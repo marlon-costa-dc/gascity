@@ -9,34 +9,47 @@
 //
 // Events:
 //   session_start    → gc prime --hook (load context side effects)
-//   session_compact  → gc prime --hook + gc handoff --auto "context cycle"
+//   session_compact  → selected auto handoff + gc prime --hook
 //   before_agent_start → gc hook --inject + queued nudges + unread mail
 
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const GC_PI_HOOK_VERSION = 7;
+const GC_PI_HOOK_VERSION = 8;
 const PATH_PREFIX =
   `/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`;
 let mirrorTempCounter = 0;
 
+function execute(args, cwd, extraEnv = {}) {
+  return execFileSync("gc", args, {
+    cwd: cwd || process.cwd(),
+    encoding: "utf-8",
+    timeout: 30000,
+    stdio: ["ignore", "pipe", "inherit"],
+    env: {
+      ...process.env,
+      ...extraEnv,
+      PATH: PATH_PREFIX + (process.env.PATH || ""),
+    },
+  }).trim();
+}
+
 function run(args, cwd, extraEnv = {}) {
   try {
-    return execFileSync("gc", args, {
-      cwd: cwd || process.cwd(),
-      encoding: "utf-8",
-      timeout: 30000,
-      stdio: ["ignore", "pipe", "inherit"],
-      env: {
-        ...process.env,
-        ...extraEnv,
-        PATH: PATH_PREFIX + (process.env.PATH || ""),
-      },
-    }).trim();
+    return execute(args, cwd, extraEnv);
   } catch (err) {
     logRunFailure(args, cwd, err);
     return "";
+  }
+}
+
+function runStrict(args, cwd) {
+  try {
+    return execute(args, cwd);
+  } catch (err) {
+    logRunFailure(args, cwd, err);
+    throw err;
   }
 }
 
@@ -157,8 +170,8 @@ module.exports = function gascityPiExtension(pi) {
   });
 
   pi.on("session_compact", (_event, ctx) => {
+    runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"], ctx.cwd);
     run(["prime", "--hook"], ctx.cwd, providerSessionEnv(ctx));
-    run(["handoff", "--auto", "context cycle"], ctx.cwd);
     mirrorTranscript(ctx);
   });
 

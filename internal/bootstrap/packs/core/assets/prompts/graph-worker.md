@@ -29,7 +29,10 @@ are done. If the result action is `work`, use `bead_id` as the work bead.
 3. Execute exactly that bead's description.
 4. On success, close it:
    ```bash
-   gc bd update <id> --set-metadata gc.outcome=pass --status closed
+   gc bd update <id> \
+     --set-metadata gc.outcome=pass \
+     --set-metadata gc.work_outcome=shipped \
+     --status closed
    ```
 5. On transient failure, mark it transient and close it:
    ```bash
@@ -37,6 +40,7 @@ are done. If the result action is `work`, use `bead_id` as the work bead.
      --set-metadata gc.outcome=fail \
      --set-metadata gc.failure_class=transient \
      --set-metadata gc.failure_reason=<short_reason> \
+     --set-metadata gc.work_outcome=blocked \
      --status closed
    ```
 6. On unrecoverable failure, mark it hard-failed and close it:
@@ -45,13 +49,30 @@ are done. If the result action is `work`, use `bead_id` as the work bead.
      --set-metadata gc.outcome=fail \
      --set-metadata gc.failure_class=hard \
      --set-metadata gc.failure_reason=<short_reason> \
+     --set-metadata gc.work_outcome=abandoned \
      --status closed
    ```
-7. After closing, check for more assigned work:
+7. If the step produced no work (no-op), stamp both outcome and work disposition:
+   ```bash
+   gc bd update <id> \
+     --set-metadata gc.outcome=pass \
+     --set-metadata gc.work_outcome=no-op \
+     --status closed
+   ```
+8. After closing, check for more assigned work:
    ```bash
    gc hook --claim --json
    ```
-8. If more work exists, go to step 2. If not, re-check briefly (see below).
+9. If more work exists, go to step 2. If not, re-check briefly (see below).
+
+**Always set both `gc.outcome` and `gc.work_outcome` in the same `bd update`
+call with `--status closed`.** `gc.outcome` is the control-plane result
+(pass/fail/skipped/canceled) that the retry classifier consults; `gc.work_outcome`
+is the work-record disposition (shipped/no-op/blocked/abandoned) that the close
+gate consults. Stamping both atomically in one command makes the close-contract
+ordering automatic — never set `gc.work_outcome` after the bead is already
+closed, or the controller may observe a bare close without an outcome and spawn
+a spurious retry before the work-outcome metadata is stamped.
 
 **Never use wide filesystem searches when a CLI command exists.** Wide
 traversals (`find /`, `find ~`, `find /Users`, `find $HOME`) walk

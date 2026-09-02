@@ -325,8 +325,39 @@ func typedDeliverableCloseFor(subject beads.Bead) bool {
 	return true
 }
 
+// resolveControlOutcome returns the control-plane step result (gc.outcome) for
+// a closed bead, falling back to the typed work-record disposition
+// (gc.work_outcome) when gc.outcome is absent. This makes the close-contract
+// ordering automatic: a worker that stamps gc.work_outcome before closing is no
+// longer penalized with a spurious retry even if gc.outcome was not set in the
+// same write (gc-e2xqk graph-worker close contract mismatch).
+//
+// The mapping folds the ADR-0009 work-record vocabulary into the disjoint
+// control-plane vocabulary:
+//
+//	"shipped"   → pass  (work done, step passed)
+//	"no-op"     → pass  (no work needed, step passed)
+//	"blocked"   → fail  (blocked, needs intervention)
+//	"abandoned" → fail  (work abandoned)
+//
+// gc.outcome always takes precedence over gc.work_outcome so an explicit
+// control-plane result is never shadowed by a stale work-record stamp.
+func resolveControlOutcome(bead beads.Bead) string {
+	outcome := strings.TrimSpace(bead.Metadata[beadmeta.OutcomeMetadataKey])
+	if outcome != "" {
+		return outcome
+	}
+	switch strings.TrimSpace(bead.Metadata[beadmeta.WorkOutcomeMetadataKey]) {
+	case beadmeta.WorkOutcomeShipped, beadmeta.WorkOutcomeNoOp:
+		return beadmeta.OutcomePass
+	case beadmeta.WorkOutcomeBlocked, beadmeta.WorkOutcomeAbandoned:
+		return beadmeta.OutcomeFail
+	}
+	return ""
+}
+
 func classifyRetryAttempt(subject beads.Bead) retryEvalResult {
-	outcome := strings.TrimSpace(subject.Metadata[beadmeta.OutcomeMetadataKey])
+	outcome := resolveControlOutcome(subject)
 	if outcome == "" && typedDeliverableCloseFor(subject) {
 		outcome = beadmeta.OutcomePass
 	}

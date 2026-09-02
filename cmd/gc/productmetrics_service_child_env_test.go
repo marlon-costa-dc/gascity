@@ -93,12 +93,10 @@ func TestProductMetricsServiceChildEnvAgentScriptBDIsUnaffected(t *testing.T) {
 func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 	const (
 		hostileAmbientExplicitValue = "hostile-ambient-explicit-value"
-		hostileSecretsValue         = "hostile-secrets-value"
 		hostileLaunchctlValue       = "hostile-launchctl-value"
 	)
 	hostileValues := []string{
 		hostileAmbientExplicitValue,
-		hostileSecretsValue,
 		hostileLaunchctlValue,
 	}
 	tests := []struct {
@@ -114,7 +112,7 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			hostileSources:   true,
 		},
 		{
-			name:            "unset opt-out is added",
+			name:            "unset fixed value is added",
 			explicitEnvKeys: []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"},
 		},
 	}
@@ -122,7 +120,6 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("GC_HOME", t.TempDir())
 			t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-			t.Setenv(supervisorOmitProviderCredsEnv, "1")
 			t.Setenv("GC_SUPERVISOR_ENV", strings.Join(tc.explicitEnvKeys, " "))
 			t.Setenv(execenv.UsageMetricsDisableEnv, tc.inheritedGCValue)
 			if tc.inheritedGCValue == "" {
@@ -132,9 +129,6 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			}
 			t.Setenv("BD_DISABLE_METRICS", "keep-beads-setting")
 			t.Setenv("OTEL_SERVICE_NAME", "keep-otel-setting")
-			if tc.hostileSources {
-				writeSupervisorSecretsEnvFile(t, execenv.UsageMetricsDisableEnv+"="+hostileSecretsValue+"\n")
-			}
 
 			launchctlGCProbes := 0
 			previousLaunchctlGetenv := supervisorLaunchctlGetenv
@@ -160,18 +154,12 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			if launchctlGCProbes != 0 {
 				t.Fatalf("launchctl getenv probes for fixed service key %s = %d, want 0", execenv.UsageMetricsDisableEnv, launchctlGCProbes)
 			}
-			counts := make(map[string]int)
-			values := make(map[string]string)
-			for _, item := range data.ExtraEnv {
-				counts[item.Name]++
-				values[item.Name] = item.Value
-			}
-			for key, want := range map[string]string{
-				"BD_DISABLE_METRICS": "keep-beads-setting",
-				"OTEL_SERVICE_NAME":  "keep-otel-setting",
-			} {
-				if counts[key] != 1 || values[key] != want {
-					t.Fatalf("supervisor ExtraEnv %s = count %d value %q, want count 1 value %q", key, counts[key], values[key], want)
+			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
+				if !slices.Contains(data.InheritedEnv, key) {
+					t.Fatalf("supervisor InheritedEnv missing explicit name %s: %#v", key, data.InheritedEnv)
+				}
+				if _, ok := supervisorServiceEnvMap(data.ExtraEnv)[key]; ok {
+					t.Fatalf("supervisor ExtraEnv contains explicit value for %s", key)
 				}
 			}
 			for _, hostileValue := range hostileValues {
@@ -188,11 +176,14 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			}
 			assertGeneratedSupervisorEnvironment(t, "systemd", systemdContent, map[string]string{
 				execenv.UsageMetricsDisableEnv: execenv.UsageMetricsDisableValue,
-				"BD_DISABLE_METRICS":           "keep-beads-setting",
-				"OTEL_SERVICE_NAME":            "keep-otel-setting",
 			}, func(key, value string) string {
 				return "Environment=" + systemdEnv(key, value)
 			})
+			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
+				if !strings.Contains(systemdContent, "PassEnvironment="+key) {
+					t.Fatalf("systemd service missing inherited name %s:\n%s", key, systemdContent)
+				}
+			}
 			wantExecStart := "ExecStart=" + supervisorSystemdQuotePath(data.GCPath) + " supervisor run"
 			if !strings.Contains(systemdContent, wantExecStart) {
 				t.Fatalf("systemd service missing unchanged %q:\n%s", wantExecStart, systemdContent)
@@ -209,14 +200,17 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			}
 			assertGeneratedSupervisorEnvironment(t, "launchd", launchdContent, map[string]string{
 				execenv.UsageMetricsDisableEnv: execenv.UsageMetricsDisableValue,
-				"BD_DISABLE_METRICS":           "keep-beads-setting",
-				"OTEL_SERVICE_NAME":            "keep-otel-setting",
 			}, func(key, value string) string {
 				return "<key>" + xmlEscape(key) + "</key>\n        <string>" + xmlEscape(value) + "</string>"
 			})
 			for _, argument := range []string{data.GCPath, "supervisor", "run"} {
 				if !strings.Contains(launchdContent, "<string>"+xmlEscape(argument)+"</string>") {
 					t.Fatalf("launchd service missing unchanged program argument %q:\n%s", argument, launchdContent)
+				}
+			}
+			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
+				if strings.Contains(launchdContent, key) {
+					t.Fatalf("launchd service serialized inherited name %s:\n%s", key, launchdContent)
 				}
 			}
 			for _, hostileValue := range hostileValues {

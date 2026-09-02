@@ -204,6 +204,93 @@ func TestExtractCodexTailUsageModelMissing(t *testing.T) {
 	}
 }
 
+// TestExtractCodexTailUsageModelBeyondTailWindow pins the long-session fix: the
+// model is announced once in a turn_context near the top, then the session runs
+// long enough that the turn_context scrolls past the tail window before the
+// recent token_count events. The model is constant across a codex rollout, so a
+// bounded head scan must still recover it — otherwise mc's long-lived
+// dispatcher/wisp sessions mint model facts with an empty model that the pricing
+// lookup treats as unpriced (the "burn $/hr reads 0" gap).
+func TestExtractCodexTailUsageModelBeyondTailWindow(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rollout-2026-04-16T21-49-29-longsession.jsonl")
+	lines := []string{
+		codexSessionMetaLine("2026-04-16T21:49:30.734Z", "/work/dir"),
+		codexTurnContextLine("2026-04-16T21:49:30.901Z", "gpt-5.6-terra"),
+	}
+	// Filler > tailChunkSize so the turn_context is outside the tail window that
+	// readTail scans; these response_item lines carry no usage and are skipped.
+	filler := strings.Repeat("x", 2048)
+	for i := 0; i < (tailChunkSize/2048)+8; i++ {
+		lines = append(lines, fmt.Sprintf(
+			`{"timestamp":"2026-04-16T21:50:%02d.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":%q}}`,
+			i%60, filler))
+	}
+	// Recent invocations sit in the tail window with no nearby turn_context.
+	lines = append(lines,
+		codexTokenCountLine("2026-04-16T22:10:38.304Z", 15917, 15562, 10624, 355, 166),
+		codexTokenCountLine("2026-04-16T22:10:45.100Z", 34114, 17888, 15232, 309, 28),
+	)
+	writeCodexUsageLines(t, path, lines)
+
+	usages, err := ExtractCodexTailUsage(path)
+	if err != nil {
+		t.Fatalf("ExtractCodexTailUsage: %v", err)
+	}
+	if len(usages) != 2 {
+		t.Fatalf("got %d usages, want 2: %+v", len(usages), usages)
+	}
+	for i, u := range usages {
+		if u.Model != "gpt-5.6-terra" {
+			t.Errorf("usages[%d].Model = %q, want gpt-5.6-terra (recovered from the head turn_context beyond the tail window)", i, u.Model)
+		}
+	}
+}
+
+// TestExtractCodexTailUsageAmbiguousHeadModelSeedsEmpty pins the mid-rollout
+// switch fix: when the head scan observes MORE THAN ONE distinct
+// turn_context.model before the tail window (a genuine mid-rollout model
+// switch), the head cannot name a single session model. Seeding from the first
+// model would silently mislabel post-switch tail usage with the pre-switch
+// model — trading an obvious unpriced $0 for a plausible wrong price. The scan
+// must instead fall back to the honest unpriced floor (empty model), exactly as
+// if no head model were found, so any in-tail turn_context still wins.
+func TestExtractCodexTailUsageAmbiguousHeadModelSeedsEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rollout-2026-04-16T21-49-29-headswitch.jsonl")
+	lines := []string{
+		codexSessionMetaLine("2026-04-16T21:49:30.734Z", "/work/dir"),
+		// Two distinct models announced near the top: a real mid-rollout switch,
+		// both within the bounded head-scan window.
+		codexTurnContextLine("2026-04-16T21:49:30.901Z", "gpt-5.6-terra"),
+		codexTurnContextLine("2026-04-16T21:49:31.901Z", "gpt-5.7-nova"),
+	}
+	// Filler > tailChunkSize so BOTH head turn_contexts scroll out of the tail
+	// window; the recent token_counts sit in the tail with no in-window model.
+	filler := strings.Repeat("x", 2048)
+	for i := 0; i < (tailChunkSize/2048)+8; i++ {
+		lines = append(lines, fmt.Sprintf(
+			`{"timestamp":"2026-04-16T21:50:%02d.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":%q}}`,
+			i%60, filler))
+	}
+	lines = append(lines,
+		codexTokenCountLine("2026-04-16T22:10:38.304Z", 15917, 15562, 10624, 355, 166),
+		codexTokenCountLine("2026-04-16T22:10:45.100Z", 34114, 17888, 15232, 309, 28),
+	)
+	writeCodexUsageLines(t, path, lines)
+
+	usages, err := ExtractCodexTailUsage(path)
+	if err != nil {
+		t.Fatalf("ExtractCodexTailUsage: %v", err)
+	}
+	if len(usages) != 2 {
+		t.Fatalf("got %d usages, want 2: %+v", len(usages), usages)
+	}
+	for i, u := range usages {
+		if u.Model != "" {
+			t.Errorf("usages[%d].Model = %q, want empty (an ambiguous multi-model head must not seed a guess)", i, u.Model)
+		}
+	}
+}
+
 func TestExtractCodexTailMetaUsesLatestRealUsageShape(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "2026", "04", "16", "rollout-2026-04-16T21-49-29-meta.jsonl")
