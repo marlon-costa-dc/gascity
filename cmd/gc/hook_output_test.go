@@ -95,6 +95,28 @@ func TestWriteProviderHookContextCodexAdditionalContext(t *testing.T) {
 	}
 }
 
+func TestWriteProviderHookContextCodexPreCompactUsesUniversalOutput(t *testing.T) {
+	var out bytes.Buffer
+	err := writeProviderHookContextForEvent(&out, "codex", "PreCompact", "Handoff: sent auto mail gc-example.\n")
+	if err != nil {
+		t.Fatalf("writeProviderHookContextForEvent: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v\n%s", err, out.String())
+	}
+	if got, want := payload["systemMessage"], "Handoff: sent auto mail gc-example."; got != want {
+		t.Fatalf("systemMessage = %#v, want %#v", got, want)
+	}
+	if _, exists := payload["hookSpecificOutput"]; exists {
+		t.Fatalf("PreCompact output contains unsupported hookSpecificOutput: %#v", payload)
+	}
+	if got, want := len(payload), 1; got != want {
+		t.Fatalf("PreCompact output fields = %d, want %d: %#v", got, want, payload)
+	}
+}
+
 func TestWriteProviderHookContextCodexDefaultsSessionStartFromEnv(t *testing.T) {
 	t.Setenv("GC_HOOK_EVENT_NAME", "SessionStart")
 
