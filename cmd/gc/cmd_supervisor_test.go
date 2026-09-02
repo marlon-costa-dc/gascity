@@ -1409,7 +1409,13 @@ func TestInstallSupervisorSystemdWarmRefreshRefusesActivePrePreserveSupervisor(t
 	}
 }
 
-func TestInstallSupervisorSystemdWarmRefreshUsesCooperativeStopWithoutKill(t *testing.T) {
+// The unit refresh must never restart the unit wholesale and must only ever
+// signal the supervisor's main PID: with KillMode=process the main PID is the
+// only thing systemd's stop path signals, and the manual SIGTERM-to-main path
+// mirrors that contract even when systemd cannot be consulted. SIGKILL exists
+// only as the bounded fallback when the old supervisor ignores SIGTERM for the
+// warm-refresh stop timeout — this test pins exactly that fallback path.
+func TestInstallSupervisorSystemdWarmRefreshSignalsMainPIDWithoutRestart(t *testing.T) {
 	if goruntime.GOOS != "linux" {
 		t.Skip("systemd path only applies on linux")
 	}
@@ -1440,6 +1446,8 @@ func TestInstallSupervisorSystemdWarmRefreshUsesCooperativeStopWithoutKill(t *te
 		calls = append(calls, strings.Join(args, " "))
 		return nil
 	}
+	// Always active: the old supervisor never reports inactive within the
+	// graceful stop timeout, driving the refresh through its SIGKILL fallback.
 	supervisorSystemctlActive = func(string) bool { return true }
 	stubSupervisorRunningPreserveSignalReady(t, true)
 	t.Cleanup(func() {
@@ -1453,7 +1461,8 @@ func TestInstallSupervisorSystemdWarmRefreshUsesCooperativeStopWithoutKill(t *te
 	}
 	joined := strings.Join(calls, "\n")
 	for _, want := range []string{
-		"--user stop " + service,
+		"--user kill --kill-who=main --signal=SIGTERM " + service,
+		"--user kill --kill-who=main --signal=SIGKILL " + service,
 		"--user reset-failed " + service,
 		"--user start " + service,
 	} {
@@ -1461,8 +1470,8 @@ func TestInstallSupervisorSystemdWarmRefreshUsesCooperativeStopWithoutKill(t *te
 			t.Fatalf("systemctl calls = %v, want %q", calls, want)
 		}
 	}
-	if strings.Contains(joined, "--user kill ") {
-		t.Fatalf("systemctl calls = %v, want no kill action during cooperative refresh", calls)
+	if strings.Contains(joined, "--user restart "+service) {
+		t.Fatalf("systemctl calls = %v, warm refresh must signal the main PID instead of restarting the unit", calls)
 	}
 }
 

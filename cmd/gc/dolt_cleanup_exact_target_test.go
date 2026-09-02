@@ -203,9 +203,12 @@ func TestRunDoltCleanup_ExactTargetProbeFailureFailClosed(t *testing.T) {
 		DiscoverProcesses: func() ([]DoltProcInfo, error) { return nil, nil },
 		ReapGracePeriod:   1,
 	}
+	// Fail-closed means the invocation itself fails: with --force, the
+	// live-session probe failure is a fatal force blocker, runDoltCleanup
+	// exits 1, and nothing was dropped. The blocker rides in the JSON report.
 	code := runDoltCleanup(opts, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("exit=%d, stderr=%q", code, stderr.String())
+	if code != 1 {
+		t.Fatalf("exit=%d, stderr=%q, want 1 (fail-closed refusal of a --force drop on probe failure)", code, stderr.String())
 	}
 	var r CleanupReport
 	if err := json.Unmarshal(stdout.Bytes(), &r); err != nil {

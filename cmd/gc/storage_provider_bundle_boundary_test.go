@@ -219,13 +219,53 @@ func TestModuleGraphCarriesNoReplaceDirective(t *testing.T) {
 	if len(malformed) > 0 {
 		t.Fatalf("go.mod has replace directives this guard cannot parse (lines %v); a manifest we cannot read is a violation, not a pass", malformed)
 	}
+	// The fork's beads-library pin is contract-owned, not a free-form replace:
+	// deps.env's BD_LIBRARY_VERSION is the single source of truth for the fork
+	// build the native store links, and scripts/bd_version_pin_test.go owns
+	// cross-checking go.mod against it. This guard accepts exactly the replace
+	// that contract names — the steveyegge module redirected to the fork repo at
+	// the contracted version — and still rejects every other replace, and the
+	// contracted one at any other version.
 	for _, directive := range directives {
-		t.Errorf("go.mod line %d replaces %q with %q; this module graph carries no replace directive, so a build resolves the dependencies the manifest names and nothing else",
-			directive.line, directive.oldPath, directive.newPath)
+		if !forkLibraryPinAllows(directive, root) {
+			t.Errorf("go.mod line %d replaces %q with %q; this module graph carries no replace directive, so a build resolves the dependencies the manifest names and nothing else",
+				directive.line, directive.oldPath, directive.newPath)
+		}
 	}
 	if anyGoWorkFile(t, root) {
 		t.Error("the tree commits a go.work; a workspace redirects the module graph for every go invocation started at or below it")
 	}
+}
+
+// forkLibraryPinAllows reports whether directive is exactly the beads fork
+// pin that deps.env's BD_LIBRARY_VERSION contract declares: the steveyegge
+// module redirected to github.com/marlon-costa-dc/beads at the contracted
+// version. A missing BD_LIBRARY_VERSION allows nothing — upstream trees have
+// no fork pin and stay replace-free, so the guard's upstream behavior is
+// unchanged. A versionless replace (pointing at a local tree) is never
+// allowed: the contract pins a released fork build, not a moving checkout.
+func forkLibraryPinAllows(directive replaceDirective, root string) bool {
+	if directive.oldPath != "github.com/steveyegge/beads" ||
+		directive.oldVersion != "" ||
+		directive.newPath != "github.com/marlon-costa-dc/beads" {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(root, "deps.env"))
+	if err != nil {
+		return false
+	}
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(key) != "BD_LIBRARY_VERSION" {
+			continue
+		}
+		return strings.TrimSpace(value) != "" && directive.newVersion == strings.TrimSpace(value)
+	}
+	return false
 }
 
 // --- the arms, as functions over an arbitrary tree ---------------------------

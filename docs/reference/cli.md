@@ -1444,6 +1444,7 @@ gc dolt-cleanup [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
+| `--exact-target` | string |  | remove only the named orphan database (bypasses stale-prefix scan; still subject to rig-protection, live-session, and identifier guards) |
 | `--force` | bool |  | actually drop, purge, and kill orphaned resources (default: dry-run) |
 | `--json` | bool |  | emit JSON envelope (gc.dolt.cleanup.v1) |
 | `--max-orphan-dbs` | int |  | with --force, refuse cleanup when live stale database count exceeds this limit |
