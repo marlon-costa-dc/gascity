@@ -49,7 +49,7 @@ func conditionPATH() string {
 		seen[dir] = struct{}{}
 		dirs = append(dirs, dir)
 	}
-	for _, name := range []string{"bd", "gc", "dolt", "jq"} {
+	for _, name := range []string{"python3", "bd", "gc", "dolt", "jq"} {
 		if path, err := exec.LookPath(name); err == nil {
 			addDir(filepath.Dir(path))
 		}
