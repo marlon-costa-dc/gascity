@@ -334,9 +334,9 @@ func TestRenderSupervisorLaunchdTemplate(t *testing.T) {
 		LaunchdLabel:  defaultSupervisorLaunchdLabel,
 		Path:          "/usr/local/bin:/usr/bin:/bin",
 		ExtraEnv: []supervisorServiceEnvVar{
-			{Name: "ANTHROPIC_API_KEY", Value: `sk-&<"'>`},
-			{Name: "OPENAI_API_KEY", Value: "sk-openai-123"},
+			{Name: "CLAUDE_CONFIG_DIR", Value: `/home/user/.config/claude-&<"'>`},
 		},
+		InheritedEnv: []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
 	}
 
 	content, err := renderSupervisorTemplate(supervisorLaunchdTemplate, data)
@@ -354,15 +354,18 @@ func TestRenderSupervisorLaunchdTemplate(t *testing.T) {
 		"XDG_RUNTIME_DIR",
 		"/tmp/gc-run",
 		"<key>PATH</key>",
-		"<key>ANTHROPIC_API_KEY</key>",
-		"<string>sk-&amp;&lt;&quot;&apos;&gt;</string>",
-		"<key>OPENAI_API_KEY</key>",
-		"<string>sk-openai-123</string>",
+		"<key>CLAUDE_CONFIG_DIR</key>",
+		"<string>/home/user/.config/claude-&amp;&lt;&quot;&apos;&gt;</string>",
 		"<key>GC_SUPERVISOR_PRESERVE_SESSIONS_ON_SIGNAL</key>",
 		"<string>1</string>",
 	} {
 		if !strings.Contains(content, check) {
 			t.Fatalf("launchd template missing %q", check)
+		}
+	}
+	for _, forbidden := range []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "sk-"} {
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("launchd template contains inherited credential material %q", forbidden)
 		}
 	}
 }
@@ -397,9 +400,9 @@ func TestRenderSupervisorSystemdTemplate(t *testing.T) {
 		LaunchdLabel:  defaultSupervisorLaunchdLabel,
 		Path:          "/usr/local/bin:/usr/bin:/bin",
 		ExtraEnv: []supervisorServiceEnvVar{
-			{Name: "ANTHROPIC_API_KEY", Value: `sk-"ant"\value`},
-			{Name: "OPENAI_API_KEY", Value: "sk-openai-123"},
+			{Name: "GC_DOLT_LOGLEVEL", Value: "debug"},
 		},
+		InheritedEnv: []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
 	}
 
 	content, err := renderSupervisorTemplate(supervisorSystemdTemplate, data)
@@ -416,12 +419,16 @@ func TestRenderSupervisorSystemdTemplate(t *testing.T) {
 		`Environment=GC_HOME="/home/user/.gc"`,
 		`Environment=XDG_RUNTIME_DIR="/tmp/gc-run"`,
 		`Environment=PATH="/usr/local/bin:/usr/bin:/bin"`,
-		`Environment=ANTHROPIC_API_KEY="sk-\"ant\"\\value"`,
-		`Environment=OPENAI_API_KEY="sk-openai-123"`,
+		`Environment=GC_DOLT_LOGLEVEL="debug"`,
+		`PassEnvironment=ANTHROPIC_API_KEY`,
+		`PassEnvironment=OPENAI_API_KEY`,
 	} {
 		if !strings.Contains(content, check) {
 			t.Fatalf("systemd template missing %q", check)
 		}
+	}
+	if strings.Contains(content, "sk-") {
+		t.Fatalf("systemd template contains a credential value:\n%s", content)
 	}
 	wantBlock := "[Service]\nType=simple\n# Signal only the main supervisor PID on stop. The systemd default\n" +
 		"# (control-group) would cascade SIGTERM to tmux servers spawned by\n" +
@@ -504,11 +511,9 @@ func TestBuildSupervisorServiceDataDoesNotPersistLogTeeByDefault(t *testing.T) {
 	}
 }
 
-// TestBuildSupervisorServiceDataPersistsLogTeeViaSupervisorEnvOptIn pins the
-// documented persistence escape hatch: GC_SUPERVISOR_ENV=GC_SUPERVISOR_LOG_TEE
-// carries the tee opt-out into generated launchd and systemd service files,
-// for operators who hand-edit the generated unit's output redirection.
-func TestBuildSupervisorServiceDataPersistsLogTeeViaSupervisorEnvOptIn(t *testing.T) {
+// TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn pins the
+// explicit-selection contract without serializing its value.
+func TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -520,28 +525,34 @@ func TestBuildSupervisorServiceDataPersistsLogTeeViaSupervisorEnvOptIn(t *testin
 	if err != nil {
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
-	if got := supervisorServiceEnvMap(data.ExtraEnv); got[supervisorLogTeeEnv] != "0" {
-		t.Fatalf("ExtraEnv[%s] = %q, want %q (all env: %#v)", supervisorLogTeeEnv, got[supervisorLogTeeEnv], "0", got)
+	if got := supervisorServiceEnvMap(data.ExtraEnv); got[supervisorLogTeeEnv] != "" {
+		t.Fatalf("ExtraEnv[%s] = %q, want omitted value (all env: %#v)", supervisorLogTeeEnv, got[supervisorLogTeeEnv], got)
+	}
+	if !slices.Contains(data.InheritedEnv, supervisorLogTeeEnv) {
+		t.Fatalf("InheritedEnv missing %s: %#v", supervisorLogTeeEnv, data.InheritedEnv)
 	}
 
 	launchdContent, err := renderSupervisorTemplate(supervisorLaunchdTemplate, data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(launchdContent, "<key>"+supervisorLogTeeEnv+"</key>") {
-		t.Fatalf("launchd plist missing %s env:\n%s", supervisorLogTeeEnv, launchdContent)
+	if strings.Contains(launchdContent, supervisorLogTeeEnv) {
+		t.Fatalf("launchd plist serialized inherited %s:\n%s", supervisorLogTeeEnv, launchdContent)
 	}
 
 	systemdContent, err := renderSupervisorTemplate(supervisorSystemdTemplate, data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(systemdContent, "Environment="+supervisorLogTeeEnv+`="0"`) {
-		t.Fatalf("systemd unit missing %s env:\n%s", supervisorLogTeeEnv, systemdContent)
+	if !strings.Contains(systemdContent, "PassEnvironment="+supervisorLogTeeEnv) {
+		t.Fatalf("systemd unit missing inherited %s name:\n%s", supervisorLogTeeEnv, systemdContent)
+	}
+	if strings.Contains(systemdContent, "Environment="+supervisorLogTeeEnv+"=") {
+		t.Fatalf("systemd unit serialized %s value:\n%s", supervisorLogTeeEnv, systemdContent)
 	}
 }
 
-func TestBuildSupervisorServiceDataIncludesProviderEnv(t *testing.T) {
+func TestBuildSupervisorServiceDataInheritsProviderEnvByNameOnly(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -568,54 +579,6 @@ func TestBuildSupervisorServiceDataIncludesProviderEnv(t *testing.T) {
 	}
 
 	got := supervisorServiceEnvMap(data.ExtraEnv)
-	for key, want := range map[string]string{
-		"ANTHROPIC_API_KEY":     "sk-ant-123",
-		"ANTHROPIC_BASE_URL":    "https://anthropic.example.test",
-		"OPENAI_API_KEY":        "sk-openai-123",
-		"GEMINI_API_KEY":        "gemini-123",
-		"GOOGLE_CLOUD_PROJECT":  "gc-project",
-		"DEEPSEEK_API_KEY":      "ds-123",
-		"OLLAMA_HOST":           "http://localhost:11434",
-		"AWS_ACCESS_KEY_ID":     "AKIA123",
-		"CLAUDE_CONFIG_DIR":     filepath.Join(homeDir, ".claude"),
-		"CUSTOM_PROVIDER_TOKEN": "custom-token",
-	} {
-		if got[key] != want {
-			t.Fatalf("ExtraEnv[%s] = %q, want %q (all env: %#v)", key, got[key], want, got)
-		}
-	}
-	for _, key := range []string{"GC_HOME", "PATH", "XDG_RUNTIME_DIR", "IGNORED_EMPTY", "UNRELATED_SECRET", "AWS_PAGER"} {
-		if _, ok := got[key]; ok {
-			t.Fatalf("ExtraEnv should not include %s: %#v", key, got)
-		}
-	}
-}
-
-func TestBuildSupervisorServiceDataOmitsProviderEnvWhenOptedOut(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
-	t.Setenv("PATH", "/usr/local/bin:/usr/bin:/bin")
-	t.Setenv("XDG_RUNTIME_DIR", "/tmp/gc-run")
-	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-123")
-	t.Setenv("ANTHROPIC_BASE_URL", "https://anthropic.example.test")
-	t.Setenv("OPENAI_API_KEY", "sk-openai-123")
-	t.Setenv("GEMINI_API_KEY", "gemini-123")
-	t.Setenv("GOOGLE_CLOUD_PROJECT", "gc-project")
-	t.Setenv("DEEPSEEK_API_KEY", "ds-123")
-	t.Setenv("OLLAMA_HOST", "http://localhost:11434")
-	t.Setenv("AWS_ACCESS_KEY_ID", "AKIA123")
-	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(homeDir, ".claude"))
-	t.Setenv("GC_SUPERVISOR_ENV", "CUSTOM_PROVIDER_TOKEN")
-	t.Setenv("CUSTOM_PROVIDER_TOKEN", "custom-token")
-	t.Setenv(supervisorOmitProviderCredsEnv, "1")
-
-	data, err := buildSupervisorServiceData()
-	if err != nil {
-		t.Fatalf("buildSupervisorServiceData: %v", err)
-	}
-
-	got := supervisorServiceEnvMap(data.ExtraEnv)
 	for _, key := range []string{
 		"ANTHROPIC_API_KEY",
 		"ANTHROPIC_BASE_URL",
@@ -625,18 +588,24 @@ func TestBuildSupervisorServiceDataOmitsProviderEnvWhenOptedOut(t *testing.T) {
 		"DEEPSEEK_API_KEY",
 		"OLLAMA_HOST",
 		"AWS_ACCESS_KEY_ID",
+		"CUSTOM_PROVIDER_TOKEN",
 	} {
 		if _, ok := got[key]; ok {
-			t.Fatalf("ExtraEnv should not include provider key %s when %s=1: %#v",
-				key, supervisorOmitProviderCredsEnv, got)
+			t.Fatalf("ExtraEnv contains inherited value for %s: %#v", key, got)
+		}
+		if !slices.Contains(data.InheritedEnv, key) {
+			t.Fatalf("InheritedEnv missing %s: %#v", key, data.InheritedEnv)
 		}
 	}
-	for key, want := range map[string]string{
-		"CLAUDE_CONFIG_DIR":     filepath.Join(homeDir, ".claude"),
-		"CUSTOM_PROVIDER_TOKEN": "custom-token",
-	} {
-		if got[key] != want {
-			t.Fatalf("ExtraEnv[%s] = %q, want %q (all env: %#v)", key, got[key], want, got)
+	if got["CLAUDE_CONFIG_DIR"] != filepath.Join(homeDir, ".claude") {
+		t.Fatalf("safe CLAUDE_CONFIG_DIR = %q, want projected literal", got["CLAUDE_CONFIG_DIR"])
+	}
+	for _, key := range []string{"GC_HOME", "PATH", "XDG_RUNTIME_DIR", "IGNORED_EMPTY", "UNRELATED_SECRET", "AWS_PAGER"} {
+		if _, ok := got[key]; ok {
+			t.Fatalf("ExtraEnv should not include %s: %#v", key, got)
+		}
+		if slices.Contains(data.InheritedEnv, key) {
+			t.Fatalf("InheritedEnv should not include %s: %#v", key, data.InheritedEnv)
 		}
 	}
 }
@@ -649,148 +618,40 @@ func supervisorServiceEnvMap(vars []supervisorServiceEnvVar) map[string]string {
 	return m
 }
 
-// writeSupervisorSecretsEnvFile writes dotenv content to ${GC_HOME}/secrets.env,
-// creating GC_HOME if needed. GC_HOME must already be set in the environment.
-func writeSupervisorSecretsEnvFile(t *testing.T, content string) {
-	t.Helper()
-	path := supervisorSecretsEnvFilePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatalf("creating GC_HOME for secrets file: %v", err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatalf("writing secrets file: %v", err)
-	}
-}
-
-// TestBuildSupervisorServiceDataMergesSecretsEnvFile asserts the durable fix
-// for credentials that live only in ${GC_HOME}/secrets.env: with the secret
-// absent from the calling shell, it still reaches the service env. A
-// non-allowlisted key in the file is dropped; a GC_SUPERVISOR_ENV opt-in key
-// present only in the file is honored.
-func TestBuildSupervisorServiceDataMergesSecretsEnvFile(t *testing.T) {
+func TestBuildSupervisorServiceDataDoesNotReadSecretsEnvFile(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
 	t.Setenv("PATH", "/usr/local/bin:/usr/bin:/bin")
 	t.Setenv("GC_SUPERVISOR_ENV", "CUSTOM_PROVIDER_TOKEN")
-	// Ensure the keys are NOT present in the calling shell's environment.
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CUSTOM_PROVIDER_TOKEN", "")
-	t.Setenv("UNRELATED_SECRET", "")
-
-	writeSupervisorSecretsEnvFile(t, `# machine-local provider secrets
+	path := filepath.Join(os.Getenv("GC_HOME"), "secrets.env")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`# retired source that must never be read
 ANTHROPIC_AUTH_TOKEN=sk-from-file
 CUSTOM_PROVIDER_TOKEN=custom-from-file
-UNRELATED_SECRET=do-not-persist
-`)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	data, err := buildSupervisorServiceData()
 	if err != nil {
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
-
-	got := supervisorServiceEnvMap(data.ExtraEnv)
-	for key, want := range map[string]string{
-		"ANTHROPIC_AUTH_TOKEN":  "sk-from-file",
-		"CUSTOM_PROVIDER_TOKEN": "custom-from-file",
-	} {
-		if got[key] != want {
-			t.Fatalf("ExtraEnv[%s] = %q, want %q (all env: %#v)", key, got[key], want, got)
+	for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "CUSTOM_PROVIDER_TOKEN"} {
+		if _, ok := supervisorServiceEnvMap(data.ExtraEnv)[key]; ok || slices.Contains(data.InheritedEnv, key) {
+			t.Fatalf("retired secrets file selected %s: ExtraEnv=%#v InheritedEnv=%#v", key, data.ExtraEnv, data.InheritedEnv)
 		}
 	}
-	if _, ok := got["UNRELATED_SECRET"]; ok {
-		t.Fatalf("ExtraEnv should not include non-allowlisted UNRELATED_SECRET: %#v", got)
-	}
 }
 
-// TestBuildSupervisorServiceDataShellEnvWinsOverSecretsFile asserts the
-// gap-fill precedence: a value exported in the calling shell takes precedence
-// over the same key in ${GC_HOME}/secrets.env.
-func TestBuildSupervisorServiceDataShellEnvWinsOverSecretsFile(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
-	t.Setenv("PATH", "/usr/local/bin:/usr/bin:/bin")
-	t.Setenv("ANTHROPIC_AUTH_TOKEN", "sk-from-shell")
-
-	writeSupervisorSecretsEnvFile(t, "ANTHROPIC_AUTH_TOKEN=sk-from-file\n")
-
-	data, err := buildSupervisorServiceData()
-	if err != nil {
-		t.Fatalf("buildSupervisorServiceData: %v", err)
-	}
-
-	if got := supervisorServiceEnvMap(data.ExtraEnv); got["ANTHROPIC_AUTH_TOKEN"] != "sk-from-shell" {
-		t.Fatalf("ExtraEnv[ANTHROPIC_AUTH_TOKEN] = %q, want shell value %q",
-			got["ANTHROPIC_AUTH_TOKEN"], "sk-from-shell")
-	}
-}
-
-// TestBuildSupervisorServiceDataSecretsFileRespectsOmitProviderCreds asserts
-// that the provider-credential opt-out also suppresses provider keys sourced
-// from the secrets file.
-func TestBuildSupervisorServiceDataSecretsFileRespectsOmitProviderCreds(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
-	t.Setenv("PATH", "/usr/local/bin:/usr/bin:/bin")
-	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
-	t.Setenv(supervisorOmitProviderCredsEnv, "1")
-
-	writeSupervisorSecretsEnvFile(t, "ANTHROPIC_AUTH_TOKEN=sk-from-file\n")
-
-	data, err := buildSupervisorServiceData()
-	if err != nil {
-		t.Fatalf("buildSupervisorServiceData: %v", err)
-	}
-
-	if _, ok := supervisorServiceEnvMap(data.ExtraEnv)["ANTHROPIC_AUTH_TOKEN"]; ok {
-		t.Fatalf("ExtraEnv should not include provider key from secrets file when %s=1",
-			supervisorOmitProviderCredsEnv)
-	}
-}
-
-// TestBuildSupervisorServiceDataMissingSecretsFileIsNotAnError asserts that the
-// absence of ${GC_HOME}/secrets.env is the normal case and does not fail.
-func TestBuildSupervisorServiceDataMissingSecretsFileIsNotAnError(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
-	t.Setenv("PATH", "/usr/local/bin:/usr/bin:/bin")
-
-	if _, err := buildSupervisorServiceData(); err != nil {
-		t.Fatalf("buildSupervisorServiceData with no secrets file: %v", err)
-	}
-}
-
-// TestBuildSupervisorServiceDataMalformedSecretsFileDegradesGracefully asserts
-// the documented fail-safe: a malformed secrets file does not block service
-// file generation (no error) and contributes no env — the malformed file is
-// ignored rather than partially applied, so the good first line must not leak
-// through.
-func TestBuildSupervisorServiceDataMalformedSecretsFileDegradesGracefully(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
-	t.Setenv("PATH", "/usr/local/bin:/usr/bin:/bin")
-	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
-
-	writeSupervisorSecretsEnvFile(t, "ANTHROPIC_AUTH_TOKEN=sk-from-file\nMALFORMED LINE WITHOUT EQUALS\n")
-
-	data, err := buildSupervisorServiceData()
-	if err != nil {
-		t.Fatalf("buildSupervisorServiceData with malformed secrets file: %v", err)
-	}
-	if _, ok := supervisorServiceEnvMap(data.ExtraEnv)["ANTHROPIC_AUTH_TOKEN"]; ok {
-		t.Fatalf("ExtraEnv should not include any key from a malformed secrets file")
-	}
-}
-
-// TestBuildSupervisorServiceDataForwardsRepresentativeProviderPrefixes asserts
-// that representative provider-prefix credentials are forwarded into the
-// supervisor's persistent env. internal/processenv owns complete allowlist
-// coverage; this test covers the supervisor integration boundary.
-func TestBuildSupervisorServiceDataForwardsRepresentativeProviderPrefixes(t *testing.T) {
+// TestBuildSupervisorServiceDataInheritsRepresentativeProviderPrefixes asserts
+// that internal/processenv's provider selection crosses the supervisor
+// boundary as names only.
+func TestBuildSupervisorServiceDataInheritsRepresentativeProviderPrefixes(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -825,14 +686,17 @@ func TestBuildSupervisorServiceDataForwardsRepresentativeProviderPrefixes(t *tes
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
 	got := supervisorServiceEnvMap(data.ExtraEnv)
-	for k, want := range probes {
-		if got[k] != want {
-			t.Errorf("ExtraEnv[%s] = %q, want %q", k, got[k], want)
+	for key := range probes {
+		if _, ok := got[key]; ok {
+			t.Errorf("ExtraEnv contains provider value for %s", key)
+		}
+		if !slices.Contains(data.InheritedEnv, key) {
+			t.Errorf("InheritedEnv missing provider name %s", key)
 		}
 	}
 }
 
-func TestBuildSupervisorServiceDataForwardsCuratedProviderCredentialEnvKeys(t *testing.T) {
+func TestBuildSupervisorServiceDataInheritsCuratedProviderCredentialEnvKeys(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -874,19 +738,22 @@ func TestBuildSupervisorServiceDataForwardsCuratedProviderCredentialEnvKeys(t *t
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
 	got := supervisorServiceEnvMap(data.ExtraEnv)
-	for k, want := range probes {
-		if got[k] != want {
-			t.Errorf("ExtraEnv[%s] = %q, want %q - exact provider key may be missing", k, got[k], want)
+	for key := range probes {
+		if _, ok := got[key]; ok {
+			t.Errorf("ExtraEnv contains curated provider value for %s", key)
+		}
+		if !slices.Contains(data.InheritedEnv, key) {
+			t.Errorf("InheritedEnv missing curated provider name %s", key)
 		}
 	}
 	for _, key := range []string{"AWS_EXECUTION_ENV", "AWS_PAGER", "AWS_VAULT"} {
-		if _, ok := got[key]; ok {
-			t.Errorf("ExtraEnv should not include broad AWS runtime state %s", key)
+		if _, ok := got[key]; ok || slices.Contains(data.InheritedEnv, key) {
+			t.Errorf("supervisor env should not include broad AWS runtime state %s", key)
 		}
 	}
 }
 
-func TestBuildSupervisorServiceDataReadsAllowlistedDoltCredentialKeysFromLaunchctl(t *testing.T) {
+func TestBuildSupervisorServiceDataReadsOnlySafeDoltKeysFromLaunchctl(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -914,10 +781,16 @@ func TestBuildSupervisorServiceDataReadsAllowlistedDoltCredentialKeysFromLaunchc
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
 	got := supervisorServiceEnvMap(data.ExtraEnv)
-	for key, want := range stub {
+	for key, want := range map[string]string{
+		"GC_DOLT_USER":     "gc_user",
+		"GC_DOLT_LOGLEVEL": "debug",
+	} {
 		if got[key] != want {
 			t.Fatalf("ExtraEnv[%s] = %q, want %q (all env: %#v)", key, got[key], want, got)
 		}
+	}
+	if _, ok := got["GC_DOLT_PASSWORD"]; ok {
+		t.Fatalf("ExtraEnv contains sensitive GC_DOLT_PASSWORD: %#v", got)
 	}
 }
 
@@ -960,12 +833,12 @@ func TestBuildSupervisorServiceDataSkipsDoltEndpointEnvUnlessExplicitlyOptedIn(t
 		t.Fatalf("buildSupervisorServiceData with explicit opt-in: %v", err)
 	}
 	got = supervisorServiceEnvMap(data.ExtraEnv)
-	for key, want := range map[string]string{
-		"GC_DOLT_HOST": "127.0.0.1",
-		"GC_DOLT_PORT": "3306",
-	} {
-		if got[key] != want {
-			t.Fatalf("ExtraEnv[%s] = %q, want %q after explicit opt-in (all env: %#v)", key, got[key], want, got)
+	for _, key := range []string{"GC_DOLT_HOST", "GC_DOLT_PORT"} {
+		if _, ok := got[key]; ok {
+			t.Fatalf("ExtraEnv contains explicit inherited value for %s: %#v", key, got)
+		}
+		if !slices.Contains(data.InheritedEnv, key) {
+			t.Fatalf("InheritedEnv missing explicit name %s: %#v", key, data.InheritedEnv)
 		}
 	}
 }
@@ -997,7 +870,7 @@ func TestBuildSupervisorServiceDataPrefersOSEnvOverLaunchctl(t *testing.T) {
 	}
 }
 
-func TestBuildSupervisorServiceDataReadsExplicitEnvOptInFromLaunchctl(t *testing.T) {
+func TestBuildSupervisorServiceDataDoesNotReadExplicitEnvOptInFromLaunchctl(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -1020,9 +893,8 @@ func TestBuildSupervisorServiceDataReadsExplicitEnvOptInFromLaunchctl(t *testing
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
 	got := supervisorServiceEnvMap(data.ExtraEnv)
-	if got["GC_DOLT_DATA_DIR"] != "/srv/gc/dolt" {
-		t.Fatalf("ExtraEnv[GC_DOLT_DATA_DIR] = %q, want %q (launchctl fallback for GC_SUPERVISOR_ENV opt-in)",
-			got["GC_DOLT_DATA_DIR"], "/srv/gc/dolt")
+	if _, ok := got["GC_DOLT_DATA_DIR"]; ok || slices.Contains(data.InheritedEnv, "GC_DOLT_DATA_DIR") {
+		t.Fatalf("empty current-process opt-in was selected: ExtraEnv=%#v InheritedEnv=%#v", got, data.InheritedEnv)
 	}
 }
 
@@ -1046,10 +918,11 @@ func TestBuildSupervisorServiceDataDeduplicatesLaunchctlFallbackProbes(t *testin
 	if _, err := buildSupervisorServiceData(); err != nil {
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
-	for _, key := range []string{"GC_DOLT_LOGLEVEL", "CUSTOM_ONLY"} {
-		if calls[key] != 1 {
-			t.Fatalf("launchctl getenv calls for %s = %d, want 1 (all calls: %#v)", key, calls[key], calls)
-		}
+	if calls["GC_DOLT_LOGLEVEL"] != 1 {
+		t.Fatalf("launchctl getenv calls for GC_DOLT_LOGLEVEL = %d, want 1 (all calls: %#v)", calls["GC_DOLT_LOGLEVEL"], calls)
+	}
+	if calls["CUSTOM_ONLY"] != 0 {
+		t.Fatalf("launchctl getenv calls for explicit CUSTOM_ONLY = %d, want 0 (all calls: %#v)", calls["CUSTOM_ONLY"], calls)
 	}
 }
 

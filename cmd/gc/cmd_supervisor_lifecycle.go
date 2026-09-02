@@ -998,6 +998,7 @@ type supervisorServiceData struct {
 	SafeName      string
 	Path          string
 	ExtraEnv      []supervisorServiceEnvVar
+	InheritedEnv  []string
 	// PortInUseExitCode is the exit code the supervisor returns on a duplicate
 	// API-port collision; the systemd unit lists it in RestartPreventExitStatus
 	// so a duplicate install does not crash-loop on the shared port.
@@ -1030,6 +1031,7 @@ func buildSupervisorServiceData() (*supervisorServiceData, error) {
 		SafeName:          sanitizeServiceName(filepath.Base(home)),
 		Path:              searchpath.ExpandPath(homeDir, goruntime.GOOS, os.Getenv("PATH")),
 		ExtraEnv:          supervisorServiceExtraEnv(),
+		InheritedEnv:      supervisorServiceInheritedEnv(),
 		PortInUseExitCode: supervisorExitCodePortInUse,
 	}, nil
 }
@@ -1102,17 +1104,15 @@ func sanitizeServiceName(name string) string {
 
 var supervisorServiceEnvNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// Keep persistent service-file env narrow. Provider credentials and user
-// context need to survive launchd/systemd startup; arbitrary shell state can
-// be opted in with GC_SUPERVISOR_ENV.
+// Keep literal service-file env narrow and non-sensitive. Credentials never
+// enter the generated launchd plist or systemd unit; the service manager
+// delivers them from its current process environment instead.
 var supervisorServiceEnvKeys = map[string]bool{
 	"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": true,
 	"CLAUDE_CODE_EFFORT_LEVEL":                 true,
-	"CLAUDE_CODE_OAUTH_TOKEN":                  true,
 	"CLAUDE_CODE_SUBAGENT_MODEL":               true,
 	"CLAUDE_CONFIG_DIR":                        true,
 	"GC_DOLT_LOGLEVEL":                         true,
-	"GC_DOLT_PASSWORD":                         true,
 	"GC_DOLT_USER":                             true,
 	"T3_HOME":                                  true,
 	"T3_WS_URL":                                true,
@@ -1128,6 +1128,11 @@ var supervisorServiceEnvKeys = map[string]bool{
 	"XDG_STATE_HOME":                           true,
 }
 
+var supervisorServiceSensitiveEnvKeys = map[string]bool{
+	"CLAUDE_CODE_OAUTH_TOKEN": true,
+	"GC_DOLT_PASSWORD":        true,
+}
+
 var supervisorServiceFixedEnvKeys = map[string]bool{
 	"GC_HOME":                             true,
 	execenv.UsageMetricsDisableEnv:        true,
@@ -1138,11 +1143,6 @@ var supervisorServiceFixedEnvKeys = map[string]bool{
 
 func supervisorServiceExtraEnv() []supervisorServiceEnvVar {
 	env := make(map[string]string)
-	explicitEnvKeys := supervisorServiceExplicitEnvKeys(os.Getenv("GC_SUPERVISOR_ENV"))
-	explicitEnvKeySet := make(map[string]bool, len(explicitEnvKeys))
-	for _, key := range explicitEnvKeys {
-		explicitEnvKeySet[key] = true
-	}
 	for _, entry := range os.Environ() {
 		key, val, ok := strings.Cut(entry, "=")
 		if !ok || val == "" || !shouldPersistSupervisorEnv(key) {
@@ -1150,51 +1150,11 @@ func supervisorServiceExtraEnv() []supervisorServiceEnvVar {
 		}
 		env[key] = val
 	}
-	for _, key := range explicitEnvKeys {
-		if val := os.Getenv(key); val != "" {
-			env[key] = val
-		}
-	}
-	// Merge a persistent machine-local secrets file (${GC_HOME}/secrets.env)
-	// as a fallback tier. `gc start` snapshots the calling shell's env into
-	// the service file, so a credential that lives only in this file and was
-	// never exported into the invoking shell would otherwise be dropped —
-	// yielding a blank value and a silent provider auth failure. A non-empty
-	// value already in env (from the shell scan or a GC_SUPERVISOR_ENV opt-in)
-	// still takes precedence; the file only fills keys those tiers left unset.
-	// As elsewhere in this function, an empty value counts as unset. A file
-	// entry must clear the same gate the other tiers use — the persist
-	// allowlist or an explicit opt-in — so a stray key cannot bloat the
-	// service env.
-	for key, val := range supervisorSecretsEnvFileEntries() {
-		if val == "" {
-			continue
-		}
-		if _, ok := env[key]; ok {
-			continue
-		}
-		if !shouldPersistSupervisorEnv(key) && !explicitEnvKeySet[key] {
-			continue
-		}
-		env[key] = val
-	}
-	// Fall back to `launchctl getenv` for known-allowlisted keys and
-	// for GC_SUPERVISOR_ENV opt-ins. Without this, launchctl-set
-	// documented Dolt credential/logging settings are silently dropped:
-	// the plist's EnvironmentVariables block scopes the spawned
-	// supervisor's env, and `os.Environ()` only sees what's exported in
-	// the calling shell.
-	launchctlKeys := make([]string, 0, len(supervisorServiceEnvKeys)+len(explicitEnvKeys))
-	launchctlSeen := make(map[string]bool, cap(launchctlKeys))
+	// Safe settings already present in launchd's environment remain safe to
+	// project literally. Sensitive and explicitly selected values are handled
+	// only by supervisorServiceInheritedEnv.
+	launchctlKeys := make([]string, 0, len(supervisorServiceEnvKeys))
 	for key := range supervisorServiceEnvKeys {
-		launchctlSeen[key] = true
-		launchctlKeys = append(launchctlKeys, key)
-	}
-	for _, key := range explicitEnvKeys {
-		if launchctlSeen[key] {
-			continue
-		}
-		launchctlSeen[key] = true
 		launchctlKeys = append(launchctlKeys, key)
 	}
 	sort.Strings(launchctlKeys)
@@ -1207,8 +1167,8 @@ func supervisorServiceExtraEnv() []supervisorServiceEnvVar {
 		}
 	}
 	// This process is a Gas City-owned recursive child. Assign the canonical
-	// fixed value after every inherited, explicit, secrets-file, and launchctl
-	// tier so none can re-enable product metrics in the service process.
+	// fixed value after every safe inherited and launchctl tier so none can
+	// re-enable product metrics in the service process.
 	env[execenv.UsageMetricsDisableEnv] = execenv.UsageMetricsDisableValue
 
 	keys := make([]string, 0, len(env))
@@ -1223,6 +1183,30 @@ func supervisorServiceExtraEnv() []supervisorServiceEnvVar {
 	return out
 }
 
+func supervisorServiceInheritedEnv() []string {
+	explicit := supervisorServiceExplicitEnvKeys(os.Getenv("GC_SUPERVISOR_ENV"))
+	explicitSet := make(map[string]bool, len(explicit))
+	for _, key := range explicit {
+		explicitSet[key] = true
+	}
+
+	selected := make(map[string]bool)
+	for _, entry := range os.Environ() {
+		key, val, ok := strings.Cut(entry, "=")
+		if !ok || val == "" || !shouldInheritSupervisorEnv(key, explicitSet) {
+			continue
+		}
+		selected[key] = true
+	}
+
+	keys := make([]string, 0, len(selected))
+	for key := range selected {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func shouldPersistSupervisorEnv(key string) bool {
 	if !supervisorServiceEnvNameRE.MatchString(key) || supervisorServiceFixedEnvKeys[key] {
 		return false
@@ -1230,48 +1214,18 @@ func shouldPersistSupervisorEnv(key string) bool {
 	if supervisorServiceEnvKeys[key] {
 		return true
 	}
-	if isProviderCredentialEnv(key) {
-		return os.Getenv(supervisorOmitProviderCredsEnv) != "1"
-	}
 	return false
+}
+
+func shouldInheritSupervisorEnv(key string, explicit map[string]bool) bool {
+	if !supervisorServiceEnvNameRE.MatchString(key) || supervisorServiceFixedEnvKeys[key] {
+		return false
+	}
+	return supervisorServiceSensitiveEnvKeys[key] || isProviderCredentialEnv(key) || explicit[key]
 }
 
 func isProviderCredentialEnv(key string) bool {
 	return processenv.IsProviderCredentialEnv(key)
-}
-
-// supervisorSecretsEnvFileName is the dotenv-style file under GC_HOME that
-// supervisorServiceExtraEnv merges as a persistent, machine-local source of
-// provider credentials and other allowlisted service env.
-const supervisorSecretsEnvFileName = "secrets.env"
-
-// supervisorSecretsEnvFilePath returns the absolute path to the supervisor
-// secrets file (${GC_HOME}/secrets.env).
-func supervisorSecretsEnvFilePath() string {
-	return filepath.Join(supervisor.DefaultHome(), supervisorSecretsEnvFileName)
-}
-
-// supervisorSecretsEnvFileEntries reads ${GC_HOME}/secrets.env and returns its
-// parsed key/value pairs. A missing file is the normal case and yields nil. A
-// present-but-unreadable or malformed file is logged to stderr and ignored so
-// a bad secrets file never blocks supervisor install/start; the caller still
-// gates whatever is returned on the persist allowlist or an explicit
-// GC_SUPERVISOR_ENV opt-in.
-func supervisorSecretsEnvFileEntries() map[string]string {
-	path := supervisorSecretsEnvFilePath()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "gc: reading supervisor secrets file %q: %v\n", path, err)
-		}
-		return nil
-	}
-	entries, err := processenv.ParseEnvFile(string(data))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gc: parsing supervisor secrets file %q: %v\n", path, err)
-		return nil
-	}
-	return entries
 }
 
 func supervisorServiceExplicitEnvKeys(raw string) []string {
@@ -1401,6 +1355,8 @@ Environment=GC_HOME="{{.GCHome}}"
 {{end}}Environment=PATH="{{.Path}}"
 Environment=GC_SUPERVISOR_PRESERVE_SESSIONS_ON_SIGNAL="1"
 {{range .ExtraEnv}}Environment={{systemdenv .Name .Value}}
+{{end}}
+{{range .InheritedEnv}}PassEnvironment={{.}}
 {{end}}
 
 [Install]
@@ -1767,8 +1723,38 @@ func warnSupervisorSystemdWarmRefreshPreservedUnit(stderr io.Writer, service str
 	fmt.Fprintf(stderr, "gc supervisor install: leaving refreshed systemd unit %s in place after warm-refresh failure; not restoring the previous unit because it may lack KillMode=process. Resolve the error, then run 'systemctl --user start %s' or rerun 'gc supervisor install'.\n", service, service) //nolint:errcheck // best-effort stderr
 }
 
+func validateSupervisorLaunchdInheritedEnv(keys []string) error {
+	var missing []string
+	var mismatched []string
+	for _, key := range keys {
+		managerValue := supervisorLaunchctlGetenv(key)
+		if managerValue == "" {
+			missing = append(missing, key)
+			continue
+		}
+		if managerValue != os.Getenv(key) {
+			mismatched = append(mismatched, key)
+		}
+	}
+	if len(missing) == 0 && len(mismatched) == 0 {
+		return nil
+	}
+	parts := make([]string, 0, 2)
+	if len(missing) > 0 {
+		parts = append(parts, "missing: "+strings.Join(missing, ", "))
+	}
+	if len(mismatched) > 0 {
+		parts = append(parts, "different from current process: "+strings.Join(mismatched, ", "))
+	}
+	return fmt.Errorf("launchd user environment cannot inherit selected variables (%s); populate those names through the credential owner, then rerun install; gc never writes their values to the plist", strings.Join(parts, "; "))
+}
+
 func installSupervisorLaunchd(data *supervisorServiceData, stdout, stderr io.Writer) int {
 	sweepStaleIsolatedSupervisorServices(stderr)
+	if err := validateSupervisorLaunchdInheritedEnv(data.InheritedEnv); err != nil {
+		fmt.Fprintf(stderr, "gc supervisor install: %v\n", err) //nolint:errcheck // best-effort stderr
+		return 1
+	}
 	content, err := renderSupervisorTemplate(supervisorLaunchdTemplate, data)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc supervisor install: rendering plist: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -1795,7 +1781,7 @@ func installSupervisorLaunchd(data *supervisorServiceData, stdout, stderr io.Wri
 			return 1
 		}
 	}
-	if contentUnchanged && supervisorAliveHook() != 0 {
+	if contentUnchanged && len(data.InheritedEnv) == 0 && supervisorAliveHook() != 0 {
 		fmt.Fprintf(stdout, "Installed launchd service: %s\n", path) //nolint:errcheck // best-effort stdout
 		return 0
 	}
@@ -1915,6 +1901,17 @@ func stopSupervisorSystemdForWarmRefresh(service string) ([]string, error) {
 	return killArgs, nil
 }
 
+func importSupervisorSystemdEnvironment(keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	args := append([]string{"--user", "import-environment"}, keys...)
+	if err := supervisorSystemctlRun(args...); err != nil {
+		return fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
+	}
+	return nil
+}
+
 func installSupervisorSystemd(data *supervisorServiceData, stdout, stderr io.Writer) int {
 	sweepStaleIsolatedSupervisorServices(stderr)
 	// Check the binary guard before probing systemd so a refused install
@@ -1975,7 +1972,8 @@ func installSupervisorSystemd(data *supervisorServiceData, stdout, stderr io.Wri
 	}
 	contentChanged := string(existing) != content
 	active := supervisorSystemctlActive(service)
-	if contentChanged && active {
+	refreshEnvironment := len(data.InheritedEnv) > 0
+	if (contentChanged || refreshEnvironment) && active {
 		pid, ready, err := supervisorRunningPreserveSignalReady()
 		if err != nil {
 			fmt.Fprintf(stderr, "gc supervisor install: cannot verify active supervisor preserve-mode readiness: %v. Refusing systemd warm refresh because signaling an older supervisor can stop managed sessions. Stop or drain agents intentionally with 'gc supervisor stop --wait', then rerun 'gc supervisor install'.\n", err) //nolint:errcheck // best-effort stderr
@@ -1985,6 +1983,10 @@ func installSupervisorSystemd(data *supervisorServiceData, stdout, stderr io.Wri
 			fmt.Fprintf(stderr, "gc supervisor install: active supervisor pid %d does not have %s=1. Refusing systemd warm refresh because this first post-upgrade install would stop managed sessions. Stop or drain agents intentionally with 'gc supervisor stop --wait', then rerun 'gc supervisor install'.\n", pid, supervisorPreserveSessionsOnSignalEnv) //nolint:errcheck // best-effort stderr
 			return 1
 		}
+	}
+	if err := importSupervisorSystemdEnvironment(data.InheritedEnv); err != nil {
+		fmt.Fprintf(stderr, "gc supervisor install: importing inherited environment by name: %v\n", err) //nolint:errcheck // best-effort stderr
+		return 1
 	}
 	if err := writeSupervisorServiceFile(path, []byte(content)); err != nil {
 		fmt.Fprintf(stderr, "gc supervisor install: writing unit: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -2014,7 +2016,7 @@ func installSupervisorSystemd(data *supervisorServiceData, stdout, stderr io.Wri
 		return 1
 	}
 
-	if contentChanged && active {
+	if (contentChanged || refreshEnvironment) && active {
 		stopArgs, err := stopSupervisorSystemdForWarmRefresh(service)
 		if err != nil {
 			var rollbackErr error

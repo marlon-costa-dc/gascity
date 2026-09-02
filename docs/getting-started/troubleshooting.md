@@ -359,45 +359,35 @@ of a clean version string, upgrade to Gas City v0.13.4 or later. This was a
 bug where remote pack fetches wrote git sideband output to the terminal,
 fixed in [PR #141](https://github.com/gastownhall/gascity/pull/141).
 
-## Provider Credentials Dropped When the Supervisor Starts
+## Provider Credentials in the Supervisor Environment
 
-Symptom: agents authenticate fine when you launch a city from your normal
-interactive shell, but fail to authenticate (or silently fall back to a
-different provider) when the city is started by the supervisor at login or
-after a reboot.
+The generated launchd plist and systemd unit never contain provider credential
+values. Gas City selects non-empty provider variables from the process that
+runs `gc supervisor install`; variables named by `GC_SUPERVISOR_ENV` use the
+same value-free path. Missing variables remain missing so the provider fails at
+its own boundary.
 
-Cause: the supervisor service file (launchd plist / systemd unit) captures
-provider credentials by snapshotting the environment of the shell that ran
-`gc start` (or `gc supervisor install`). A credential that is only present
-in an interactive shell — for example sourced from an rc file that the login
-service manager never reads — is not in that snapshot, so it never reaches
-the supervised process.
+On Linux, installation imports the selected names and their current process
+values into the user systemd manager without placing values in command
+arguments or the unit. The unit records only `PassEnvironment` names. An active
+preserve-capable supervisor is restarted even when the selected names are
+unchanged, so credential rotation reaches newly launched sessions.
 
-Fix: put the durable credentials in a machine-local secrets file at
-`${GC_HOME}/secrets.env` (defaults to `~/.gc/secrets.env`). On every service
-file regeneration, `gc` merges this file into the supervisor environment, so
-the value survives a reboot regardless of which shell ran `gc start`.
+On macOS, installation verifies that launchd's user domain already carries the
+same values as the invoking process. A missing or different entry stops the
+install and reports names only. Populate launchd through the credential owner
+and rerun installation; Gas City does not serialize a replacement into the
+plist.
 
-```bash
-# ~/.gc/secrets.env  (chmod 600)
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-```
-
-The file uses dotenv syntax: `KEY=VALUE` per line, `#` comments, blank lines,
-an optional `export ` prefix, and optional surrounding quotes. Only keys that
-are already eligible for the supervisor environment are merged — provider
-credentials (recognized by their standard prefixes such as `ANTHROPIC_`,
-`OPENAI_`, `GEMINI_`) plus any keys you opt in via `GC_SUPERVISOR_ENV`; any
-other key in the file is ignored. A value exported in the calling shell still
-takes precedence over the file, and `GC_SUPERVISOR_OMIT_PROVIDER_CREDS=1`
-suppresses provider credentials from both sources.
-
-Apply the change by regenerating the service file:
+After adding or rotating a credential, export the canonical variable in the
+current process and refresh the installed supervisor:
 
 ```bash
-gc service restart     # restarts the launchd/systemd service
+gc supervisor install
 ```
+
+There is no supervisor secrets file or alternate credential loader. Never put
+credential values in a generated service file.
 
 ## Supervisor Log Written Twice (journald + supervisor.log)
 
@@ -437,18 +427,20 @@ Scope and caveats:
   is the single sink in those shapes. The variable is not captured into
   generated service files automatically; it exists for units you manage by
   hand.
-- **To persist the variable into a generated service file anyway** — for
-  example as a starting point you then hand-edit to
-  `StandardOutput=journal` — opt it in explicitly and regenerate:
+- **To deliver the variable through a generated service** — for example as a
+  starting point you then hand-edit to `StandardOutput=journal` — select its
+  name explicitly and regenerate:
 
   ```bash
   export GC_SUPERVISOR_LOG_TEE=0
   GC_SUPERVISOR_ENV=GC_SUPERVISOR_LOG_TEE gc supervisor install
   ```
 
-  Note that `gc start` regenerates the service file with the file-redirect
-  defaults, so a hand-edited unit at gc's service path stays journal-only
-  only on hosts where gc never manages the unit.
+  The generated systemd unit records only `PassEnvironment=GC_SUPERVISOR_LOG_TEE`;
+  its value comes from the user manager. The launchd manager must already
+  contain the same value. Note that `gc start` regenerates the service file
+  with the file-redirect defaults, so a hand-edited unit at gc's service path
+  stays journal-only only on hosts where gc never manages the unit.
 
 ## Delegating the Supervisor Lifecycle to an Operator-Managed systemd Unit
 
