@@ -33,10 +33,10 @@ var configFS embed.FS
 var supported = []string{"claude", "codex", "gemini", "antigravity", "kiro", "opencode", "mimocode", "groq", "cerebras", "copilot", "cursor", "pi", "omp", "kimi"}
 
 const (
-	managedPiHookVersion       = 7
-	managedOpenCodeHookVersion = 5
-	managedMimoCodeHookVersion = 2
-	managedOmpHookVersion      = 2
+	managedPiHookVersion       = 8
+	managedOpenCodeHookVersion = 7
+	managedMimoCodeHookVersion = 3
+	managedOmpHookVersion      = 3
 )
 
 var (
@@ -250,7 +250,7 @@ func piHookNeedsUpgrade(existing []byte) bool {
 	if piHookVersion(content) < managedPiHookVersion ||
 		!strings.Contains(content, "gc prime --hook") ||
 		!strings.Contains(content, "gc hook --inject") ||
-		!strings.Contains(content, "gc handoff --auto") ||
+		!strings.Contains(content, "hook run --when-managed-session") ||
 		!strings.Contains(content, "mirrorTempCounter") ||
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID") ||
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID_REQUIRED") ||
@@ -292,12 +292,14 @@ func opencodeHookNeedsUpgrade(existing []byte) bool {
 		!strings.Contains(content, `process.env.GC_BIN || "gc"`) ||
 		!strings.Contains(content, `/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`) ||
 		!strings.Contains(content, `"experimental.session.compacting"`) ||
-		!strings.Contains(content, `runWithWarning(directory, "handoff", "--auto", "context cycle")`) ||
+		!strings.Contains(content, `runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle")`) ||
 		!strings.Contains(content, "output.context.push(handoff)") ||
 		!strings.Contains(content, "logRunFailure") ||
 		!strings.Contains(content, "logRunStderr(stderr);") ||
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID") ||
-		!strings.Contains(content, "GC_PROVIDER_SESSION_ID_REQUIRED") {
+		!strings.Contains(content, "GC_PROVIDER_SESSION_ID_REQUIRED") ||
+		// The child's stdin must be closed or gc blocks on it (#5562).
+		!strings.Contains(content, "pending.child.stdin?.end();") {
 		return true
 	}
 	for _, marker := range []string{
@@ -332,7 +334,9 @@ func mimocodeHookNeedsUpgrade(existing []byte) bool {
 	if !strings.Contains(content, "Gas City hooks for MiMo Code.") {
 		return false
 	}
-	return mimocodeHookVersion(content) < managedMimoCodeHookVersion
+	return mimocodeHookVersion(content) < managedMimoCodeHookVersion ||
+		!strings.Contains(content, `runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle")`) ||
+		!strings.Contains(content, "pending.child.stdin?.end();")
 }
 
 func mimocodeHookVersion(content string) int {
@@ -359,6 +363,7 @@ func ompHookNeedsUpgrade(existing []byte) bool {
 		!strings.Contains(content, `pi.on("session_start"`) ||
 		!strings.Contains(content, `pi.on("session_compact"`) ||
 		!strings.Contains(content, `pi.on("before_agent_start"`) ||
+		!strings.Contains(content, `runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`) ||
 		!strings.Contains(content, "logRunFailure") ||
 		!strings.Contains(content, `stdio: ["ignore", "pipe", "inherit"]`) {
 		return true
@@ -961,19 +966,7 @@ func isCodexSessionStartCommandBody(body string) bool {
 
 func isCodexPreCompactCommandBody(body string) bool {
 	_, args, ok := parseGCCommandBody(body)
-	if !ok || len(args) < 2 || args[0] != "handoff" {
-		return false
-	}
-	switch {
-	case len(args) == 2 && args[1] == "context cycle":
-		return true
-	case len(args) == 3 && args[1] == "--auto" && args[2] == "context cycle":
-		return true
-	case len(args) == 5 && args[1] == "--auto" && args[2] == "--hook-format" && args[3] == "codex" && args[4] == "context cycle":
-		return true
-	default:
-		return false
-	}
+	return ok && codexPreCompactArgsMatch(args)
 }
 
 func codexManagedPromptTarget(body, hookFormat string) bool {
@@ -1134,6 +1127,16 @@ func codexLegacySessionStartRunArgsMatch(args []string) bool {
 }
 
 func codexPreCompactArgsMatch(args []string) bool {
+	if preCompactHandoffArgsMatch(args) {
+		return true
+	}
+	if len(args) < 5 || args[0] != "hook" || args[1] != "run" || args[2] != "--when-managed-session" || args[3] != "--" {
+		return false
+	}
+	return preCompactHandoffArgsMatch(args[4:])
+}
+
+func preCompactHandoffArgsMatch(args []string) bool {
 	if len(args) < 2 || args[0] != "handoff" {
 		return false
 	}
@@ -1481,7 +1484,15 @@ const sessionStartPreviousManagedFormBody = `GC_MANAGED_SESSION_HOOK=1 GC_HOOK_E
 // command body (post-canonical-PATH-prefix). If gc ever extends this command
 // with additional arguments, update this constant alongside the emission site.
 func preCompactCurrentFormBody(cityDir string) string {
-	return `gc ` + codexCityFlag(cityDir) + `handoff --auto --hook-format codex "context cycle"`
+	return managedPreCompactHookRunBody(cityDir, "codex")
+}
+
+func managedPreCompactHookRunBody(cityDir, hookFormat string) string {
+	body := `gc ` + codexCityFlag(cityDir) + `hook run --when-managed-session -- handoff --auto`
+	if hookFormat != "" {
+		body += ` --hook-format ` + hookFormat
+	}
+	return body + ` "context cycle"`
 }
 
 // equalsLegacyCommandBody reports whether the command body is exactly the
@@ -1514,19 +1525,28 @@ func upgradeClaudeHookCommand(event, command string) (string, bool) {
 	switch event {
 	case "PreCompact":
 		// Older legacy: PreCompact used `gc prime --hook` before
-		// `gc handoff` was introduced. Upgrade to the current
-		// `gc handoff --auto "context cycle"` form. Tested first
+		// `gc handoff` was introduced. Upgrade to the selected managed-session
+		// auto-handoff form. Tested first
 		// because it changes the same trailing token the bare-handoff
 		// form would otherwise patch.
 		if equalsLegacyCommandBody(body, `gc prime --hook`) {
-			return strings.Replace(command, `gc prime --hook`, `gc handoff --auto "context cycle"`, 1), true
+			prefix := strings.TrimSuffix(command, body)
+			return prefix + managedPreCompactHookRunBody("", ""), true
 		}
 		// Legacy: bare `gc handoff "context cycle"` (no --auto)
 		// requests a controller restart on every Claude Code
 		// compaction event, killing the session (gc-flp1). Upstream
 		// fix landed in commit 7b3b913a; this patches existing cities.
 		if equalsLegacyCommandBody(body, `gc handoff "context cycle"`) {
-			return strings.Replace(command, `gc handoff "context cycle"`, `gc handoff --auto "context cycle"`, 1), true
+			prefix := strings.TrimSuffix(command, body)
+			return prefix + managedPreCompactHookRunBody("", ""), true
+		}
+		if isCodexPreCompactCommandBody(body) {
+			desired := managedPreCompactHookRunBody("", "")
+			if body != desired {
+				prefix := strings.TrimSuffix(command, body)
+				return prefix + desired, true
+			}
 		}
 	case "SessionStart":
 		// Legacy: bare `gc prime --hook` without the

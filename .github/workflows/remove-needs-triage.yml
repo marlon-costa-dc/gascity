@@ -13,7 +13,7 @@ jobs:
   # pull request code; it only removes labels from the issue/PR metadata.
   remove-triage-label:
     # Olivia owns label, comment, and inbox removal as one recoverable transaction.
-    if: github.event.sender.login != 'gascityinc-olivia[bot]'
+    if: (github.event_name != 'pull_request_target' || github.event.pull_request.draft == false) && github.event.sender.login != 'gascityinc-olivia[bot]'
     runs-on: ubuntu-latest
     permissions:
       issues: write

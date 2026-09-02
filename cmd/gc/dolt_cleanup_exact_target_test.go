@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -190,7 +191,7 @@ func TestRunDoltCleanup_ExactTargetNotFoundOnServer(t *testing.T) {
 func TestRunDoltCleanup_ExactTargetProbeFailureFailClosed(t *testing.T) {
 	client := &fakeCleanupDoltClient{
 		databases:       []string{"flext_infra"},
-		liveSessionsErr: ErrFakeProbe("connection refused"),
+		liveSessionsErr: errors.New("connection refused"),
 	}
 	var stdout, stderr bytes.Buffer
 	opts := cleanupOptions{
@@ -268,21 +269,21 @@ func TestRunDoltCleanup_ExactTargetWithoutDoltClientReportsError(t *testing.T) {
 		JSON:              true,
 		Force:             true,
 		ExactTarget:       "flext_infra",
-		DoltClientOpenErr: ErrFakeProbe("no sql server on 127.0.0.1:3306"),
+		DoltClientOpenErr: errors.New("no sql server on 127.0.0.1:3306"),
 		DiscoverProcesses: func() ([]DoltProcInfo, error) { return nil, nil },
 		ReapGracePeriod:   1,
 	}
 	code := runDoltCleanup(opts, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("exit=%d, stderr=%q", code, stderr.String())
+	// DoltClientOpenErr makes runDoltCleanup return 1 (exit 1), but the
+	// report is still emitted before the exit-code check.
+	if code != 1 {
+		t.Fatalf("exit=%d, want 1 (DoltClientOpenErr); stderr=%q", code, stderr.String())
 	}
 	var r CleanupReport
 	if err := json.Unmarshal(stdout.Bytes(), &r); err != nil {
 		t.Fatalf("Unmarshal: %v\nstdout: %s", err, stdout.String())
 	}
-	if len(clientDummy(r)) != 0 {
-		// No drops should occur without a DoltClient.
-	}
+	// No drops should occur without a DoltClient.
 	foundOpenErr := false
 	for _, e := range r.Errors {
 		if strings.Contains(e.Error, "no sql server") {

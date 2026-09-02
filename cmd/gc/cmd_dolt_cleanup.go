@@ -146,6 +146,10 @@ const (
 	// malformed result). FAIL-CLOSED: --force refuses to drop ANY DB
 	// when this kind is recorded.
 	cleanupErrorKindLiveSessionProbeFailed = "live-session-probe-failed"
+
+	cleanupErrorKindExactTargetInvalidID  = "exact-target-invalid-identifier"
+	cleanupErrorKindExactTargetRegistered = "exact-target-registered-owner"
+	cleanupErrorKindExactTargetNotFound   = "exact-target-not-found"
 )
 
 // MarshalJSON ensures slices serialize as `[]` rather than `null` for empty
@@ -209,6 +213,14 @@ type cleanupOptions struct {
 	HomeDir        string
 	TempDir        string
 	MaxOrphanDBs   int
+
+	// ExactTarget, when non-empty, activates the exact-target drop path:
+	// only the named database is evaluated for removal (subject to the same
+	// three-signal safety contract as the all-orphans path — rig protection,
+	// live-session probe, and identifier validation). This is the canonical
+	// surface for removing a single identified orphan database without
+	// touching unrelated databases (ga-f7qke, gct-whpkb).
+	ExactTarget string
 
 	// StalePrefixes overrides defaultStaleDatabasePrefixes when non-empty.
 	// Set by tests; production passes nil and falls back to the built-in.
@@ -310,9 +322,16 @@ func runDoltCleanup(opts cleanupOptions, stdout, stderr io.Writer) int {
 		}
 	}
 
-	if runDropStage(&report, opts) {
-		runPurgeStage(&report, opts)
-		runReapStage(&report, opts)
+	if opts.ExactTarget != "" {
+		if runExactTargetDrop(&report, opts) {
+			runPurgeStage(&report, opts)
+			runReapStage(&report, opts)
+		}
+	} else {
+		if runDropStage(&report, opts) {
+			runPurgeStage(&report, opts)
+			runReapStage(&report, opts)
+		}
 	}
 	report.Summary.BytesFreedDisk = report.Purge.BytesReclaimed
 
@@ -855,6 +874,7 @@ func newDoltCleanupCmd(stdout, stderr io.Writer) *cobra.Command {
 		probe        bool
 		force        bool
 		maxOrphanDBs int
+		exactTarget  string
 	)
 
 	cmd := &cobra.Command{
@@ -939,6 +959,7 @@ can still return successfully after emitting the report.`,
 				HomeDir:      homeDir,
 				TempDir:      os.TempDir(),
 				MaxOrphanDBs: maxOrphanDBs,
+				ExactTarget:  exactTarget,
 			}
 
 			// Resolve the port first so we can open a Dolt connection at the
@@ -973,6 +994,7 @@ can still return successfully after emitting the report.`,
 	cmd.Flags().BoolVar(&probe, "probe", false, "TCP-probe the resolved port; fail if unreachable")
 	cmd.Flags().BoolVar(&force, "force", false, "actually drop, purge, and kill orphaned resources (default: dry-run)")
 	cmd.Flags().IntVar(&maxOrphanDBs, "max-orphan-dbs", 0, "with --force, refuse cleanup when live stale database count exceeds this limit")
+	cmd.Flags().StringVar(&exactTarget, "exact-target", "", "remove only the named orphan database (bypasses stale-prefix scan; still subject to rig-protection, live-session, and identifier guards)")
 	return cmd
 }
 

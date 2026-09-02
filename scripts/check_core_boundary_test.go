@@ -19,13 +19,15 @@ import (
 // a developer's global core.excludesFile cannot reach the temp repos.
 func TestCheckCoreBoundary(t *testing.T) {
 	root := repoRoot(t)
+	tmpRoot := t.TempDir()
 
 	cmd := exec.Command(filepath.Join(root, "scripts", "test-check-core-boundary.sh"))
 	cmd.Dir = root
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + t.TempDir(),
-		"TMPDIR=" + t.TempDir(),
+		"TMPDIR=" + tmpRoot,
+		"GIT_CEILING_DIRECTORIES=" + tmpRoot,
 	}
 
 	out, err := cmd.CombinedOutput()
