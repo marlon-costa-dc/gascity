@@ -1409,7 +1409,7 @@ func TestInstallSupervisorSystemdWarmRefreshRefusesActivePrePreserveSupervisor(t
 	}
 }
 
-func TestInstallSupervisorSystemdWarmRefreshFallsBackToKillWhenGracefulSignalDoesNotStop(t *testing.T) {
+func TestInstallSupervisorSystemdWarmRefreshUsesCooperativeStopWithoutKill(t *testing.T) {
 	if goruntime.GOOS != "linux" {
 		t.Skip("systemd path only applies on linux")
 	}
@@ -1435,8 +1435,6 @@ func TestInstallSupervisorSystemdWarmRefreshFallsBackToKillWhenGracefulSignalDoe
 
 	oldRun := supervisorSystemctlRun
 	oldActive := supervisorSystemctlActive
-	oldTimeout := supervisorSystemdWarmRefreshStopTimeout
-	oldPoll := supervisorSystemdWarmRefreshPollInterval
 	var calls []string
 	supervisorSystemctlRun = func(args ...string) error {
 		calls = append(calls, strings.Join(args, " "))
@@ -1444,13 +1442,9 @@ func TestInstallSupervisorSystemdWarmRefreshFallsBackToKillWhenGracefulSignalDoe
 	}
 	supervisorSystemctlActive = func(string) bool { return true }
 	stubSupervisorRunningPreserveSignalReady(t, true)
-	supervisorSystemdWarmRefreshStopTimeout = time.Millisecond
-	supervisorSystemdWarmRefreshPollInterval = time.Millisecond
 	t.Cleanup(func() {
 		supervisorSystemctlRun = oldRun
 		supervisorSystemctlActive = oldActive
-		supervisorSystemdWarmRefreshStopTimeout = oldTimeout
-		supervisorSystemdWarmRefreshPollInterval = oldPoll
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -1459,14 +1453,16 @@ func TestInstallSupervisorSystemdWarmRefreshFallsBackToKillWhenGracefulSignalDoe
 	}
 	joined := strings.Join(calls, "\n")
 	for _, want := range []string{
-		"--user kill --kill-who=main --signal=SIGTERM " + service,
-		"--user kill --kill-who=main --signal=SIGKILL " + service,
+		"--user stop " + service,
 		"--user reset-failed " + service,
 		"--user start " + service,
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("systemctl calls = %v, want %q", calls, want)
 		}
+	}
+	if strings.Contains(joined, "--user kill ") {
+		t.Fatalf("systemctl calls = %v, want no kill action during cooperative refresh", calls)
 	}
 }
 

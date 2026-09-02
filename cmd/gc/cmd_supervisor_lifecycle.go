@@ -34,14 +34,12 @@ import (
 )
 
 var (
-	ensureSupervisorRunningHook              = ensureSupervisorRunning
-	reloadSupervisorHook                     = reloadSupervisor
-	supervisorAliveHook                      = supervisorAlive
-	supervisorReadyTimeout                   = 15 * time.Second
-	supervisorReadyPollInterval              = 100 * time.Millisecond
-	supervisorSystemdWarmRefreshStopTimeout  = 5 * time.Second
-	supervisorSystemdWarmRefreshPollInterval = 100 * time.Millisecond
-	supervisorLaunchctlRun                   = func(args ...string) error {
+	ensureSupervisorRunningHook = ensureSupervisorRunning
+	reloadSupervisorHook        = reloadSupervisor
+	supervisorAliveHook         = supervisorAlive
+	supervisorReadyTimeout      = 15 * time.Second
+	supervisorReadyPollInterval = 100 * time.Millisecond
+	supervisorLaunchctlRun      = func(args ...string) error {
 		return exec.Command("launchctl", args...).Run()
 	}
 	supervisorLaunchdActive = func(label string) bool {
@@ -1342,6 +1340,13 @@ Type=simple
 # 'gc supervisor run' that live in this cgroup, killing one-per-bead
 # session conversation history. The reconciler re-adopts tmux on start.
 KillMode=process
+# Preserve-mode shutdown owns its own bounded city cleanup and may have to
+# finish an in-flight boot wave before it can hand tmux sessions to the next
+# supervisor. Host-level defaults are often shorter than that wave; letting
+# systemd impose one would SIGKILL the owner mid-handoff and turn an ordinary
+# restart into a crash. The explicit destructive supervisor path remains the
+# operator-owned escalation.
+TimeoutStopSec=infinity
 ExecStart={{systemdpath .GCPath}} supervisor run
 Restart=always
 RestartSec=5s
@@ -1853,27 +1858,6 @@ func uninstallSupervisorLaunchd(_ *supervisorServiceData, stdout, stderr io.Writ
 	return 0
 }
 
-func waitSupervisorSystemdInactive(service string, timeout time.Duration) bool {
-	if !supervisorSystemctlActive(service) {
-		return true
-	}
-	if timeout <= 0 {
-		return false
-	}
-	poll := supervisorSystemdWarmRefreshPollInterval
-	if poll <= 0 {
-		poll = time.Millisecond
-	}
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		time.Sleep(poll)
-		if !supervisorSystemctlActive(service) {
-			return true
-		}
-	}
-	return !supervisorSystemctlActive(service)
-}
-
 func runningSupervisorPreserveSignalReady() (int, bool, error) {
 	_, pid := runningSupervisorSocket()
 	if pid <= 0 {
@@ -1887,18 +1871,11 @@ func runningSupervisorPreserveSignalReady() (int, bool, error) {
 }
 
 func stopSupervisorSystemdForWarmRefresh(service string) ([]string, error) {
-	termArgs := []string{"--user", "kill", "--kill-who=main", "--signal=SIGTERM", service}
-	if err := supervisorSystemctlRun(termArgs...); err != nil {
-		return termArgs, err
+	args := []string{"--user", "stop", service}
+	if err := supervisorSystemctlRun(args...); err != nil {
+		return args, err
 	}
-	if waitSupervisorSystemdInactive(service, supervisorSystemdWarmRefreshStopTimeout) {
-		return termArgs, nil
-	}
-	killArgs := []string{"--user", "kill", "--kill-who=main", "--signal=SIGKILL", service}
-	if err := supervisorSystemctlRun(killArgs...); err != nil {
-		return killArgs, err
-	}
-	return killArgs, nil
+	return args, nil
 }
 
 func importSupervisorSystemdEnvironment(keys []string) error {
