@@ -780,26 +780,43 @@ func TestRunConditionUsesStorePathAsDefaultWorkDir(t *testing.T) {
 }
 
 func TestConditionPATHUsesResolvedToolDirs(t *testing.T) {
-	origPath := os.Getenv("PATH")
-	t.Cleanup(func() {
-		_ = os.Setenv("PATH", origPath)
-	})
-
-	toolDir := t.TempDir()
-	for _, name := range []string{"bd", "gc"} {
-		path := filepath.Join(toolDir, name)
+	bdDir := t.TempDir()
+	pythonDir := t.TempDir()
+	ambientDir := t.TempDir()
+	for _, tool := range []struct {
+		dir  string
+		name string
+	}{
+		{dir: bdDir, name: "bd"},
+		{dir: pythonDir, name: "python3"},
+	} {
+		path := filepath.Join(tool.dir, tool.name)
 		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.Setenv("PATH", toolDir+":"+SafePATH); err != nil {
-		t.Fatal(err)
-	}
+	t.Setenv("PATH", strings.Join([]string{bdDir, pythonDir, ambientDir, SafePATH}, ":"))
 
 	got := conditionPATH()
-	if !strings.HasPrefix(got, toolDir+":") && got != toolDir {
-		t.Fatalf("conditionPATH() = %q, want prefix %q", got, toolDir)
+	entries := strings.Split(got, ":")
+	if entries[0] != pythonDir {
+		t.Fatalf("conditionPATH() = %q, want selected python3 dir first: %q", got, pythonDir)
 	}
+	if !pathListContains(entries, bdDir) {
+		t.Fatalf("conditionPATH() = %q, want selected bd dir %q", got, bdDir)
+	}
+	if pathListContains(entries, ambientDir) {
+		t.Fatalf("conditionPATH() = %q, want unrelated ambient dir %q absent", got, ambientDir)
+	}
+}
+
+func pathListContains(entries []string, want string) bool {
+	for _, entry := range entries {
+		if entry == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRunConditionTimeout(t *testing.T) {
