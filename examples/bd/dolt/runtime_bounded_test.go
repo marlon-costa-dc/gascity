@@ -32,7 +32,7 @@ import (
 func runRunBoundedUnderPython3Fallback(t *testing.T, childScript string, extraEnv ...string) (int, string) {
 	t.Helper()
 
-	python3Path, err := exec.LookPath("python3")
+	python3Path, err := physicalExecutableOnPath("python3")
 	if err != nil {
 		t.Skip("python3 not installed; cannot exercise run_bounded's python3 fallback")
 	}
@@ -46,6 +46,13 @@ func runRunBoundedUnderPython3Fallback(t *testing.T, childScript string, extraEn
 	}
 	if err := os.Symlink(hostSh, filepath.Join(bin, "sh")); err != nil {
 		t.Fatalf("symlink sh: %v", err)
+	}
+	hostBash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Fatalf("LookPath(bash): %v", err)
+	}
+	if err := os.Symlink(hostBash, filepath.Join(bin, "bash")); err != nil {
+		t.Fatalf("symlink bash: %v", err)
 	}
 
 	root := repoRoot(t)
@@ -70,6 +77,28 @@ func runRunBoundedUnderPython3Fallback(t *testing.T, childScript string, extraEn
 	}
 	t.Fatalf("running run_bounded: %v\noutput:\n%s", err, out)
 	return 0, ""
+}
+
+// physicalExecutableOnPath skips version-manager shims so the deliberately
+// isolated PATH below contains the requested runtime, not a shim whose own
+// configuration and tool lookup live outside that PATH.
+func physicalExecutableOnPath(name string) (string, error) {
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		candidate := filepath.Join(dir, name)
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			continue
+		}
+		if filepath.Base(resolved) == "mise" {
+			continue
+		}
+		return candidate, nil
+	}
+	return "", exec.ErrNotFound
 }
 
 // TestRunBoundedPython3FallbackSendsSigtermBeforeKill is the
