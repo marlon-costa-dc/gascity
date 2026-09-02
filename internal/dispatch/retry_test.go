@@ -492,6 +492,58 @@ func TestClassifyRetryAttemptConsumesTypedCoordinatorOutcome(t *testing.T) {
 			metadata: map[string]string{},
 			want:     retryEvalResult{Outcome: "transient", Reason: "missing_outcome"},
 		},
+		{
+			name: "gc.work_outcome=no-op folds as pass when gc.outcome absent",
+			metadata: map[string]string{
+				"gc.work_outcome": "no-op",
+			},
+			want: retryEvalResult{Outcome: "pass"},
+		},
+		{
+			name: "gc.work_outcome=shipped folds as pass when gc.outcome absent",
+			metadata: map[string]string{
+				"gc.work_outcome": "shipped",
+			},
+			want: retryEvalResult{Outcome: "pass"},
+		},
+		{
+			name: "gc.work_outcome=blocked folds as hard fail when gc.outcome absent",
+			metadata: map[string]string{
+				"gc.work_outcome": "blocked",
+			},
+			want: retryEvalResult{Outcome: "hard", Reason: "unspecified"},
+		},
+		{
+			name: "gc.work_outcome=abandoned folds as hard fail when gc.outcome absent",
+			metadata: map[string]string{
+				"gc.work_outcome": "abandoned",
+			},
+			want: retryEvalResult{Outcome: "hard", Reason: "unspecified"},
+		},
+		{
+			name: "gc.work_outcome=blocked with transient failure_class stays transient",
+			metadata: map[string]string{
+				"gc.work_outcome":   "blocked",
+				"gc.failure_class":  "transient",
+				"gc.failure_reason": "waiting on dep",
+			},
+			want: retryEvalResult{Outcome: "transient", Reason: "waiting on dep"},
+		},
+		{
+			name: "gc.outcome takes precedence over gc.work_outcome",
+			metadata: map[string]string{
+				"gc.outcome":      "pass",
+				"gc.work_outcome": "blocked",
+			},
+			want: retryEvalResult{Outcome: "pass"},
+		},
+		{
+			name: "unknown gc.work_outcome stays missing_outcome",
+			metadata: map[string]string{
+				"gc.work_outcome": "mystery",
+			},
+			want: retryEvalResult{Outcome: "transient", Reason: "missing_outcome"},
+		},
 	}
 
 	for _, tt := range tests {

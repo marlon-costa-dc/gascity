@@ -1280,6 +1280,44 @@ func TestBeadOutcomeFailedRetryAttemptExemptionAndOptInTrim(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "gc.work_outcome=blocked counts as failed even without on_fail",
+			meta: map[string]string{
+				"gc.work_outcome": "blocked",
+			},
+			want: true,
+		},
+		{
+			name: "gc.work_outcome=abandoned counts as failed",
+			meta: map[string]string{
+				"gc.work_outcome": "abandoned",
+			},
+			want: true,
+		},
+		{
+			name: "gc.work_outcome=no-op on abort_scope member is a pass, not failed",
+			meta: map[string]string{
+				"gc.on_fail":      "abort_scope",
+				"gc.work_outcome": "no-op",
+			},
+			want: false,
+		},
+		{
+			name: "gc.work_outcome=shipped on abort_scope member is a pass, not failed",
+			meta: map[string]string{
+				"gc.on_fail":      "abort_scope",
+				"gc.work_outcome": "shipped",
+			},
+			want: false,
+		},
+		{
+			name: "gc.outcome takes precedence over gc.work_outcome=blocked",
+			meta: map[string]string{
+				"gc.outcome":      "pass",
+				"gc.work_outcome": "blocked",
+			},
+			want: false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
