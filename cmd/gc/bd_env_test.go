@@ -4900,6 +4900,22 @@ func TestMergeRuntimeEnvStripsInheritedBeadsBackend(t *testing.T) {
 	}
 }
 
+func TestMergeRuntimeEnvStripsInheritedBeadsDoltServerDatabase(t *testing.T) {
+	result := mergeRuntimeEnv([]string{
+		"BEADS_DOLT_SERVER_DATABASE=foreign_scope",
+		"PATH=/usr/bin",
+	}, nil)
+
+	for _, entry := range result {
+		if strings.HasPrefix(entry, "BEADS_DOLT_SERVER_DATABASE=") {
+			t.Fatalf("inherited BEADS_DOLT_SERVER_DATABASE leaked into scoped runtime env: %v", result)
+		}
+	}
+	if !slices.Contains(result, "PATH=/usr/bin") {
+		t.Fatalf("PATH was not preserved in merged runtime env: %v", result)
+	}
+}
+
 func projectedKeyStripped(key string) bool {
 	out := mergeRuntimeEnv([]string{key + "=PARENT"}, nil)
 	for _, entry := range out {

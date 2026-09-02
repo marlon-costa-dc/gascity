@@ -44,3 +44,17 @@ func TestValidateExecEnvOverridesRejectsBdContributorRouting(t *testing.T) {
 		t.Fatal("ValidateExecEnvOverrides() = nil, want error for reserved BD_ROUTING_MODE override")
 	}
 }
+
+func TestReservedExecEnvKeysIncludeBdDoltServerDatabase(t *testing.T) {
+	const key = "BEADS_DOLT_SERVER_DATABASE"
+	if !IsReservedExecEnvKey(key) {
+		t.Errorf("IsReservedExecEnvKey(%q) = false, want true", key)
+	}
+}
+
+func TestValidateExecEnvOverridesRejectsBdDoltServerDatabase(t *testing.T) {
+	order := Order{Name: "o", Env: map[string]string{"BEADS_DOLT_SERVER_DATABASE": "foreign_scope"}}
+	if err := ValidateExecEnvOverrides(order); err == nil {
+		t.Fatal("ValidateExecEnvOverrides() = nil, want error for reserved BEADS_DOLT_SERVER_DATABASE override")
+	}
+}

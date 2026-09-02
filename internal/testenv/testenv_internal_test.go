@@ -80,6 +80,16 @@ func TestDoltPortVarsAreLeakVectors(t *testing.T) {
 	}
 }
 
+func TestBeadsDoltServerDatabaseIsLeakVector(t *testing.T) {
+	const key = "BEADS_DOLT_SERVER_DATABASE"
+	for _, name := range LeakVectorVars {
+		if name == key {
+			return
+		}
+	}
+	t.Fatalf("%s missing from LeakVectorVars; an ambient database would redirect scoped tests to a foreign store", key)
+}
+
 // newSyntheticCity builds a t.TempDir() tree with a city.toml marker at its
 // root and, unless stateJSON is empty, a .gc/runtime/packs/dolt/dolt-state.json
 // containing stateJSON. It returns a directory three levels below the city
