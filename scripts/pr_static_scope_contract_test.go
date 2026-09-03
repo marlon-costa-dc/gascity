@@ -852,6 +852,32 @@ type prStaticScopeFixture struct {
 	homeDir            string
 }
 
+// realGoBinary resolves the absolute path to the go toolchain's own binary
+// (via GOROOT, mirroring the Makefile's TEST_ENV GOROOT_VAL pattern) instead
+// of a bare "go" resolved through the ambient PATH. This fixture's sandboxed
+// child env sets MISE_CEILING_PATHS to keep mise from reading the real
+// developer's untrusted ancestor config (see commandEnv), but a bare "go" on
+// PATH here resolves through a mise shim that requires an explicit pinned
+// version — one it can only learn from that same ancestor config walk. Going
+// straight to $GOROOT/bin/go sidesteps the shim (and its version-pin
+// requirement) entirely, matching how TEST_ENV already avoids depending on
+// the shim for `make test-fast-parallel` itself.
+func realGoBinary(t *testing.T) string {
+	t.Helper()
+	goroot := os.Getenv("GOROOT")
+	if goroot == "" {
+		out, err := testCommand("go", "env", "GOROOT").Output()
+		if err != nil {
+			t.Fatalf("go env GOROOT: %v", err)
+		}
+		goroot = strings.TrimSpace(string(out))
+	}
+	if goroot == "" {
+		t.Fatal("go env GOROOT: empty result")
+	}
+	return filepath.Join(goroot, "bin", "go")
+}
+
 func newPRStaticScopeFixture(t *testing.T, files map[string]string) prStaticScopeFixture {
 	t.Helper()
 
@@ -877,7 +903,7 @@ for arg in "$@"; do
 done
 printf 'END\000' >> "$STATIC_SCOPE_LINT_LOG"
 `)
-	realGo := "go"
+	realGo := realGoBinary(t)
 	fakeGo := filepath.Join(toolDir, "go")
 	writeExecutable(t, fakeGo, `#!/bin/sh
 set -eu
@@ -983,6 +1009,18 @@ func (f prStaticScopeFixture) commandEnv() []string {
 		"GOWORK=off",
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_GLOBAL=/dev/null",
+		// A shipped Make target this fixture drives (lint-changed,
+		// lint-affected, fmt-check-changed, classify) shells to a
+		// mise-shimmed tool (e.g. python3). That shim's project-config
+		// discovery walks the child's cwd ancestors for
+		// .config/mise/config.toml independently of the sandboxed HOME
+		// above; without a ceiling it climbs out of the whole per-test
+		// t.TempDir() tree and reaches the real developer's untrusted
+		// ~/.config/mise/config.toml, and mise refuses to run.
+		// f.homeDir and f.repoRoot are both t.TempDir() calls on the same
+		// *testing.T, which share one per-test parent directory — an
+		// ancestor of both. Stop the walk there instead.
+		"MISE_CEILING_PATHS="+filepath.Dir(f.homeDir),
 	)
 }
 

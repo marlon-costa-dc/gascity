@@ -162,9 +162,21 @@ func newHarness(t *testing.T, stubEnv map[string]string) *harness {
 		mirrorDir: mirrorDir,
 		workDir:   workDir,
 		env: map[string]string{
-			"HOME":                    home,
-			"XDG_STATE_HOME":          filepath.Join(home, ".local", "state"),
-			"PATH":                    os.Getenv("PATH"),
+			"HOME":           home,
+			"XDG_STATE_HOME": filepath.Join(home, ".local", "state"),
+			// mise's project-config discovery walks cwd's ancestors for
+			// .config/mise/config.toml independently of the sandboxed HOME
+			// above. Without a ceiling, that walk reaches the real
+			// developer's untrusted ~/.config/mise/config.toml whenever the
+			// sandbox root sits under the host's own home directory (e.g.
+			// this repo's shell-scratch tmp root), and mise refuses to run.
+			// Stop the walk at the sandbox root instead.
+			"MISE_CEILING_PATHS": root,
+			// Resolve only system tools, not host tool shims. The stub's
+			// `#!/usr/bin/env python3` otherwise selects a mise shim; on this
+			// host that shim re-enters mise and can hang before the adapter
+			// reaches its version check.
+			"PATH":                    "/usr/bin:/bin",
 			"ZCODE_CJS":               bundle,
 			"ZCODE_API_KEY":           "dummy-not-a-real-key",
 			"ZCODE_MODEL":             "glm-test",
@@ -423,6 +435,18 @@ func (h *harness) calls() [][]string {
 	return out
 }
 
+// firstCall returns the first recorded stub call, failing the test with the
+// adapter's stderr instead of panicking on an out-of-range index when the
+// adapter never reached the stub (e.g. a spawn failure before any turn ran).
+func (h *harness) firstCall() []string {
+	h.t.Helper()
+	calls := h.calls()
+	if len(calls) == 0 {
+		h.t.Fatalf("no stub calls recorded (adapter stderr: %s)", strings.TrimSpace(h.stderr))
+	}
+	return calls[0]
+}
+
 func (h *harness) prompts() []string {
 	h.t.Helper()
 	var out []string
@@ -511,7 +535,7 @@ func TestDashLeadingPromptUsesSingleArgvForm(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 
-	call := h.calls()[0]
+	call := h.firstCall()
 	if !containsString(call, "--prompt="+body) {
 		t.Fatalf("call %q missing --prompt=<body>", call)
 	}
@@ -528,7 +552,7 @@ func TestResumeUsesSingleArgvForm(t *testing.T) {
 	h.resetLog()
 	h.run("second\n")
 
-	call := h.calls()[0]
+	call := h.firstCall()
 	if !containsString(call, "--resume=sess_abc") {
 		t.Fatalf("call %q missing --resume=sess_abc", call)
 	}
@@ -940,7 +964,7 @@ func TestSidRoundTripsAcrossRestarts(t *testing.T) {
 
 	h.resetLog()
 	h.run("second process\n")
-	if call := h.calls()[0]; !containsString(call, "--resume=sess_persisted") {
+	if call := h.firstCall(); !containsString(call, "--resume=sess_persisted") {
 		t.Fatalf("second process did not resume on its first turn: %q", call)
 	}
 }
@@ -988,7 +1012,7 @@ func TestContinuationEpochScopesTheSid(t *testing.T) {
 	// Restart at the same epoch resumes.
 	h.resetLog()
 	h.run("same conversation\n")
-	if call := h.calls()[0]; !containsString(call, "--resume=sess_epoch_1") {
+	if call := h.firstCall(); !containsString(call, "--resume=sess_epoch_1") {
 		t.Fatalf("restart at the same epoch did not resume: %q", call)
 	}
 
@@ -997,7 +1021,7 @@ func TestContinuationEpochScopesTheSid(t *testing.T) {
 	h.env["GC_CONTINUATION_EPOCH"] = "2"
 	h.env["STUB_SID"] = "sess_epoch_2"
 	h.run("fresh conversation\n")
-	for _, arg := range h.calls()[0] {
+	for _, arg := range h.firstCall() {
 		if strings.HasPrefix(arg, "--resume=") {
 			t.Fatalf("reset still resumed the prior conversation: %q", arg)
 		}

@@ -333,10 +333,25 @@ func gcBeadsBdTestHomeEnv(t *testing.T) []string {
 	if err := os.MkdirAll(xdgConfigHome, 0o755); err != nil {
 		t.Fatalf("MkdirAll(beads-bd test XDG config home): %v", err)
 	}
+	// mise's project-config discovery walks a spawned child's cwd ancestors
+	// for .config/mise/config.toml independently of the sandboxed HOME and
+	// XDG_CONFIG_HOME above — the gc-beads-bd bootstrap runs mise with the
+	// sandboxed city path (also under t.TempDir()) as its cwd, not homeDir.
+	// Without a ceiling, that ancestor walk climbs out of the whole
+	// per-test t.TempDir() tree and reaches the real developer's untrusted
+	// ~/.config/mise/config.toml, and mise refuses to run. t.TempDir()
+	// guarantees every TempDir() call from this *testing.T shares one
+	// per-test parent directory, so two levels above homeDir (created via
+	// filepath.Join(t.TempDir(), "home")) is that shared parent — an
+	// ancestor of both homeDir and the sandboxed city path. Stop the walk
+	// there instead.
+	miseCeiling := filepath.Dir(filepath.Dir(homeDir))
 	return []string{
 		"HOME=" + homeDir,
 		"XDG_CONFIG_HOME=" + xdgConfigHome,
 		"GIT_CONFIG_GLOBAL=" + filepath.Join(homeDir, ".gitconfig"),
+		"MISE_CEILING_PATHS=" + miseCeiling,
+		"MISE_GLOBAL_CONFIG_FILE=" + filepath.Join(xdgConfigHome, "mise", "config.toml"),
 	}
 }
 
