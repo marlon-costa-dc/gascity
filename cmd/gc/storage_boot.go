@@ -44,6 +44,7 @@ package main
 // copy cannot be on this path.
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -227,7 +228,7 @@ func storageSplitShapeOf(storage config.StorageConfig) (storageSplitShape, strin
 // or by authoring one that says so — and has never served them anywhere else.
 // A non-nil error is a refusal, already carrying the operator instruction; the
 // caller prints it and stops.
-func storageBootGate(cityPath string, cfg *config.City, logPrefix string, rec events.Recorder, stderr io.Writer) (*storageRoutes, error) {
+func storageBootGate(ctx context.Context, cityPath string, cfg *config.City, logPrefix string, rec events.Recorder, stderr io.Writer) (*storageRoutes, error) {
 	// The bypass, first — and now with the one question a city that HAS served
 	// a split can answer differently from a city that never did.
 	//
@@ -297,7 +298,7 @@ func storageBootGate(cityPath string, cfg *config.City, logPrefix string, rec ev
 	}
 	var report infraMigrationReport
 	if ok {
-		report = checkInfraClassConvergence(cityPath, cfg, logPrefix, stderr)
+		report = checkInfraClassConvergence(ctx, cityPath, cfg, logPrefix, stderr)
 	} else {
 		// The shape is the supported one, so the only thing that can have
 		// refused the target is the provider: this build carries the migration
@@ -322,7 +323,7 @@ func storageBootGate(cityPath string, cfg *config.City, logPrefix string, rec ev
 			report = blocked
 			report.Target = target
 		} else {
-			report = checkBornSplitDiscipline(cityPath, logPrefix, stderr)
+			report = checkBornSplitDiscipline(ctx, cityPath, logPrefix, stderr)
 			report.Target = target
 		}
 	}
@@ -574,8 +575,8 @@ func servedBindingNoteHold(cityPath, binding, provider, location string) (infraM
 // Failures to prove are reported as facts about the check, not the city: a
 // work store that cannot be opened or listed decides nothing, and the
 // uncheckable outcome withholds both serving and the revert instruction.
-func checkBornSplitDiscipline(cityPath string, logPrefix string, stderr io.Writer) infraMigrationReport {
-	source, err := openInfraMigrationSource(cityPath)
+func checkBornSplitDiscipline(ctx context.Context, cityPath string, logPrefix string, stderr io.Writer) infraMigrationReport {
+	source, err := openInfraMigrationSource(ctx, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: born-split check: opening the work store: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 		return infraMigrationReport{Outcome: infraMigrationUncheckable}

@@ -297,7 +297,7 @@ func TestControllerStateUpdate(t *testing.T) {
 	}
 
 	sp2 := runtime.NewFake()
-	cs.update(cfg2, sp2)
+	cs.update(context.Background(), cfg2, sp2)
 
 	if len(cs.BeadStores()) != 3 {
 		t.Errorf("updated stores = %d, want 3 (city + 2 rigs)", len(cs.BeadStores()))
@@ -346,7 +346,7 @@ func TestControllerStateRawConfigCachedFromGateBasis(t *testing.T) {
 	}
 
 	// After an update, the snapshot refreshes from disk and stays non-nil.
-	cs.update(&config.City{Workspace: config.Workspace{Name: "city1"}}, runtime.NewFake())
+	cs.update(context.Background(), &config.City{Workspace: config.Workspace{Name: "city1"}}, runtime.NewFake())
 	if cs.RawConfig() == nil {
 		t.Error("RawConfig() = nil after update; the cache must refresh, not clear")
 	}
@@ -370,7 +370,7 @@ func TestControllerStateRuntimeUpdateDoesNotDropPendingMutationRigs(t *testing.T
 	cs := newControllerState(context.Background(), current, runtime.NewFake(), events.NewFake(), "city1", cityDir)
 	cs.markConfigMutationPending("current-rev")
 
-	cs.updateFromRuntime(stale, runtime.NewFake(), "stale-rev")
+	cs.updateFromRuntime(context.Background(), stale, runtime.NewFake(), "stale-rev")
 
 	if got := cs.Config(); got != current {
 		t.Fatalf("Config() = %+v, want pending mutation config with rig alpha", got)
@@ -379,7 +379,7 @@ func TestControllerStateRuntimeUpdateDoesNotDropPendingMutationRigs(t *testing.T
 		t.Fatal("pending mutation marker cleared by stale runtime update")
 	}
 
-	cs.updateFromRuntime(current, runtime.NewFake(), "current-rev")
+	cs.updateFromRuntime(context.Background(), current, runtime.NewFake(), "current-rev")
 
 	if cs.configMutationPending.Load() {
 		t.Fatal("pending mutation marker not cleared after matching runtime update")
@@ -411,7 +411,7 @@ func TestControllerStateRuntimeUpdateDoesNotDropPendingMutationAgents(t *testing
 	cs := newControllerState(context.Background(), current, runtime.NewFake(), events.NewFake(), "city1", cityDir)
 	cs.markConfigMutationPending("current-rev")
 
-	cs.updateFromRuntime(stale, runtime.NewFake(), "stale-rev")
+	cs.updateFromRuntime(context.Background(), stale, runtime.NewFake(), "stale-rev")
 
 	if got := cs.Config(); got != current {
 		t.Fatalf("Config() = %+v, want pending mutation config with helper agent", got)
@@ -420,7 +420,7 @@ func TestControllerStateRuntimeUpdateDoesNotDropPendingMutationAgents(t *testing
 		t.Fatal("pending mutation marker cleared by stale runtime update")
 	}
 
-	cs.updateFromRuntime(current, runtime.NewFake(), "current-rev")
+	cs.updateFromRuntime(context.Background(), current, runtime.NewFake(), "current-rev")
 
 	if got := cs.Config(); got != current {
 		t.Fatalf("Config() = %+v, want matching runtime config applied", got)
@@ -473,7 +473,7 @@ func TestControllerStateCreatedAgentVisibleAfterStaleRuntimeInterleaving(t *test
 		Rigs:   []config.Rig{{Name: "alpha", Path: rigDir}},
 		Agents: []config.Agent{{Name: "worker", Dir: "alpha", Provider: "bash"}},
 	}
-	cs.updateFromRuntime(stale, runtime.NewFake(), pendingRev)
+	cs.updateFromRuntime(context.Background(), stale, runtime.NewFake(), pendingRev)
 	if got := cs.Config(); configHasAgent(got, "alpha/helper") {
 		t.Fatalf("stale runtime update did not hide alpha/helper; agents = %+v", got.Agents)
 	}
@@ -501,7 +501,7 @@ func TestControllerStateCreatedAgentVisibleAfterStaleRuntimeInterleaving(t *test
 	if err != nil {
 		t.Fatalf("load fresh config snapshot: %v", err)
 	}
-	cs.updateFromRuntime(fresh, runtime.NewFake(), freshRev)
+	cs.updateFromRuntime(context.Background(), fresh, runtime.NewFake(), freshRev)
 
 	if err := <-waitErr; err != nil {
 		t.Fatalf("WaitForAgentVisibility after stale runtime update: %v", err)
@@ -549,7 +549,7 @@ func TestControllerStateRuntimeUpdateIgnoresEmptyRevisionDuringPendingMutation(t
 	cs := newControllerState(context.Background(), current, runtime.NewFake(), events.NewFake(), "city1", cityDir)
 	cs.markConfigMutationPending("current-rev")
 
-	cs.updateFromRuntime(stale, runtime.NewFake(), "")
+	cs.updateFromRuntime(context.Background(), stale, runtime.NewFake(), "")
 
 	if got := cs.Config(); got != current {
 		t.Fatalf("Config() = %+v, want pending mutation config with helper agent", got)
@@ -591,7 +591,7 @@ func TestControllerStateRuntimeUpdateAcceptsBuiltinAwareRevision(t *testing.T) {
 	}
 	applyRuntimeCityIdentity(reloaded.Cfg, "test")
 
-	cs.updateFromRuntime(reloaded.Cfg, runtime.NewFake(), reloaded.Revision)
+	cs.updateFromRuntime(context.Background(), reloaded.Cfg, runtime.NewFake(), reloaded.Revision)
 
 	if got := cs.Config().Rigs; len(got) != 1 || got[0].Name != "alpha" {
 		t.Fatalf("runtime update was not accepted; rigs = %#v", got)
@@ -633,7 +633,7 @@ func TestControllerStateMutationRefreshKeepsBuiltinOrdersAndClearsPending(t *tes
 		t.Fatalf("tryReloadConfig after mutation: %v", err)
 	}
 	applyRuntimeCityIdentity(reloaded.Cfg, "test")
-	cs.updateFromRuntime(reloaded.Cfg, runtime.NewFake(), reloaded.Revision)
+	cs.updateFromRuntime(context.Background(), reloaded.Cfg, runtime.NewFake(), reloaded.Revision)
 
 	if cs.configMutationPending.Load() {
 		t.Fatal("pending mutation marker was not cleared by matching runtime update")
@@ -683,7 +683,7 @@ func TestControllerStateRuntimeUpdateAfterMutationPreservesCurrentStores(t *test
 			Prefix: "al",
 		}},
 	}
-	cs.updateFromRuntime(next, runtime.NewFake(), "next-rev")
+	cs.updateFromRuntime(context.Background(), next, runtime.NewFake(), "next-rev")
 
 	if got := cs.BeadStore("alpha"); got != rigStore {
 		t.Fatalf("BeadStore(alpha) = %T %p, want original store %T %p", got, got, rigStore, rigStore)
@@ -730,7 +730,7 @@ func TestControllerStateRuntimeUpdatePreservesCurrentStoresWithoutPendingMutatio
 		}},
 	}
 	nextProvider := runtime.NewFake()
-	cs.updateFromRuntime(next, nextProvider, "")
+	cs.updateFromRuntime(context.Background(), next, nextProvider, "")
 
 	if got := cs.BeadStore("alpha"); got != rigStore {
 		t.Fatalf("BeadStore(alpha) = %T %p, want original store %T %p", got, got, rigStore, rigStore)
@@ -774,7 +774,7 @@ func TestControllerStateRuntimeUpdateRebuildsStoresWhenBackendMetadataChanges(t 
 
 	writeBackendMetadata(t, cityDir, `{"database":"beads","backend":"postgres","storage_endpoint":"postgres://bd@db.example.test:5432","storage_database":"beads_pg"}`)
 	nextProvider := runtime.NewFake()
-	cs.updateFromRuntime(current, nextProvider, "")
+	cs.updateFromRuntime(context.Background(), current, nextProvider, "")
 
 	if got := cs.CityBeadStore(); got == oldStore {
 		t.Fatal("CityBeadStore() reused stale store after backend metadata changed")
@@ -844,7 +844,7 @@ provider = "bash"
 	originalProvider := runtime.NewFake()
 	cs := newControllerState(context.Background(), current, originalProvider, events.NewFake(), "city1", cityDir)
 
-	cs.updateFromRuntime(stale, runtime.NewFake(), "stale-rev")
+	cs.updateFromRuntime(context.Background(), stale, runtime.NewFake(), "stale-rev")
 
 	if got := cs.Config(); got != current {
 		t.Fatalf("Config() = %+v, want current config with worker agent", got)
@@ -2157,11 +2157,11 @@ func TestControllerStateBeadEventWatcherLeavesCompletionRepairToStartupSweep(t *
 	// process crash after bead.closed but before step_completed was recorded.
 	ep := &listCountingEventProvider{Fake: events.NewFake()}
 	ep.Record(events.Event{Type: events.BeadClosed, Actor: "bd-close", Subject: step.ID, Payload: payload})
-	prevCityStore := newControllerStateOpenCityStore
-	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
+	prevCityStore := newControllerStateOpenCityStoreContext
+	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: backing}, nil
 	}
-	t.Cleanup(func() { newControllerStateOpenCityStore = prevCityStore })
+	t.Cleanup(func() { newControllerStateOpenCityStoreContext = prevCityStore })
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cs := newControllerState(ctx, &config.City{Workspace: config.Workspace{Name: "test-city"}}, runtime.NewFake(), ep, "test-city", t.TempDir())
@@ -2338,12 +2338,12 @@ func waitForCloseStoreSpy(t *testing.T, store *closeStoreSpy) {
 }
 
 func TestControllerStateUpdateClosesReplacedCityStore(t *testing.T) {
-	prevOpen := newControllerStateOpenCityStore
-	t.Cleanup(func() { newControllerStateOpenCityStore = prevOpen })
+	prevOpen := newControllerStateOpenCityStoreContext
+	t.Cleanup(func() { newControllerStateOpenCityStoreContext = prevOpen })
 	setControllerStateStoreCloseDelayForTest(t, time.Millisecond)
 
 	replacement := beads.NewMemStore()
-	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
+	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: replacement}, nil
 	}
 	oldStore := &closeStoreSpy{Store: beads.NewMemStore()}
@@ -2354,7 +2354,7 @@ func TestControllerStateUpdateClosesReplacedCityStore(t *testing.T) {
 		beadStores:    map[string]beads.Store{},
 	}
 
-	cs.update(&config.City{}, runtime.NewFake())
+	cs.update(context.Background(), &config.City{}, runtime.NewFake())
 
 	if cs.CityBeadStore() == oldStore {
 		t.Fatal("city bead store was not replaced")
@@ -2363,11 +2363,11 @@ func TestControllerStateUpdateClosesReplacedCityStore(t *testing.T) {
 }
 
 func TestControllerStateUpdateClosesReplacedRigStores(t *testing.T) {
-	prevOpen := newControllerStateOpenCityStore
-	t.Cleanup(func() { newControllerStateOpenCityStore = prevOpen })
+	prevOpen := newControllerStateOpenCityStoreContext
+	t.Cleanup(func() { newControllerStateOpenCityStoreContext = prevOpen })
 	setControllerStateStoreCloseDelayForTest(t, time.Millisecond)
 
-	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
+	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{}, nil
 	}
 	oldStore := &closeStoreSpy{Store: beads.NewMemStore()}
@@ -2377,7 +2377,7 @@ func TestControllerStateUpdateClosesReplacedRigStores(t *testing.T) {
 		beadStores: map[string]beads.Store{"frontend": oldStore},
 	}
 
-	cs.update(&config.City{}, runtime.NewFake())
+	cs.update(context.Background(), &config.City{}, runtime.NewFake())
 
 	if _, ok := cs.BeadStores()["frontend"]; ok {
 		t.Fatal("frontend rig store was not replaced")
@@ -2399,11 +2399,11 @@ func TestCloseBeadStoreHandleUnwrapsPolicyWrappedCachingStore(t *testing.T) {
 }
 
 func TestControllerStateUpdateKeepsStaleRigStoreUsableDuringReload(t *testing.T) {
-	prevOpen := newControllerStateOpenCityStore
-	t.Cleanup(func() { newControllerStateOpenCityStore = prevOpen })
+	prevOpen := newControllerStateOpenCityStoreContext
+	t.Cleanup(func() { newControllerStateOpenCityStoreContext = prevOpen })
 	setControllerStateStoreCloseDelayForTest(t, 200*time.Millisecond)
 
-	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
+	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{}, nil
 	}
 	oldStore := &closeStoreSpy{Store: beads.NewMemStore()}
@@ -2418,7 +2418,7 @@ func TestControllerStateUpdateKeepsStaleRigStoreUsableDuringReload(t *testing.T)
 	}
 
 	stale := cs.BeadStore("frontend")
-	cs.update(&config.City{}, runtime.NewFake())
+	cs.update(context.Background(), &config.City{}, runtime.NewFake())
 
 	got, err := stale.Get(created.ID)
 	if err != nil {
@@ -2431,11 +2431,11 @@ func TestControllerStateUpdateKeepsStaleRigStoreUsableDuringReload(t *testing.T)
 }
 
 func TestControllerStateUpdateReturnsTypedStoreClosedAfterReloadDrain(t *testing.T) {
-	prevOpen := newControllerStateOpenCityStore
-	t.Cleanup(func() { newControllerStateOpenCityStore = prevOpen })
+	prevOpen := newControllerStateOpenCityStoreContext
+	t.Cleanup(func() { newControllerStateOpenCityStoreContext = prevOpen })
 	setControllerStateStoreCloseDelayForTest(t, time.Millisecond)
 
-	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
+	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{}, nil
 	}
 	oldStore := &closeStoreSpy{Store: beads.NewMemStore()}
@@ -2450,7 +2450,7 @@ func TestControllerStateUpdateReturnsTypedStoreClosedAfterReloadDrain(t *testing
 	}
 
 	stale := cs.BeadStore("frontend")
-	cs.update(&config.City{}, runtime.NewFake())
+	cs.update(context.Background(), &config.City{}, runtime.NewFake())
 	waitForCloseStoreSpy(t, oldStore)
 
 	if _, err := stale.Get(created.ID); !errors.Is(err, beads.ErrStoreClosed) {
@@ -2550,7 +2550,7 @@ func TestControllerStateBeadEventsUseScopePrefixWhenConfiguredPrefixDrifts(t *te
 		t.Fatal(err)
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "repo", Path: "rigs/repo", Prefix: "ga"}}}
-	bdStore := bdStoreForRig(rigDir, cityDir, cfg, cfg.Rigs[0].EffectivePrefix())
+	bdStore := bdStoreForRig(context.Background(), rigDir, cityDir, cfg, cfg.Rigs[0].EffectivePrefix())
 	rigCache := beads.NewCachingStoreForTestWithPrefix(beads.NewMemStore(), bdStore.IDPrefix(), nil)
 	if err := rigCache.Prime(context.Background()); err != nil {
 		t.Fatalf("Prime rig cache: %v", err)
@@ -2796,7 +2796,7 @@ func TestControllerStateFileRigStoreReloadsAcrossConcurrentHandles(t *testing.T)
 		t.Fatalf("controller Create 1: %v", err)
 	}
 
-	otherStore, err := openStoreAtForCity(rigDir, cityDir)
+	otherStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2807,7 +2807,7 @@ func TestControllerStateFileRigStoreReloadsAcrossConcurrentHandles(t *testing.T)
 		t.Fatalf("controller Create 2: %v", err)
 	}
 
-	reloadedStore, err := openStoreAtForCity(rigDir, cityDir)
+	reloadedStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig) reload: %v", err)
 	}
@@ -2905,7 +2905,7 @@ func TestControllerStateLegacyFileProviderSharesRigStoreHandle(t *testing.T) {
 	if len(list) != 1 || list[0].Title != "shared bead" {
 		t.Fatalf("rig2 store should immediately observe shared legacy bead, got %#v", list)
 	}
-	reloadedCityStore, err := openStoreAtForCity(cityDir, cityDir)
+	reloadedCityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
@@ -2934,7 +2934,7 @@ func TestControllerStateOpenRigStoreFileOpenErrorDoesNotFallbackToBd(t *testing.
 	}
 
 	cs := &controllerState{cityPath: cityDir}
-	store := cs.openRigStore("file", "rig1", rigDir, "rg", nil)
+	store := cs.openRigStore(context.Background(), "file", "rig1", rigDir, "rg", nil)
 	if _, ok := store.(*beads.BdStore); ok {
 		t.Fatalf("openRigStore returned %T, want file-open failure instead of bd fallback", store)
 	}
@@ -2972,7 +2972,7 @@ provider = "file"
 	}
 
 	cs := &controllerState{cityPath: cityDir, cfg: cfg}
-	stores := cs.buildStores(cfg)
+	stores := cs.buildStores(context.Background(), cfg)
 	store, ok := stores["frontend"]
 	if !ok {
 		t.Fatal("buildStores() missing frontend store")
@@ -3039,7 +3039,7 @@ provider = "file"
 	}
 
 	cs := &controllerState{cityPath: cityDir, cfg: cfg}
-	stores := cs.buildStores(cfg)
+	stores := cs.buildStores(context.Background(), cfg)
 
 	if !factoryCalled {
 		t.Fatal("buildStores did not route bd-backed rig through store factory")
@@ -3084,7 +3084,7 @@ provider = "file"
 	}
 
 	cs := &controllerState{cityPath: cityDir, cfg: cfg}
-	stores := cs.buildStores(cfg)
+	stores := cs.buildStores(context.Background(), cfg)
 	rigStore, ok := stores["frontend"]
 	if !ok {
 		t.Fatal("buildStores() missing frontend store")
@@ -3682,13 +3682,13 @@ func TestControllerStateMutationErrorDoesNotPokeController(t *testing.T) {
 func TestControllerStateEstablishesBeadEventCursorBeforePrimingStores(t *testing.T) {
 	ep := newBlockingLatestEventProvider()
 	var storeOpened atomic.Bool
-	prevCityStore := newControllerStateOpenCityStore
-	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
+	prevCityStore := newControllerStateOpenCityStoreContext
+	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
 		storeOpened.Store(true)
 		return beads.StoreOpenResult{Store: beads.NewMemStore()}, nil
 	}
 	t.Cleanup(func() {
-		newControllerStateOpenCityStore = prevCityStore
+		newControllerStateOpenCityStoreContext = prevCityStore
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -3716,12 +3716,12 @@ func TestControllerStateEstablishesBeadEventCursorBeforePrimingStores(t *testing
 
 func TestControllerStateBeadEventWatcherReplaysEventsAfterCachePrime(t *testing.T) {
 	backing := beads.NewMemStore()
-	prevCityStore := newControllerStateOpenCityStore
-	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
+	prevCityStore := newControllerStateOpenCityStoreContext
+	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: backing}, nil
 	}
 	t.Cleanup(func() {
-		newControllerStateOpenCityStore = prevCityStore
+		newControllerStateOpenCityStoreContext = prevCityStore
 	})
 
 	ep := events.NewFake()
@@ -3772,12 +3772,12 @@ func TestControllerStateBeadEventWatcherReplaysEventsAfterCachePrime(t *testing.
 
 func TestControllerStateBeadEventWatcherRetriesSetupErrors(t *testing.T) {
 	backing := beads.NewMemStore()
-	prevCityStore := newControllerStateOpenCityStore
-	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
+	prevCityStore := newControllerStateOpenCityStoreContext
+	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: backing}, nil
 	}
 	t.Cleanup(func() {
-		newControllerStateOpenCityStore = prevCityStore
+		newControllerStateOpenCityStoreContext = prevCityStore
 	})
 
 	prevRetryDelay := beadEventWatcherRetryDelay
@@ -3823,12 +3823,12 @@ func TestControllerStateBeadEventWatcherRetriesSetupErrors(t *testing.T) {
 
 func TestControllerStateBeadEventWatcherConsumesExternalFileEvent(t *testing.T) {
 	backing := beads.NewMemStore()
-	prevCityStore := newControllerStateOpenCityStore
-	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
+	prevCityStore := newControllerStateOpenCityStoreContext
+	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: backing}, nil
 	}
 	t.Cleanup(func() {
-		newControllerStateOpenCityStore = prevCityStore
+		newControllerStateOpenCityStoreContext = prevCityStore
 	})
 
 	eventPath := filepath.Join(t.TempDir(), "events.jsonl")
@@ -3961,6 +3961,7 @@ func newControllerStateMutationHarness(t *testing.T) (*controllerState, string) 
 	return &controllerState{
 		editor:      configedit.NewEditor(fsys.OSFS{}, tomlPath),
 		cityPath:    cityDir,
+		cacheCtx:    context.Background(),
 		pokeCh:      make(chan struct{}, 1),
 		configDirty: &atomic.Bool{},
 	}, tomlPath
@@ -4012,7 +4013,7 @@ func TestBuildStores_ExecProviderSetsPerRigEnv(t *testing.T) {
 	}
 
 	cs := &controllerState{cityPath: cityDir}
-	stores := cs.buildStores(cfg)
+	stores := cs.buildStores(context.Background(), cfg)
 
 	if len(stores) != 2 {
 		t.Fatalf("buildStores returned %d stores, want 2", len(stores))
@@ -4130,7 +4131,7 @@ func TestBuildStoresBdProviderUsesPassedConfigForRigEnv(t *testing.T) {
 		cityPath: cityDir,
 	}
 
-	stores := cs.buildStores(nextCfg)
+	stores := cs.buildStores(context.Background(), nextCfg)
 	if stores["alpha"] == nil {
 		t.Fatal("buildStores did not create alpha store")
 	}
@@ -4196,7 +4197,7 @@ func TestPrimeThenStartReconcilerArmsReconcilerOnPrimeFailure(t *testing.T) {
 	backing := &fullScanFailingStore{Store: beads.NewMemStore()}
 	cs := beads.NewCachingStore(backing, nil)
 	cs.SetPrimeRetryDelayForTest(func(int) time.Duration { return 0 })
-	if err := cs.PrimeActive(); err != nil {
+	if err := cs.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())

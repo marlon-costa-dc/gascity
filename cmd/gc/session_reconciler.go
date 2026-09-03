@@ -1825,7 +1825,7 @@ func reconcileSessionBeadsTracedWithNamedDemand(
 					preservedInfos[k] = infoByID[orderedIDs[k]]
 				}
 				var preservedInfo sessionpkg.Info
-				preservedTP, preservedInfo, preserveErr = resolvePreservedConfiguredNamedSessionTemplate(cityPath, cityName, cfg, sp, store, preservedInfos, info, clk, stderr)
+				preservedTP, preservedInfo, preserveErr = resolvePreservedConfiguredNamedSessionTemplate(ctx, cityPath, cityName, cfg, sp, store, preservedInfos, info, clk, stderr)
 				// The resolver may have durably cleared a stale trigger stamp
 				// (bindNamedSessionTriggerBead, gascity#4373). Advance the snapshot
 				// with the post-write Info (Step 6d, group 1) so the rest of this
@@ -4024,6 +4024,7 @@ func rateLimitAliveFromObservation(alive bool, err error) bool {
 // buildPreparedStartWithWorkDirResolver, gascity#4373). On the bind-error and
 // every early-error path the returned Info is the unchanged input.
 func resolvePreservedConfiguredNamedSessionTemplate(
+	ctx context.Context,
 	cityPath, cityName string,
 	cfg *config.City,
 	sp runtime.Provider,
@@ -4044,7 +4045,7 @@ func resolvePreservedConfiguredNamedSessionTemplate(
 	if !ok || spec.Agent == nil {
 		return TemplateParams{}, info, fmt.Errorf("configured named session %q not found", identity)
 	}
-	bp := newAgentBuildParams(cityName, cityPath, cfg, sp, clk.Now().UTC(), store, stderr)
+	bp := newAgentBuildParams(ctx, cityName, cityPath, cfg, sp, clk.Now().UTC(), store, stderr)
 	bp.sessionBeads = newSessionBeadSnapshotFromInfos(openInfos)
 	if bound, bindErr := bindNamedSessionTriggerBead(store, info, cityName); bindErr != nil {
 		if stderr != nil {

@@ -11,8 +11,8 @@ import (
 )
 
 // providerCredentialEnvPrefixes lists provider-specific env-var name prefixes
-// whose values are treated as agent-provider credentials and forwarded into
-// the supervisor's persistent env and spawned agent processes.
+// whose values are treated as provider credentials when supervisor install and
+// runtime code purge unsafe inherited credential state.
 //
 // The list is curated, not auto-discovered: persistent supervisor env has a
 // bounded size, so broad ecosystems such as AWS use exact names in
@@ -165,10 +165,10 @@ func IsProviderCredentialEnv(key string) bool {
 }
 
 // ProviderProcessPassthroughEnv returns non-GC process context that provider
-// sessions need to start reliably: user/home, provider auth/config, locale,
-// time zone, XDG, telemetry, and Claude nesting resets. It also pins
-// ControllerOnlyEnvKeys empty, so every session-env builder that starts here
-// withholds them without having to know they exist.
+// sessions need to start reliably: user/home, non-secret provider config,
+// locale, time zone, XDG, telemetry, and Claude nesting resets. Provider
+// credentials are intentionally excluded; supervisor-managed credentials enter
+// only through typed per-provider mappings.
 func ProviderProcessPassthroughEnv() map[string]string {
 	m := make(map[string]string)
 	if v := os.Getenv("PATH"); v != "" {
@@ -185,7 +185,6 @@ func ProviderProcessPassthroughEnv() map[string]string {
 		// with the supervisor instead of defaulting to UTC.
 		"TZ",
 		"CLAUDE_CONFIG_DIR",
-		"CLAUDE_CODE_OAUTH_TOKEN",
 		"CLAUDE_CODE_SUBAGENT_MODEL",
 		"CLAUDE_CODE_EFFORT_LEVEL",
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
@@ -217,15 +216,6 @@ func ProviderProcessPassthroughEnv() map[string]string {
 		m["XDG_STATE_HOME"] = v
 	} else if home := os.Getenv("HOME"); home != "" {
 		m["XDG_STATE_HOME"] = filepath.Join(home, ".local", "state")
-	}
-	for _, entry := range os.Environ() {
-		key, val, ok := strings.Cut(entry, "=")
-		if !ok || val == "" {
-			continue
-		}
-		if IsProviderCredentialEnv(key) {
-			m[key] = val
-		}
 	}
 	for k, v := range telemetry.OTELEnvMap() {
 		m[k] = v

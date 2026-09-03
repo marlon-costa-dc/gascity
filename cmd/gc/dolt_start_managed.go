@@ -60,8 +60,7 @@ type managedDoltStartedProcess struct {
 // binds when no explicit host is configured. Loopback by default: the work
 // ledger must not listen on a wildcard (LAN-reachable) interface unless the
 // operator explicitly opts in with GC_DOLT_HOST=0.0.0.0. Distinct from
-// defaultManagedDoltHost (bd_env.go), which is the client-side connect
-// default.
+// any client-side connect default.
 const defaultManagedDoltBindHost = "127.0.0.1"
 
 // normalizeManagedDoltBindHost resolves the listener host for a managed dolt

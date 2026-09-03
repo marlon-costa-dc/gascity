@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ func TestPoolTriggerWorkDirNonPackUsesConfiguredBase(t *testing.T) {
 			MaxActiveSessions: intPtr(1),
 		}},
 	}
-	bp := newAgentBuildParams("fixture", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), beads.NewMemStore(), &bytes.Buffer{})
+	bp := newAgentBuildParams(context.Background(), "fixture", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), beads.NewMemStore(), &bytes.Buffer{})
 	want := filepath.Join(bp.cityPath, ".gc", "workspaces", "worker")
 
 	got := poolTriggerWorkDir(bp, &cfg.Agents[0], "worker", SessionRequest{
@@ -54,7 +55,7 @@ func TestBindPoolSessionTriggerBeadUsesExplicitWorkspace(t *testing.T) {
 	}
 	var stderr bytes.Buffer
 	store := beads.NewMemStore()
-	bp := newAgentBuildParams("dip", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "dip", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 
 	base := filepath.Join(bp.cityPath, ".gc", "workspaces", "worker")
 	launcherCreated := filepath.Join(base, workspace)
@@ -132,7 +133,7 @@ func TestAssignedActivePoolResumePreservesConcreteWorkDir(t *testing.T) {
 	}
 	var stderr bytes.Buffer
 	store := beads.NewMemStore()
-	bp := newAgentBuildParams("fixture", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "fixture", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	base := filepath.Join(bp.cityPath, ".gc", "workspaces", "worker")
 	transientWorkDir := filepath.Join(base, "fi-43h-implement-owned-work")
 

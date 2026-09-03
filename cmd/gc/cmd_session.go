@@ -88,13 +88,13 @@ according to the selected semantic intent.`,
   gc session submit mayor "after this run, handle docs" --intent follow_up
   gc session submit mayor "stop and do this instead" --intent interrupt_now`,
 		Args: cobra.MinimumNArgs(2),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			parsedIntent, err := parseSessionSubmitIntent(intent)
 			if err != nil {
 				fmt.Fprintf(stderr, "gc session submit: %v\n", err) //nolint:errcheck // best-effort stderr
 				return errExit
 			}
-			if cmdSessionSubmit(args, parsedIntent, jsonOutput, stdout, stderr) != 0 {
+			if cmdSessionSubmit(cmd.Context(), args, parsedIntent, jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -133,8 +133,8 @@ session_name. --alias still sets the public command and mail alias.`,
   gc session new helper --title-hint "fix the login redirect loop"
   gc session new helper --no-attach`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionNew(args, alias, title, titleHint, noAttach, jsonOutput, waitTimeout, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionNew(cmd.Context(), args, alias, title, titleHint, noAttach, jsonOutput, waitTimeout, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -161,7 +161,7 @@ const defaultSessionNewWaitTimeout = 120 * time.Second
 // Phase 2: creates a session bead and pokes the controller. The reconciler
 // handles process lifecycle (start). If the controller is not running,
 // falls back to direct process start via the session manager.
-func cmdSessionNew(args []string, alias, title, titleHint string, noAttach, jsonOutput bool, waitTimeout time.Duration, stdout, stderr io.Writer) int {
+func cmdSessionNew(ctx context.Context, args []string, alias, title, titleHint string, noAttach, jsonOutput bool, waitTimeout time.Duration, stdout, stderr io.Writer) int {
 	if waitTimeout <= 0 {
 		waitTimeout = defaultSessionNewWaitTimeout
 	}
@@ -214,7 +214,7 @@ func cmdSessionNew(args []string, alias, title, titleHint string, noAttach, json
 	}
 
 	// Open the bead store.
-	store, code := openCityStore(stderr, "gc session new")
+	store, code := openCityStore(ctx, stderr, "gc session new")
 	if store == nil {
 		return code
 	}
@@ -224,7 +224,7 @@ func cmdSessionNew(args []string, alias, title, titleHint string, noAttach, json
 	// coordination-class store for relocation-safety.
 	sessStore := cliSessionStore(store, cfg, cityPath)
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session new: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -730,8 +730,8 @@ func newSessionListCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "List chat sessions",
 		Long:  `List all chat sessions. By default shows active and suspended sessions.`,
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if cmdSessionList(stateFilter, templateFilter, jsonOutput, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmdSessionList(cmd.Context(), stateFilter, templateFilter, jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -757,7 +757,7 @@ var sessionListAPIClient = func(cityPath string) (*api.Client, string) {
 // routeSessionList dispatches `session list` to the supervisor API when a
 // controller is up; otherwise falls back to the local iterator. Emits
 // exactly one route=... log line per exit path (gated on GC_DEBUG).
-func routeSessionList(_ string, stateFilter, templateFilter string, c *api.Client, nilReason string, jsonOutput bool, stdout, stderr io.Writer) int {
+func routeSessionList(ctx context.Context, _ string, stateFilter, templateFilter string, c *api.Client, nilReason string, jsonOutput bool, stdout, stderr io.Writer) int {
 	var cr api.CachedRead[[]api.SessionView]
 	return routeRead(c, "session list", nilReason, stderr,
 		func() error {
@@ -766,7 +766,7 @@ func routeSessionList(_ string, stateFilter, templateFilter string, c *api.Clien
 			return err
 		},
 		func() int { return renderSessionListFromAPI(cr, jsonOutput, stdout) },
-		func() int { return doSessionListFallback(stateFilter, templateFilter, jsonOutput, stdout, stderr) },
+		func() int { return doSessionListFallback(ctx, stateFilter, templateFilter, jsonOutput, stdout, stderr) },
 	)
 }
 
@@ -916,9 +916,9 @@ func sessionViewLastActive(lastActive string) string {
 // cmdSessionList is the CLI entry point for "gc session list". It routes
 // through the supervisor API when a controller is up and falls back to the
 // local iterator otherwise.
-func cmdSessionList(stateFilter, templateFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdSessionList(ctx context.Context, stateFilter, templateFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
 	return routeReadCmd("session list", stderr, sessionListAPIClient, func(cityPath string, c *api.Client, nilReason string) int {
-		return routeSessionList(cityPath, stateFilter, templateFilter, c, nilReason, jsonOutput, stdout, stderr)
+		return routeSessionList(ctx, cityPath, stateFilter, templateFilter, c, nilReason, jsonOutput, stdout, stderr)
 	})
 }
 
@@ -940,12 +940,12 @@ func sortSessionsCreatedDesc(sessions []session.Info) {
 }
 
 // doSessionListFallback is the direct-bd path for "gc session list".
-func doSessionListFallback(stateFilter, templateFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
+func doSessionListFallback(ctx context.Context, stateFilter, templateFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
 	storeStderr := stderr
 	if jsonOutput {
 		storeStderr = io.Discard
 	}
-	store, code := openCityStore(storeStderr, "gc session list")
+	store, code := openCityStore(ctx, storeStderr, "gc session list")
 	if store == nil {
 		if jsonOutput {
 			return writeJSONError(stdout, stderr, "store_open_failed", "gc session list: opening bead store failed", code)
@@ -1484,8 +1484,8 @@ using the provider's resume mechanism (if supported) or restarts.
 
 Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionAttach(args, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionAttach(cmd.Context(), args, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -1495,7 +1495,7 @@ Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 }
 
 // cmdSessionAttach is the CLI entry point for "gc session attach".
-func cmdSessionAttach(args []string, stdout, stderr io.Writer) int {
+func cmdSessionAttach(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session attach: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -1507,7 +1507,7 @@ func cmdSessionAttach(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	store, code := openCityStore(stderr, "gc session attach")
+	store, code := openCityStore(ctx, stderr, "gc session attach")
 	if store == nil {
 		return code
 	}
@@ -1516,13 +1516,13 @@ func cmdSessionAttach(args []string, stdout, stderr io.Writer) int {
 	// coordination-class store for relocation-safety.
 	sessStore := cliSessionStore(store, cfg, cityPath)
 
-	sessionID, err := resolveSessionIDMaterializingNamed(cityPath, cfg, sessStore, args[0])
+	sessionID, err := resolveSessionIDMaterializingNamed(ctx, cityPath, cfg, sessStore, args[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session attach: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session attach: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -1680,8 +1680,8 @@ The session bead persists and can be resumed later.
 
 Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionSuspend(args, stdout, stderr, jsonOutput) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionSuspend(cmd.Context(), args, stdout, stderr, jsonOutput) != 0 {
 				return errExit
 			}
 			return nil
@@ -1697,9 +1697,9 @@ Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 // Phase 2: sets held_until metadata on the session bead and pokes the
 // controller. The reconciler handles the actual process stop. Falls back
 // to direct suspend via the session manager if the controller isn't running.
-func cmdSessionSuspend(args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
+func cmdSessionSuspend(ctx context.Context, args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
 	asJSON := sessionJSONRequested(jsonOutput)
-	store, code := openCityStore(stderr, "gc session suspend")
+	store, code := openCityStore(ctx, stderr, "gc session suspend")
 	if store == nil {
 		return code
 	}
@@ -1755,7 +1755,7 @@ func cmdSessionSuspend(args []string, stdout, stderr io.Writer, jsonOutput ...bo
 	}
 
 	// Fallback: controller not running — direct suspend via worker handle.
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session suspend: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -1797,8 +1797,8 @@ func newSessionCloseCmd(stdout, stderr io.Writer) *cobra.Command {
 
 Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionClose(args, stdout, stderr, jsonOutput) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionClose(cmd.Context(), args, stdout, stderr, jsonOutput) != 0 {
 				return errExit
 			}
 			return nil
@@ -1810,9 +1810,9 @@ Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 }
 
 // cmdSessionClose is the CLI entry point for "gc session close".
-func cmdSessionClose(args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
+func cmdSessionClose(ctx context.Context, args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
 	asJSON := sessionJSONRequested(jsonOutput)
-	store, code := openCityStore(stderr, "gc session close")
+	store, code := openCityStore(ctx, stderr, "gc session close")
 	if store == nil {
 		return code
 	}
@@ -1834,7 +1834,7 @@ func cmdSessionClose(args []string, stdout, stderr io.Writer, jsonOutput ...bool
 		return 1
 	}
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session close: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -1859,7 +1859,7 @@ func cmdSessionClose(args []string, stdout, stderr io.Writer, jsonOutput ...bool
 		return 1
 	}
 	if cityErr == nil {
-		if err := withdrawQueuedWaitNudges(cityPath, closeResult.WaitNudgeIDs); err != nil {
+		if err := withdrawQueuedWaitNudges(ctx, cityPath, closeResult.WaitNudgeIDs); err != nil {
 			fmt.Fprintf(stderr, "gc session close: warning: withdrawing queued wait nudges: %v\n", err) //nolint:errcheck // best-effort stderr
 		}
 	}
@@ -1879,7 +1879,7 @@ func cmdSessionClose(args []string, stdout, stderr io.Writer, jsonOutput ...bool
 	// nothing and a city that relocates nothing still reads one store.
 	var rigStores map[string]beads.Store
 	if cityErr == nil && cfg != nil {
-		rigStores = buildStandaloneRigStores(cfg, cityPath, stderr)
+		rigStores = buildStandaloneRigStores(ctx, cfg, cityPath, stderr)
 	}
 	unclaimWorkAssignedToRetiredSessionBead(cityPath, cfg, store, rigStores, closedSessionBead, "", stderr)
 
@@ -1906,8 +1906,8 @@ func newSessionRenameCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "rename <session-id-or-alias> <title>",
 		Short: "Rename a session",
 		Args:  cobra.ExactArgs(2),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionRename(args, stdout, stderr, jsonOutput) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionRename(cmd.Context(), args, stdout, stderr, jsonOutput) != 0 {
 				return errExit
 			}
 			return nil
@@ -1919,11 +1919,11 @@ func newSessionRenameCmd(stdout, stderr io.Writer) *cobra.Command {
 }
 
 // cmdSessionRename is the CLI entry point for "gc session rename".
-func cmdSessionRename(args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
+func cmdSessionRename(ctx context.Context, args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
 	asJSON := sessionJSONRequested(jsonOutput)
 	title := args[1]
 
-	store, code := openCityStore(stderr, "gc session rename")
+	store, code := openCityStore(ctx, stderr, "gc session rename")
 	if store == nil {
 		return code
 	}
@@ -1943,7 +1943,7 @@ func cmdSessionRename(args []string, stdout, stderr io.Writer, jsonOutput ...boo
 		return 1
 	}
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session rename: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -1989,8 +1989,8 @@ states may be comma-separated.`,
   gc session prune --before 24h
   gc session prune --state asleep,suspended,drained --before 1h`,
 		Args: cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if cmdSessionPrune(beforeStr, statesStr, stdout, stderr, jsonOutput) != 0 {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmdSessionPrune(cmd.Context(), beforeStr, statesStr, stdout, stderr, jsonOutput) != 0 {
 				return errExit
 			}
 			return nil
@@ -2003,7 +2003,7 @@ states may be comma-separated.`,
 }
 
 // cmdSessionPrune is the CLI entry point for "gc session prune".
-func cmdSessionPrune(beforeStr, statesStr string, stdout, stderr io.Writer, jsonOutput ...bool) int {
+func cmdSessionPrune(ctx context.Context, beforeStr, statesStr string, stdout, stderr io.Writer, jsonOutput ...bool) int {
 	asJSON := sessionJSONRequested(jsonOutput)
 	dur, err := parsePruneDuration(beforeStr)
 	if err != nil {
@@ -2017,7 +2017,7 @@ func cmdSessionPrune(beforeStr, statesStr string, stdout, stderr io.Writer, json
 		return 1
 	}
 
-	store, code := openCityStore(stderr, "gc session prune")
+	store, code := openCityStore(ctx, stderr, "gc session prune")
 	if store == nil {
 		return code
 	}
@@ -2033,7 +2033,7 @@ func cmdSessionPrune(beforeStr, statesStr string, stdout, stderr io.Writer, json
 	}
 	sessStore := cliSessionStore(store, cfg, cityPath)
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session prune: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -2051,7 +2051,7 @@ func cmdSessionPrune(beforeStr, statesStr string, stdout, stderr io.Writer, json
 		return 1
 	}
 	if cityErr == nil {
-		if err := withdrawQueuedWaitNudges(cityPath, result.WaitNudgeIDs); err != nil {
+		if err := withdrawQueuedWaitNudges(ctx, cityPath, result.WaitNudgeIDs); err != nil {
 			fmt.Fprintf(stderr, "gc session prune: warning: withdrawing queued wait nudges: %v\n", err) //nolint:errcheck // best-effort stderr
 		}
 	}
@@ -2159,8 +2159,8 @@ func newSessionPeekCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "peek <session-id-or-alias>",
 		Short: "View session output without attaching",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionPeek(args, lines, jsonOutput, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionPeek(cmd.Context(), args, lines, jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -2196,7 +2196,7 @@ var sessionPeekAPIClient = func(cityPath string) (*api.Client, string) {
 // Emits exactly one route=... log line per exit path (gated on GC_DEBUG).
 // The API path passes the raw target to the server which resolves aliases;
 // fallback resolves locally via resolveSessionIDWithConfig.
-func routeSessionPeek(_, target string, lines int, c *api.Client, nilReason string, jsonOutput bool, stdout, stderr io.Writer) int {
+func routeSessionPeek(ctx context.Context, _ string, target string, lines int, c *api.Client, nilReason string, jsonOutput bool, stdout, stderr io.Writer) int {
 	const cmdName = "session peek"
 	if c != nil {
 		cr, err := c.GetSession(target, true, lines)
@@ -2213,7 +2213,7 @@ func routeSessionPeek(_, target string, lines int, c *api.Client, nilReason stri
 	} else {
 		logRoute(stderr, cmdName, "fallback", nilReason)
 	}
-	return doSessionPeekFallback(target, lines, jsonOutput, stdout, stderr)
+	return doSessionPeekFallback(ctx, target, lines, jsonOutput, stdout, stderr)
 }
 
 // renderSessionPeekFromAPI writes the API-sourced peek output to stdout,
@@ -2249,16 +2249,16 @@ func renderSessionPeekFromAPI(cr api.CachedRead[api.SessionView], target string,
 // cmdSessionPeek is the CLI entry point for "gc session peek". It routes
 // through the supervisor API when a controller is up and falls back to the
 // local runtime provider otherwise.
-func cmdSessionPeek(args []string, lines int, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdSessionPeek(ctx context.Context, args []string, lines int, jsonOutput bool, stdout, stderr io.Writer) int {
 	return routeReadCmd("session peek", stderr, sessionPeekAPIClient, func(cityPath string, c *api.Client, nilReason string) int {
-		return routeSessionPeek(cityPath, args[0], lines, c, nilReason, jsonOutput, stdout, stderr)
+		return routeSessionPeek(ctx, cityPath, args[0], lines, c, nilReason, jsonOutput, stdout, stderr)
 	})
 }
 
 // doSessionPeekFallback is the direct runtime-provider path for
 // "gc session peek".
-func doSessionPeekFallback(target string, lines int, jsonOutput bool, stdout, stderr io.Writer) int {
-	store, code := openCityStore(stderr, "gc session peek")
+func doSessionPeekFallback(ctx context.Context, target string, lines int, jsonOutput bool, stdout, stderr io.Writer) int {
+	store, code := openCityStore(ctx, stderr, "gc session peek")
 	if store == nil {
 		return code
 	}
@@ -2278,7 +2278,7 @@ func doSessionPeekFallback(target string, lines int, jsonOutput bool, stdout, st
 		return 1
 	}
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session peek: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -2289,7 +2289,7 @@ func doSessionPeekFallback(target string, lines int, jsonOutput bool, stdout, st
 		return 1
 	}
 
-	output, err := handle.Peek(context.Background(), lines)
+	output, err := handle.Peek(ctx, lines)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session peek: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -2342,8 +2342,8 @@ useful for unsticking a session without losing its conversation history.
 
 Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionKill(args, stdout, stderr, jsonOutput) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionKill(cmd.Context(), args, stdout, stderr, jsonOutput) != 0 {
 				return errExit
 			}
 			return nil
@@ -2359,9 +2359,9 @@ Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 var sessionKillPokeController = pokeController
 
 // cmdSessionKill is the CLI entry point for "gc session kill".
-func cmdSessionKill(args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
+func cmdSessionKill(ctx context.Context, args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
 	asJSON := sessionJSONRequested(jsonOutput)
-	store, code := openCityStore(stderr, "gc session kill")
+	store, code := openCityStore(ctx, stderr, "gc session kill")
 	if store == nil {
 		return code
 	}
@@ -2382,7 +2382,7 @@ func cmdSessionKill(args []string, stdout, stderr io.Writer, jsonOutput ...bool)
 		return 1
 	}
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session kill: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -2523,13 +2523,13 @@ equivalent to typing the message into the session's terminal.
 Accepts a session ID or session alias. Multi-word messages are
 joined automatically.`,
 		Args: cobra.MinimumNArgs(2),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			mode, err := parseNudgeDeliveryMode(delivery)
 			if err != nil {
 				fmt.Fprintf(stderr, "gc session nudge: %v\n", err) //nolint:errcheck // best-effort stderr
 				return errExit
 			}
-			if cmdSessionNudge(args, mode, jsonOutput, stdout, stderr) != 0 {
+			if cmdSessionNudge(cmd.Context(), args, mode, jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -2563,7 +2563,7 @@ type sessionSubmitJSON struct {
 	Outcome       string `json:"outcome"`
 }
 
-func cmdSessionSubmit(args []string, intent session.SubmitIntent, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdSessionSubmit(ctx context.Context, args []string, intent session.SubmitIntent, jsonOutput bool, stdout, stderr io.Writer) int {
 	target := args[0]
 	message := strings.Join(args[1:], " ")
 
@@ -2589,7 +2589,7 @@ func cmdSessionSubmit(args []string, intent session.SubmitIntent, jsonOutput boo
 		fmt.Fprintf(stderr, "gc session submit: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	store, code := openCityStore(stderr, "gc session submit")
+	store, code := openCityStore(ctx, stderr, "gc session submit")
 	if store == nil {
 		return code
 	}
@@ -2598,13 +2598,13 @@ func cmdSessionSubmit(args []string, intent session.SubmitIntent, jsonOutput boo
 	// store for relocation-safety.
 	sessStore := cliSessionStore(store, cfg, cityPath)
 
-	sessionID, err := resolveSessionIDMaterializingNamed(cityPath, cfg, sessStore, target)
+	sessionID, err := resolveSessionIDMaterializingNamed(ctx, cityPath, cfg, sessStore, target)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session submit: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session submit: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -2667,16 +2667,16 @@ type sessionNudgeJSON struct {
 }
 
 // cmdSessionNudge is the CLI entry point for "gc session nudge".
-func cmdSessionNudge(args []string, delivery nudgeDeliveryMode, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdSessionNudge(ctx context.Context, args []string, delivery nudgeDeliveryMode, jsonOutput bool, stdout, stderr io.Writer) int {
 	target := args[0]
 	message := strings.Join(args[1:], " ")
 
-	targetInfo, err := resolveNudgeTarget(target)
+	targetInfo, err := resolveNudgeTarget(ctx, target)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session nudge: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	return deliverSessionNudge(targetInfo, message, delivery, jsonOutput, stdout, stderr)
+	return deliverSessionNudge(ctx, targetInfo, message, delivery, jsonOutput, stdout, stderr)
 }
 
 // resolveWorkDir determines the working directory for a session based on the

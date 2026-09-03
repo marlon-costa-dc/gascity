@@ -38,16 +38,18 @@ type Deps struct {
 	CityPath string
 	// Cfg is the city config the caller loaded for edit.
 	Cfg *config.City
+	// Ctx is the caller-owned provision context.
+	Ctx context.Context
 
 	// InitStore initializes the rig's bead store (cmd/gc initDirIfReady). It
 	// returns deferred=true when live init is punted to the controller/startup.
 	// Required.
-	InitStore func(cityPath, dir, prefix string) (deferred bool, err error)
+	InitStore func(ctx context.Context, cityPath, dir, prefix string) (deferred bool, err error)
 	// InitAndHook is the deferred-fallback deeper store init (cmd/gc
 	// initAndHookDir); its error is intentionally swallowed (reported as
 	// "deferred to controller"). Required — it is reached whenever InitStore
 	// defers and the store is not GC_DOLT=skip, a path a caller cannot predict.
-	InitAndHook func(cityPath, dir, prefix string) error
+	InitAndHook func(ctx context.Context, cityPath, dir, prefix string) error
 	// ComposePacks resolves the rig's bundled imports and returns a commit closure
 	// that writes packs.lock only AFTER the city.toml append (cmd/gc
 	// ensureBundledRigImportsInstalled), preserving the "city.toml written last"
@@ -205,6 +207,9 @@ func validateDeps(d Deps) error {
 	}
 	if d.Cfg == nil {
 		return depErr("Cfg")
+	}
+	if d.Ctx == nil {
+		return depErr("Ctx")
 	}
 	if d.ComposePacks == nil {
 		return depErr("ComposePacks")

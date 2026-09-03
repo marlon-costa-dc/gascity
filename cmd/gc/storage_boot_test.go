@@ -93,7 +93,7 @@ func TestStorageGateBypassesEverythingWithoutConfig(t *testing.T) {
 	for _, cfg := range []*config.City{nil, {}, {Beads: config.BeadsConfig{Provider: "bd"}}} {
 		cityPath := t.TempDir()
 		var stderr bytes.Buffer
-		routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+		routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 		if err != nil {
 			t.Fatalf("a city with no [storage] was refused: %v", err)
 		}
@@ -152,7 +152,7 @@ func TestDeletingTheStorageSectionCannotAbandonAServedBinding(t *testing.T) {
 
 	registries := countStorageRegistryConstructions(t)
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, &config.City{}, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, &config.City{}, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a city that served a split booted with its [storage] section deleted")
@@ -184,7 +184,7 @@ func TestCorruptNoteHoldsTheDeletedSectionToo(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, nil, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, nil, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a city with an unreadable served-binding note booted through the bypass")
@@ -384,7 +384,7 @@ func TestStorageGateRefusesAnArrangementItCannotServe(t *testing.T) {
 	cfg.Storage.Classes.Nudges = config.StorageWorkBinding
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(root, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), root, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		t.Fatal("a partial split started the city")
 	}
@@ -419,7 +419,7 @@ func TestStorageGateRefusesAnUnconvergedCityAndNamesTheCommand(t *testing.T) {
 	before := infraStoreFingerprint(t, source)
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		t.Fatal("a city configured for a binding it never converged on started")
 	}
@@ -461,7 +461,7 @@ func TestStorageGateRefusalNamesTheStrandedIDs(t *testing.T) {
 	stranded := mustCreateInfraBead(t, source, beads.Bead{Title: "landed after the proof", Type: "session", Labels: []string{"gc:session"}})
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a city with a stranded infrastructure write started")
@@ -495,7 +495,7 @@ func TestStorageGateDoesNotCallAnUnreadableBindingUnmigrated(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a city whose binding could not be read started")
@@ -555,7 +555,7 @@ func TestStorageGateGenesisRecordsAnEmptyCopy(t *testing.T) {
 	target := mustResolveInfraTarget(t, cityPath, cfg)
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("a genesis city was refused: %v", err)
 	}
@@ -582,7 +582,7 @@ func TestStorageGateGenesisRecordsAnEmptyCopy(t *testing.T) {
 	// The second boot is the real assertion: a converged city must be silent,
 	// and must not rewrite the record it already holds.
 	var second bytes.Buffer
-	again, err := storageBootGate(cityPath, cfg, "gc start", nil, &second)
+	again, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &second)
 	if err != nil {
 		t.Fatalf("the second boot of a converged city was refused: %v", err)
 	}
@@ -615,7 +615,7 @@ func TestStorageGateServesAConvergedCityFromTheBinding(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("a converged city was refused: %v", err)
 	}
@@ -671,7 +671,7 @@ func TestStorageGateRefusesWhatItCouldNotCheck(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	if _, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr); err == nil {
+	if _, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr); err == nil {
 		t.Fatal("a city whose convergence could not be checked started anyway")
 	} else {
 		if strings.Contains(err.Error(), "has not migrated onto it") {
@@ -868,7 +868,7 @@ func TestStorageGateChecksTheRollbackSpelling(t *testing.T) {
 		cfg.Storage.Bindings = nil
 		refuseInfraMigrationSource(t)
 
-		routes, err := storageBootGate(root, cfg, "gc start", nil, io.Discard)
+		routes, err := storageBootGate(context.Background(), root, cfg, "gc start", nil, io.Discard)
 		if err != nil {
 			t.Fatalf("the documented rollback refused to boot: %v", err)
 		}
@@ -879,7 +879,7 @@ func TestStorageGateChecksTheRollbackSpelling(t *testing.T) {
 
 	t.Run("keeping the binding definition refuses", func(t *testing.T) {
 		root := t.TempDir()
-		if _, err := storageBootGate(root, allWork(root), "gc start", nil, io.Discard); err == nil {
+		if _, err := storageBootGate(context.Background(), root, allWork(root), "gc start", nil, io.Discard); err == nil {
 			t.Fatal("a binding no class selects was ignored; the runbook tells operators it is refused")
 		} else if !errors.Is(err, storebinding.ErrUnreferencedBinding) {
 			t.Errorf("the refusal is %v, want an %v", err, storebinding.ErrUnreferencedBinding)
@@ -891,7 +891,7 @@ func TestStorageGateChecksTheRollbackSpelling(t *testing.T) {
 		cfg := allWork(root)
 		cfg.Storage.Classes.Nudges = "infra"
 
-		if _, err := storageBootGate(root, cfg, "gc start", nil, io.Discard); err == nil {
+		if _, err := storageBootGate(context.Background(), root, cfg, "gc start", nil, io.Discard); err == nil {
 			t.Fatal("a class left on the binding was routed halfway")
 		} else if !strings.Contains(err.Error(), "whole infrastructure split or none of it") {
 			t.Errorf("the refusal does not say what this build serves: %v", err)
@@ -911,7 +911,7 @@ func TestStorageGateRefusesAnUnknownProvider(t *testing.T) {
 	cfg := infraSplitConfig(filepath.Join(root, "store"))
 	cfg.Storage.Bindings["infra"] = config.StorageBindingConfig{Provider: "not-compiled-in", Path: filepath.Join(root, "store")}
 
-	_, err := storageBootGate(root, cfg, "gc start", nil, io.Discard)
+	_, err := storageBootGate(context.Background(), root, cfg, "gc start", nil, io.Discard)
 	if err == nil {
 		t.Fatal("a binding naming an uncompiled provider started the city")
 	}
@@ -1001,11 +1001,11 @@ func TestStorageMigrateRefusesRigResidueByName(t *testing.T) {
 	stray := mustCreateInfraBead(t, rig, beads.Bead{Title: "a session in a rig", Type: "session"})
 	mustCreateInfraBead(t, rig, beads.Bead{Title: "ordinary rig work", Type: "task"})
 	prev := openStorageScopeStore
-	openStorageScopeStore = func(storePath, cityPath string) (beads.Store, error) {
+	openStorageScopeStore = func(ctx context.Context, storePath, cityPath string) (beads.Store, error) {
 		if storePath == rigPath {
 			return rig, nil
 		}
-		return prev(storePath, cityPath)
+		return prev(ctx, storePath, cityPath)
 	}
 	t.Cleanup(func() { openStorageScopeStore = prev })
 
@@ -1103,7 +1103,7 @@ func TestStorageStatusCreatesNothing(t *testing.T) {
 
 	before := treeFingerprint(t, bindingParent)
 	var stdout, stderr bytes.Buffer
-	if code := doStorageStatus(request, &stdout, &stderr); code == 0 {
+	if code := doStorageStatus(context.Background(), request, &stdout, &stderr); code == 0 {
 		t.Errorf("status exited 0 on an unconverged city; a deployment script cannot gate on it. stdout=%q", stdout.String())
 	}
 	if got := treeFingerprint(t, bindingParent); !equalStrings(before, got) {
@@ -1157,6 +1157,7 @@ func TestNewCityRuntimeRefusesAnUnconvergedCity(t *testing.T) {
 
 	var stderr bytes.Buffer
 	cr, err := newCityRuntime(CityRuntimeParams{
+		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		Cfg:      cfg,
@@ -1261,7 +1262,7 @@ func TestStorageGateServesBornSplitBindingWithCleanWorkStore(t *testing.T) {
 	mustCreateInfraBead(t, source, beads.Bead{Title: "plain work", Type: "task"})
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("a born-split city with a clean work store refused to serve: %v\nstderr: %s", err, stderr.String())
 	}
@@ -1287,7 +1288,7 @@ func TestStorageGateRefusesBornSplitBindingWhenWorkStoreHoldsInfraBeads(t *testi
 	strayed := mustCreateInfraBead(t, source, beads.Bead{Title: "landed in work", Type: "session", Labels: []string{"gc:session"}})
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a born-split city with an infrastructure bead in the work store served")
@@ -1312,12 +1313,12 @@ func TestStorageGateRefusesBornSplitBindingWhenWorkStoreHoldsInfraBeads(t *testi
 // this build cannot perform.
 func TestStorageGateBornSplitCheckFailureIsUncheckableNotUnconverged(t *testing.T) {
 	cityPath, cfg, _ := bornSplitCity(t)
-	failInfraMigrationSourceWith(t, func(string) (beads.Store, error) {
+	failInfraMigrationSourceWith(t, func(context.Context, string) (beads.Store, error) {
 		return nil, errors.New("injected work-store open failure")
 	})
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("an unprovable born-split invariant served")
@@ -1340,12 +1341,12 @@ func TestStorageGateBornSplitCheckFailureIsUncheckableNotUnconverged(t *testing.
 // store that opens but cannot be listed.
 func TestStorageGateBornSplitListFailureIsUncheckable(t *testing.T) {
 	cityPath, cfg, _ := bornSplitCity(t)
-	failInfraMigrationSourceWith(t, func(string) (beads.Store, error) {
+	failInfraMigrationSourceWith(t, func(context.Context, string) (beads.Store, error) {
 		return unlistableInfraSource{Store: beads.NewMemStore(), err: errors.New("injected list failure")}, nil
 	})
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("an unlistable work store served a born-split binding")
@@ -1373,7 +1374,7 @@ func TestStorageGateBornSplitBlocksOnClosedInfraBead(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a closed infrastructure bead in the work store did not block the born-split binding")
@@ -1391,7 +1392,7 @@ func TestStorageGateBornSplitRecordsOutcomeEvents(t *testing.T) {
 
 	rec := events.NewFake()
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", rec, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", rec, &stderr)
 	if err != nil {
 		t.Fatalf("clean born-split boot refused: %v", err)
 	}
@@ -1402,7 +1403,7 @@ func TestStorageGateBornSplitRecordsOutcomeEvents(t *testing.T) {
 
 	mustCreateInfraBead(t, source, beads.Bead{Title: "stray", Type: "session", Labels: []string{"gc:session"}})
 	blockedRec := events.NewFake()
-	blocked, err := storageBootGate(cityPath, cfg, "gc start", blockedRec, &stderr)
+	blocked, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", blockedRec, &stderr)
 	if err == nil {
 		_ = blocked.close()
 		t.Fatal("a dirtied work store served")
@@ -1436,7 +1437,7 @@ func TestStorageGateBornSplitEngineLessProviderRecordsNoConvergedEvent(t *testin
 
 	rec := events.NewFake()
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", rec, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", rec, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("an engine-less binding served")
@@ -1459,7 +1460,7 @@ func TestBornSplitServeBlocksLaterBuiltinGenesis(t *testing.T) {
 	cityPath, cfg, _ := bornSplitCity(t)
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("clean born-split boot refused: %v", err)
 	}
@@ -1479,7 +1480,7 @@ func TestBornSplitServeBlocksLaterBuiltinGenesis(t *testing.T) {
 	newStorageRegistryForPlan = newStorageProviderRegistry
 	t.Cleanup(func() { newStorageRegistryForPlan = prev })
 
-	blocked, err := storageBootGate(cityPath, builtin, "gc start", nil, &stderr)
+	blocked, err := storageBootGate(context.Background(), cityPath, builtin, "gc start", nil, &stderr)
 	if err == nil {
 		_ = blocked.close()
 		t.Fatal("genesis blessed an empty store while the served-binding note stood")
@@ -1494,7 +1495,7 @@ func TestBornSplitServeBlocksLaterBuiltinGenesis(t *testing.T) {
 	if err := os.Remove(notePath); err != nil {
 		t.Fatalf("removing the served-binding note: %v", err)
 	}
-	served, err := storageBootGate(cityPath, builtin, "gc start", nil, &stderr)
+	served, err := storageBootGate(context.Background(), cityPath, builtin, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("genesis still refused after the note was removed: %v", err)
 	}
@@ -1514,7 +1515,7 @@ func TestStorageStatusReportsBornSplitStates(t *testing.T) {
 	cityPath, cfg, source := bornSplitCity(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code != 0 {
+	if code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code != 0 {
 		t.Fatalf("status on a clean born-split city = %d, want 0\nstdout: %s\nstderr: %s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "born-split: clean") {
@@ -1526,7 +1527,7 @@ func TestStorageStatusReportsBornSplitStates(t *testing.T) {
 
 	strayed := mustCreateInfraBead(t, source, beads.Bead{Title: "stray", Type: "session", Labels: []string{"gc:session"}})
 	stdout.Reset()
-	if code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
+	if code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
 		t.Fatalf("status on a blocked born-split city = 0, want non-zero\nstdout: %s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), strayed.ID) {
@@ -1567,7 +1568,7 @@ func TestMigrateRefusesWhileServedBindingNoteStands(t *testing.T) {
 func TestBornSplitRepointToOtherBindingRefusesUntilAttested(t *testing.T) {
 	cityPath, cfg, _ := bornSplitCity(t)
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("first born-split boot refused: %v", err)
 	}
@@ -1586,7 +1587,7 @@ func TestBornSplitRepointToOtherBindingRefusesUntilAttested(t *testing.T) {
 	repointed.Storage.Classes.Orders = "infra2"
 	repointed.Storage.Classes.Nudges = "infra2"
 
-	blocked, err := storageBootGate(cityPath, repointed, "gc start", nil, &stderr)
+	blocked, err := storageBootGate(context.Background(), cityPath, repointed, "gc start", nil, &stderr)
 	if err == nil {
 		_ = blocked.close()
 		t.Fatal("re-pointing at a different binding served while the note named the first")
@@ -1616,7 +1617,7 @@ func TestBuiltinGenesisCityRepointToOutOfTreeRefuses(t *testing.T) {
 	_ = stubInfraMigrationSource(t)
 	builtin := infraSplitConfig(filepath.Join(cityPath, ".gc", "store"))
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, builtin, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, builtin, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("genesis boot refused: %v", err)
 	}
@@ -1626,7 +1627,7 @@ func TestBuiltinGenesisCityRepointToOutOfTreeRefuses(t *testing.T) {
 
 	cityCfg, source := bornSplitCityAt(t, cityPath)
 	_ = source
-	blocked, err := storageBootGate(cityPath, cityCfg, "gc start", nil, &stderr)
+	blocked, err := storageBootGate(context.Background(), cityPath, cityCfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = blocked.close()
 		t.Fatal("a genesis city re-pointed at an out-of-tree binding served on a clean work store")
@@ -1647,7 +1648,7 @@ func TestConvergedCityWithForeignNoteRefusesOnMarkedPath(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a converged city served through the marked path while the note named another binding")
@@ -1675,7 +1676,7 @@ func TestCorruptServedNoteHoldsWithoutGrantingAnything(t *testing.T) {
 	builtin := infraSplitConfig(filepath.Join(cityPath, ".gc", "store"))
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, builtin, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, builtin, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a corrupt served-binding note granted genesis")
@@ -1701,7 +1702,7 @@ func TestStorageStatusBornSplitKeepsDeployGateContract(t *testing.T) {
 	prev := newStorageRegistryForPlan
 	newStorageRegistryForPlan = newStorageProviderRegistry
 	var stdout, stderr bytes.Buffer
-	if code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
+	if code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
 		t.Fatalf("status = 0 for a provider this build cannot resolve\nstdout: %s", stdout.String())
 	}
 	newStorageRegistryForPlan = prev
@@ -1722,7 +1723,7 @@ func TestStorageStatusBornSplitKeepsDeployGateContract(t *testing.T) {
 	}
 	t.Cleanup(func() { newStorageRegistryForPlan = prev })
 	stdout.Reset()
-	if code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
+	if code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
 		t.Fatalf("status = 0 for a provider without the engine seam\nstdout: %s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "does not open a bead engine") {
@@ -1736,7 +1737,7 @@ func TestStorageStatusBornSplitKeepsDeployGateContract(t *testing.T) {
 func TestRevertToWorkRefusesWhileNoteStands(t *testing.T) {
 	cityPath, cfg, _ := bornSplitCity(t)
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("born-split boot refused: %v", err)
 	}
@@ -1754,7 +1755,7 @@ func TestRevertToWorkRefusesWhileNoteStands(t *testing.T) {
 			Nudges:    config.StorageWorkBinding,
 		},
 	}}
-	blocked, err := storageBootGate(cityPath, reverted, "gc start", nil, &stderr)
+	blocked, err := storageBootGate(context.Background(), cityPath, reverted, "gc start", nil, &stderr)
 	if err == nil {
 		if blocked != nil {
 			_ = blocked.close()
@@ -1772,7 +1773,7 @@ func TestRevertToWorkRefusesWhileNoteStands(t *testing.T) {
 func TestBornSplitSameNamePathRepointRefuses(t *testing.T) {
 	cityPath, cfg, _ := bornSplitCity(t)
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("born-split boot refused: %v", err)
 	}
@@ -1785,7 +1786,7 @@ func TestBornSplitSameNamePathRepointRefuses(t *testing.T) {
 	binding.Path = filepath.Join(cityPath, ".gc", "moved-store")
 	moved.Storage.Bindings["infra"] = binding
 
-	blocked, err := storageBootGate(cityPath, moved, "gc start", nil, &stderr)
+	blocked, err := storageBootGate(context.Background(), cityPath, moved, "gc start", nil, &stderr)
 	if err == nil {
 		_ = blocked.close()
 		t.Fatal("moving the binding's storage under the same name served while the note recorded the old location")
@@ -1803,7 +1804,7 @@ func TestBuiltinPathEditRefusesUntilAttested(t *testing.T) {
 	_ = stubInfraMigrationSource(t)
 	original := infraSplitConfig(filepath.Join(cityPath, ".gc", "store"))
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, original, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, original, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("genesis boot refused: %v", err)
 	}
@@ -1812,7 +1813,7 @@ func TestBuiltinPathEditRefusesUntilAttested(t *testing.T) {
 	}
 
 	moved := infraSplitConfig(filepath.Join(cityPath, ".gc", "moved-store"))
-	blocked, err := storageBootGate(cityPath, moved, "gc start", nil, &stderr)
+	blocked, err := storageBootGate(context.Background(), cityPath, moved, "gc start", nil, &stderr)
 	if err == nil {
 		_ = blocked.close()
 		t.Fatal("a path edit reached genesis at the new root while the note recorded the old one")
@@ -1830,7 +1831,7 @@ func TestStorageStatusHonorsNoteHoldOnBothArms(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	if code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
+	if code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
 		t.Fatalf("status = 0 on a converged city whose note names another binding\nstdout: %s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), `"elsewhere"`) {
@@ -1842,7 +1843,7 @@ func TestStorageStatusHonorsNoteHoldOnBothArms(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if code := doStorageStatus(storageOperatorRequest{CityPath: bornPath, Cfg: bornCfg}, &stdout, &stderr); code == 0 {
+	if code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: bornPath, Cfg: bornCfg}, &stdout, &stderr); code == 0 {
 		t.Fatalf("status = 0 on a born-split city whose note names another binding\nstdout: %s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), `"old-binding"`) {
@@ -1870,7 +1871,7 @@ func TestStoragePlanRefusesACityWithNoPath(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	routes, gateErr := storageBootGate("", cfg, "gc start", nil, &stderr)
+	routes, gateErr := storageBootGate(context.Background(), "", cfg, "gc start", nil, &stderr)
 	if gateErr == nil {
 		_ = routes.close()
 		t.Fatal("the boot gate served a city it has no path for")
@@ -1908,7 +1909,7 @@ func TestHalfRevertRefusalCarriesTheNoteThatHoldsIt(t *testing.T) {
 	}}
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a half-reverted city with a standing served-binding note booted")
@@ -2003,7 +2004,7 @@ func TestFailedNoteWriteReleasesTheBindingItJustOpened(t *testing.T) {
 	t.Cleanup(func() { writeServedBindingNote = prevWrite })
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a boot whose served-binding note could not be written reported success")

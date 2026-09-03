@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 // agentBuildParams holds shared, per-city parameters for building agents.
 // These are constant across all agents in a single buildDesiredState call.
 type agentBuildParams struct {
+	ctx             context.Context
 	city            *config.City
 	cityName        string
 	cityPath        string
@@ -148,8 +150,9 @@ func (p *agentBuildParams) hasCompleteSessionSnapshot() bool {
 }
 
 // newAgentBuildParams constructs agentBuildParams from the common startup values.
-func newAgentBuildParams(cityName, cityPath string, cfg *config.City, sp runtime.Provider, beaconTime time.Time, store beads.Store, stderr io.Writer) *agentBuildParams {
+func newAgentBuildParams(ctx context.Context, cityName, cityPath string, cfg *config.City, sp runtime.Provider, beaconTime time.Time, store beads.Store, stderr io.Writer) *agentBuildParams {
 	params := &agentBuildParams{
+		ctx:             ctx,
 		city:            cfg,
 		cityName:        cityName,
 		cityPath:        cityPath,

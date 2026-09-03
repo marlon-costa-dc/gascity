@@ -36,12 +36,13 @@ func serverLifecycleCityRuntime(t *testing.T, sp runtime.Provider) *CityRuntime 
 
 	var stdout, stderr bytes.Buffer
 	return newTestCityRuntime(t, CityRuntimeParams{
+		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -92,10 +93,9 @@ func TestBuildDesiredState_MultiSlotPoolNamedSession_OneRoutedBeadProvisionsTwoW
 		}},
 	}
 
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"gc", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"gascity": rigStore}, nil, nil, io.Discard,
-	)
+		cityStore, map[string]beads.Store{"gascity": rigStore}, nil, nil, io.Discard)
 
 	var builderIdentities []string
 	for key, tp := range dsResult.State {
@@ -245,10 +245,9 @@ func TestBuildDesiredState_NamedSessionBareIdentityReaped_RecoversViaNamedTier(t
 	}
 
 	// No session beads at all: the named session's own canonical bead is gone.
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"gc", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"gascity": rigStore}, nil, nil, io.Discard,
-	)
+		cityStore, map[string]beads.Store{"gascity": rigStore}, nil, nil, io.Discard)
 
 	var builderIdentities []string
 	namedCount := 0

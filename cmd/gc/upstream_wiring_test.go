@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ func upstreamTestParams(t *testing.T, city *config.City) *agentBuildParams {
 	cityPath := t.TempDir()
 	writeTemplateResolveCityConfig(t, cityPath, "file")
 	return &agentBuildParams{
+		ctx:        context.Background(),
 		city:       city,
 		cityName:   "city",
 		cityPath:   cityPath,
@@ -126,6 +128,7 @@ func TestResolveTemplateRendersAbstractUpstreamPerHarness(t *testing.T) {
 // binding. This handles opencode fronting groq/cerebras where the credential env
 // is upstream-dependent.
 func TestResolveTemplateUpstreamEnvNameOverride(t *testing.T) {
+	resetSupervisorCredentialStateForTest(t)
 	t.Setenv("GROQ_KEY", "gsk-secret")
 	city := &config.City{Upstreams: map[string]config.UpstreamSpec{
 		"groq": {APIKey: "$GROQ_KEY", APIKeyEnv: "GROQ_API_KEY"},

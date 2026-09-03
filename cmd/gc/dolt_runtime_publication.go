@@ -247,20 +247,6 @@ func publishManagedDoltRuntimeStateIfOwnedResult(cityPath string) (bool, error) 
 	return true, nil
 }
 
-func publishManagedDoltRuntimeStateIfOwnedResultFromState(cityPath string, state doltRuntimeState) (bool, error) {
-	owned, err := managedDoltLifecycleOwned(cityPath)
-	if err != nil {
-		return false, err
-	}
-	if !owned {
-		return false, nil
-	}
-	if err := publishManagedDoltRuntimeStateFromState(cityPath, state); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 func clearManagedDoltRuntimeStateIfOwned(cityPath string) error {
 	owned, err := managedDoltLifecycleOwned(cityPath)
 	if err != nil {

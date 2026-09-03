@@ -8,26 +8,17 @@ import (
 )
 
 // scopedBdStoreForCity returns a throwaway BdStore for cityPath whose bd
-// subprocess is bound to ctx: on cancellation the child is killed instead
-// of surviving past the caller's own budget, unlike the long-lived shared
-// store, whose runner is fixed to context.Background() at construction.
-// Reuses the same credential/env resolution as bdStoreForCity, minus
-// managed-dolt recovery (bdRuntimeEnvWithErrorNoRecovery, not
-// bdRuntimeEnvWithError): a short best-effort read should fail fast
-// rather than pay a multi-second recovery/health-check/autostart sequence
-// — and every concurrent scoped-store construction attempting that
-// recovery would multiply exactly the load a read-storm mitigation exists
-// to bound. Skips the managed-retry wrapper for the same reason (gascity
-// ga-cdmx6x).
+// subprocess is bound to ctx, so cancellation propagates to the child instead
+// of letting it survive past the caller's own budget.
 func scopedBdStoreForCity(ctx context.Context, cityPath string) (*beads.BdStore, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	env, err := bdRuntimeEnvWithErrorRecoveryContext(ctx, cityPath, false)
+	env, err := bdRuntimeEnvWithError(ctx, cityPath)
 	if err != nil {
 		return nil, err
 	}
-	runner, err := beadsCommandRunnerWithContextForHostedCity(ctx, cityPath, env)
+	runner, err := beadsCommandRunnerForHostedCity(ctx, cityPath, env)
 	if err != nil {
 		return nil, err
 	}
@@ -39,26 +30,15 @@ func scopedBdStoreForRig(ctx context.Context, cityPath string, cfg *config.City,
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	env, err := bdRuntimeEnvForRigWithErrorRecoveryContext(ctx, cityPath, cfg, rigDir, false)
+	env, err := bdRuntimeEnvForRigWithError(ctx, cityPath, cfg, rigDir)
 	if err != nil {
 		return nil, err
 	}
-	runner, err := beadsCommandRunnerWithContextForHostedCity(ctx, cityPath, env)
+	runner, err := beadsCommandRunnerForHostedCity(ctx, cityPath, env)
 	if err != nil {
 		return nil, err
 	}
 	return beads.NewBdStore(rigDir, runner), nil
-}
-
-func beadsCommandRunnerWithContextForHostedCity(ctx context.Context, cityPath string, env map[string]string) (beads.CommandRunner, error) {
-	selected, err := citySelectsHostedBeadsCredentialProvider(cityPath)
-	if err != nil {
-		return nil, err
-	}
-	if selected {
-		return beads.ExecCommandRunnerWithEnvContextWithoutAmbientBeads(ctx, env), nil
-	}
-	return beads.ExecCommandRunnerWithEnvContext(ctx, env), nil
 }
 
 // bdStoreBacking unwraps store through any CachingStore/beadPolicyStore

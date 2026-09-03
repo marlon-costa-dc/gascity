@@ -1,10 +1,10 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"testing"
-	"time"
 )
 
 func TestReconcileHealthyManagedRuntimePublication(t *testing.T) {
@@ -99,16 +99,13 @@ func TestReconcileHealthyManagedRuntimePublication(t *testing.T) {
 					record("publish-if-owned", gotCityPath)
 					return tt.publishErr
 				},
-				waitScopesReady: func(gotCityPath string, timeout time.Duration) error {
+				waitScopesReady: func(_ context.Context, gotCityPath string) error {
 					record("wait-scopes-ready", gotCityPath)
-					if timeout != 10*time.Second {
-						t.Errorf("waitScopesReady timeout = %v, want 10s", timeout)
-					}
 					return tt.waitErr
 				},
 			}
 
-			err := reconcileHealthyManagedRuntimePublication(cityPath, tt.waitForScopes, deps)
+			err := reconcileHealthyManagedRuntimePublication(context.Background(), cityPath, tt.waitForScopes, deps)
 			if tt.wantErr == nil {
 				if err != nil {
 					t.Fatalf("reconcileHealthyManagedRuntimePublication() error = %v", err)

@@ -385,11 +385,11 @@ gc beads city use-managed [flags]
 
 ## gc beads health
 
-Check beads provider health and attempt recovery on failure.
+Check beads provider health.
 
 Delegates to the provider's lifecycle health operation. For exec
 providers (including bd/dolt), the script handles multi-tier checking
-and recovery internally. For the file provider, always succeeds (no-op).
+and returns its first failure. For the file provider, always succeeds (no-op).
 
 Also used by the beads-health system order for periodic monitoring.
 

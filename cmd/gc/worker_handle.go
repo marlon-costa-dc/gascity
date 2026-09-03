@@ -355,7 +355,7 @@ func resolvedWorkerSessionConfigWithConfig(
 	// template_resolve.go: resolved.Env is config-authored, so a provider spec
 	// naming one of those keys would otherwise overwrite the empty value the
 	// passthrough pinned. This resolver never routes through ScrubTokenEnv.
-	sessionEnv := mergeEnv(providerProcessPassthroughEnv(), resolved.Env, processenv.ControllerOnlyEnvOverlay())
+	sessionEnv := mergeEnv(providerProcessPassthroughEnvForResolvedProvider(resolved), resolved.Env, processenv.ControllerOnlyEnvOverlay())
 	if strings.TrimSpace(cityPath) != "" {
 		sessionEnv = mergeEnv(sessionEnv, cityIdentityAnchorsForCity(cityPath))
 	}
@@ -603,7 +603,7 @@ func resolvedWorkerRuntimeWithConfigAndMetadata(cityPath string, cfg *config.Cit
 	// dispatcher trace path is per-dispatcher-qualified and must not be
 	// overwritten with the city-uniform default here. template_resolve.go
 	// owns the qualified override for the CLI create path.
-	sessionEnv := mergeEnv(providerProcessPassthroughEnv(), resolved.Env, cityIdentityAnchorsForCity(cityPath), processenv.ControllerOnlyEnvOverlay())
+	sessionEnv := mergeEnv(providerProcessPassthroughEnvForResolvedProvider(resolved), resolved.Env, cityIdentityAnchorsForCity(cityPath), processenv.ControllerOnlyEnvOverlay())
 	// Resolve session_live so resumed sessions get re-themed (status bar,
 	// keybindings) the same way reconciler-started sessions do. Without this,
 	// `gc session attach` recreates the tmux runtime with an empty

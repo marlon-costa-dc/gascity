@@ -38,11 +38,13 @@ func startupSessionName(cityName, agentName, sessionTemplate string) string {
 }
 
 func standaloneBuildAgentsFnWithSessionBeads(
+	_ context.Context,
 	cityName, cityPath string,
 	beaconTime time.Time,
 	stderr io.Writer,
-) func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+) func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 	return func(
+		ctx context.Context,
 		c *config.City,
 		currentSP runtime.Provider,
 		store beads.Store,
@@ -51,6 +53,7 @@ func standaloneBuildAgentsFnWithSessionBeads(
 		trace *sessionReconcilerTraceCycle,
 	) DesiredStateResult {
 		return buildDesiredStateWithSessionBeadsAt(
+			ctx,
 			cityName,
 			cityPath,
 			beaconTime,
@@ -151,15 +154,19 @@ type poolDeathInfo struct {
 // computePoolDeathHandlers builds a map from session name to death handler
 // for every pool instance (static for bounded pools, currently running for
 // unlimited). Used to detect and handle pool deaths.
-func computePoolDeathHandlers(cfg *config.City, cityName, cityPath string, sp runtime.Provider, stderr io.Writer) map[string]poolDeathInfo {
+func computePoolDeathHandlers(ctx context.Context, cfg *config.City, cityName, cityPath string, sp runtime.Provider, stderr io.Writer) map[string]poolDeathInfo {
 	handlers := make(map[string]poolDeathInfo)
 	st := cfg.Workspace.SessionTemplate
 	for _, a := range cfg.Agents {
+		if err := ctx.Err(); err != nil {
+			fmt.Fprintf(stderr, "on_death: context canceled: %v\n", err) //nolint:errcheck // best-effort stderr
+			return handlers
+		}
 		sp0 := scaleParamsFor(&a)
 		if !a.SupportsInstanceExpansion() {
 			continue
 		}
-		agentEnv, err := controllerQueryRuntimeEnv(cityPath, cfg, &a)
+		agentEnv, err := controllerQueryRuntimeEnv(ctx, cityPath, cfg, &a)
 		if err != nil {
 			fmt.Fprintf(stderr, "on_death %s env: %v\n", a.QualifiedName(), err) //nolint:errcheck // best-effort stderr
 			continue
@@ -444,12 +451,12 @@ Use "gc supervisor run" for foreground operation.`,
   gc supervisor run`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: completeCityNames,
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonOut && (foregroundMode || dryRunMode) {
 				fmt.Fprintln(stderr, "gc start: --json is only supported for supervisor-managed start") //nolint:errcheck // best-effort stderr
 				return errExit
 			}
-			if doStartJSON(args, foregroundMode, jsonOut, stdout, stderr) != 0 {
+			if doStartJSON(cmd.Context(), args, foregroundMode, jsonOut, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -477,24 +484,24 @@ Use "gc supervisor run" for foreground operation.`,
 	return cmd
 }
 
-func doStart(args []string, controllerMode bool, stdout, stderr io.Writer) int {
-	return doStartWithNameOverrideAndSummary(args, controllerMode, stdout, stderr, "")
+func doStart(ctx context.Context, args []string, controllerMode bool, stdout, stderr io.Writer) int {
+	return doStartWithNameOverrideAndSummary(ctx, args, controllerMode, stdout, stderr, "")
 }
 
-func doStartJSON(args []string, controllerMode bool, jsonOut bool, stdout, stderr io.Writer) int {
+func doStartJSON(ctx context.Context, args []string, controllerMode bool, jsonOut bool, stdout, stderr io.Writer) int {
 	if !jsonOut {
-		return doStart(args, controllerMode, stdout, stderr)
+		return doStart(ctx, args, controllerMode, stdout, stderr)
 	}
-	return doStartWithNameOverrideJSON(args, controllerMode, stdout, stderr, "", true)
+	return doStartWithNameOverrideJSON(ctx, args, controllerMode, stdout, stderr, "", true)
 }
 
-func doStartWithNameOverride(args []string, controllerMode bool, stdout, stderr io.Writer, nameOverride string) int {
-	return doStartWithNameOverrideRaw(args, controllerMode, stdout, stderr, nameOverride)
+func doStartWithNameOverride(ctx context.Context, args []string, controllerMode bool, stdout, stderr io.Writer, nameOverride string) int {
+	return doStartWithNameOverrideRaw(ctx, args, controllerMode, stdout, stderr, nameOverride)
 }
 
-func doStartWithNameOverrideAndSummary(args []string, controllerMode bool, stdout, stderr io.Writer, nameOverride string) int {
+func doStartWithNameOverrideAndSummary(ctx context.Context, args []string, controllerMode bool, stdout, stderr io.Writer, nameOverride string) int {
 	if controllerMode {
-		code := doStartWithNameOverrideRaw(args, controllerMode, stdout, stderr, nameOverride)
+		code := doStartWithNameOverrideRaw(ctx, args, controllerMode, stdout, stderr, nameOverride)
 		writeStartSummary(stderr, startSummary{
 			PID:      currentSupervisorPID(),
 			Binary:   startSummaryBinaryPath(),
@@ -509,7 +516,7 @@ func doStartWithNameOverrideAndSummary(args []string, controllerMode bool, stdou
 		Verbose: startVerboseMode,
 		TTY:     startOutputIsTerminal(stderr),
 	})
-	code := doStartWithNameOverrideRaw(args, controllerMode, stdout, proxy, nameOverride)
+	code := doStartWithNameOverrideRaw(ctx, args, controllerMode, stdout, proxy, nameOverride)
 	fatal := ""
 	if code != 0 {
 		fatal = proxy.deriveFatalFromRecords()
@@ -529,15 +536,15 @@ func doStartWithNameOverrideAndSummary(args []string, controllerMode bool, stdou
 	return code
 }
 
-func doStartWithNameOverrideRaw(args []string, controllerMode bool, stdout, stderr io.Writer, nameOverride string) int {
-	return doStartWithNameOverrideJSON(args, controllerMode, stdout, stderr, nameOverride, false)
+func doStartWithNameOverrideRaw(ctx context.Context, args []string, controllerMode bool, stdout, stderr io.Writer, nameOverride string) int {
+	return doStartWithNameOverrideJSON(ctx, args, controllerMode, stdout, stderr, nameOverride, false)
 }
 
-func doStartWithNameOverrideJSON(args []string, controllerMode bool, stdout, stderr io.Writer, nameOverride string, jsonOut bool) int {
+func doStartWithNameOverrideJSON(ctx context.Context, args []string, controllerMode bool, stdout, stderr io.Writer, nameOverride string, jsonOut bool) int {
 	// --foreground / --controller bypass the supervisor entirely (legacy
 	// standalone reconciler). No drift to check.
 	if controllerMode {
-		return doStartStandalone(args, controllerMode, stdout, stderr)
+		return doStartStandalone(ctx, args, controllerMode, stdout, stderr)
 	}
 
 	dir, err := resolveStartDir(args)
@@ -575,7 +582,7 @@ func doStartWithNameOverrideJSON(args []string, controllerMode bool, stdout, std
 	// check, so operators get a Supervisor: identity line and any drift
 	// report even in preview mode.
 	if dryRunMode {
-		return doStartStandalone(args, controllerMode, stdout, stderr)
+		return doStartStandalone(ctx, args, controllerMode, stdout, stderr)
 	}
 
 	if err := ensureCityScaffold(cityPath); err != nil {
@@ -595,7 +602,7 @@ func doStartWithNameOverrideJSON(args []string, controllerMode bool, stdout, std
 		fmt.Fprintln(stderr, "gc start: install the missing dependencies, then try again") //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	if status := checkDoltAuthorIdentity(cityPath); status.blocked() {
+	if status := checkDoltAuthorIdentity(ctx, cityPath); status.blocked() {
 		printDoltAuthorIdentityBlock(stderr, "gc start", status)
 		return 1
 	}
@@ -684,7 +691,7 @@ func requireBootstrappedCity(dir string) (string, error) {
 // doStartStandalone boots an existing city in the legacy per-city mode.
 // If a path is given, operates there; otherwise uses cwd. When controllerMode
 // is true, enters a persistent reconciliation loop instead of one-shot start.
-func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Writer) int {
+func doStartStandalone(ctx context.Context, args []string, controllerMode bool, stdout, stderr io.Writer) int {
 	// Strict mode is on by default; --no-strict disables it.
 	strictMode = !noStrictMode
 
@@ -727,7 +734,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		fmt.Fprintln(stderr, "gc start: install the missing dependencies, then try again") //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	if status := checkDoltAuthorIdentity(cityPath); status.blocked() {
+	if status := checkDoltAuthorIdentity(ctx, cityPath); status.blocked() {
 		printDoltAuthorIdentityBlock(stderr, "gc start", status)
 		return 1
 	}
@@ -782,13 +789,15 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		fmt.Fprintf(stderr, "gc start: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
+	startCtx, stopStartCtx := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stopStartCtx()
 
 	ensureInitArtifacts(cityPath, stderr, "gc start")
 
 	// Resolve rig paths and run the full bead store lifecycle:
 	// probe → init+hooks(city) → init+hooks(rigs) → routes.
 	resolveRigPaths(cityPath, cfg.Rigs)
-	if err := startBeadsLifecycle(cityPath, cityName, cfg, stderr); err != nil {
+	if err := startBeadsLifecycle(startCtx, cityPath, cityName, cfg, stderr); err != nil {
 		fmt.Fprintf(stderr, "gc start: %v\n", err)                      //nolint:errcheck // best-effort stderr
 		fmt.Fprintln(stderr, "hint: run \"gc doctor\" for diagnostics") //nolint:errcheck // best-effort stderr
 		return 1
@@ -796,10 +805,11 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 
 	// Post-startup health check: baseline probe of the beads provider.
 	// The gc-beads-bd script's health operation validates server liveness
-	// (TCP + query probe). Recovery is attempted on failure.
-	if err := healthBeadsProvider(cityPath); err != nil {
+	// (TCP + query probe) and returns the first causal failure.
+	if err := healthBeadsProvider(startCtx, cityPath); err != nil {
 		fmt.Fprintf(stderr, "gc start: beads health check: %v\n", err) //nolint:errcheck // best-effort stderr
-		// Non-fatal warning — server may recover by the time agents need it.
+		// Non-fatal warning: later agent commands still re-check the store and
+		// surface their own first failure.
 	}
 
 	// Warm-up doctor scan. Fail-open: startup continues regardless of check,
@@ -809,7 +819,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		warmupCityPath = absCityPath
 	}
 	skipRigDoltChecks := gcDoltSkip()
-	warmupChecks := buildDoctorChecks(warmupCityPath, cfg, nil, buildDoctorChecksOpts{
+	warmupChecks := buildDoctorChecks(startCtx, warmupCityPath, cfg, nil, buildDoctorChecksOpts{
 		Stderr:               io.Discard,
 		ControllerRunning:    doctor.IsControllerRunning(warmupCityPath),
 		SkipCityDoltCheck:    skipRigDoltChecks || (!scopeUsesManagedBdStoreContract(warmupCityPath, warmupCityPath) && !workspaceNeedsCityDoltCheck(warmupCityPath, cfg)),
@@ -819,10 +829,10 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 	})
 	warmupOpts := warmup.WarmupOpts{
 		Checks: warmupChecks,
-		Mailer: defaultMailProvider(cityPath),
+		Mailer: defaultMailProvider(ctx, cityPath),
 		Stderr: stderr,
 	}
-	_, _ = warmup.RunWarmupChecks(context.Background(), warmupCityPath, cfg, warmupOpts)
+	_, _ = warmup.RunWarmupChecks(startCtx, warmupCityPath, cfg, warmupOpts)
 
 	// Materialize formula symlinks before agent startup.
 	// System formulas/orders now arrive via the core bootstrap pack.
@@ -897,12 +907,11 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		}
 	}
 
-	sp, err := newSessionProviderForCity(cfg, cityPath)
+	sp, err := newSessionProviderForCity(ctx, cfg, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc start: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-
 	// beaconTime is captured once so the beacon timestamp remains stable
 	// across reconcile ticks. Without this, FormatBeacon(time.Now()) would
 	// produce a different command string each tick, causing
@@ -913,10 +922,10 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 	// Called once for one-shot, or on each tick for controller mode.
 	// Pool check commands are re-evaluated each call. Accepts a *config.City
 	// parameter so the controller loop can pass freshly-reloaded config.
-	buildAgents := func(c *config.City, currentSP runtime.Provider, store beads.Store) DesiredStateResult {
-		return buildDesiredState(cityName, cityPath, beaconTime, c, currentSP, store, stderr)
+	buildAgents := func(ctx context.Context, c *config.City, currentSP runtime.Provider, store beads.Store) DesiredStateResult {
+		return buildDesiredState(ctx, cityName, cityPath, beaconTime, c, currentSP, store, stderr)
 	}
-	buildAgentsWithSessionBeads := standaloneBuildAgentsFnWithSessionBeads(cityName, cityPath, beaconTime, stderr)
+	buildAgentsWithSessionBeads := standaloneBuildAgentsFnWithSessionBeads(startCtx, cityName, cityPath, beaconTime, stderr)
 
 	recorder := events.Discard
 	var eventProv events.Provider // nil when events disabled or FileRecorder fails
@@ -934,7 +943,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 
 	// --dry-run: build agents and print preview without starting.
 	if dryRunMode {
-		agents := buildAgents(cfg, sp, nil)
+		agents := buildAgents(startCtx, cfg, sp, nil)
 		printDryRunPreview(agents.State, cfg, cityName, stdout)
 		return 0
 	}
@@ -942,25 +951,20 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 	tomlPath := filepath.Join(cityPath, "city.toml")
 	if controllerMode {
 		poolSessions := computePoolSessions(cfg, cityName, cityPath, sp)
-		poolDeathHandlers := computePoolDeathHandlers(cfg, cityName, cityPath, sp, stderr)
+		poolDeathHandlers := computePoolDeathHandlers(startCtx, cfg, cityName, cityPath, sp, stderr)
 		watchTargets := config.WatchTargets(prov, cfg, cityPath)
 		configRev := config.Revision(fsys.OSFS{}, prov, cfg, cityPath)
 		return runController(cityPath, tomlPath, cfg, configRev, buildAgents, buildAgentsWithSessionBeads, sp,
 			newDrainOps(sp), poolSessions, poolDeathHandlers, watchTargets, recorder, eventProv, stdout, stderr)
 	}
 
-	// One-shot reconciliation (default): no drain (kill is fine).
-	// Create a signal-aware context so Ctrl-C cancels in-flight starts.
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	// Enforce restrictive permissions on .gc/ and its subdirectories.
 	enforceGCPermissions(cityPath, stderr)
 
-	runPoolOnBoot(cfg, cityPath, shellRunHook, stderr)
+	runPoolOnBoot(startCtx, cfg, cityPath, shellRunHook, stderr)
 
 	var oneShotStore beads.Store
-	if store, err := openCityStoreAt(cityPath); err == nil {
+	if store, err := openCityStoreAt(startCtx, cityPath); err == nil {
 		oneShotStore = store
 
 		// Run adoption barrier before sync. The adoption barrier is purely
@@ -978,7 +982,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		// Beads won't be persisted, but the reconciler still manages lifecycle.
 		oneShotStore = beads.NewMemStore()
 	}
-	rigStores := buildStandaloneRigStores(cfg, cityPath, stderr)
+	rigStores := buildStandaloneRigStores(startCtx, cfg, cityPath, stderr)
 
 	// Route the reconcile cascade's SESSION arm through the session coordination-class
 	// store so a [beads.classes.sessions] relocation reaches standalone start the same
@@ -1007,6 +1011,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		sessionQueryPartial = true
 	}
 	dsResult := buildDesiredStateWithSessionBeadsAt(
+		startCtx,
 		cityName,
 		cityPath,
 		beaconTime,
@@ -1034,6 +1039,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		// orphaned pool work we must immediately rebuild demand and sync once
 		// more so replacement session beads can be materialized in this run.
 		dsResult = buildDesiredStateWithSessionBeadsAt(
+			startCtx,
 			cityName,
 			cityPath,
 			beaconTime,
@@ -1070,7 +1076,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 	mergeNamedSessionDemand(poolDesired, dsResult.NamedSessionDemand, cfg)
 	awakeAssignedWorkBeads, awakeAssignedStoreRefs := filterAssignedWorkBeadsForSessionWake(cfg, cityPath, oneShotStore, openInfos, dsResult.AssignedWorkBeads, dsResult.AssignedWorkStoreRefs)
 	reconcileSessionBeadsAtPathWithNamedDemand(
-		sigCtx, cityPath, sessionBeads.OpenForReconcile(), sessionBeads, ds, cfgNames, cfg, sp, sessStore,
+		startCtx, cityPath, sessionBeads.OpenForReconcile(), sessionBeads, ds, cfgNames, cfg, sp, sessStore,
 		nil, awakeAssignedWorkBeads, rigStores, nil, dt, nil, poolDesired,
 		dsResult.NamedSessionDemand,
 		dsResult.NamedSessionRoutedDemand,
@@ -1088,6 +1094,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		sessionBeads = nil
 	}
 	dsResult = buildDesiredStateWithSessionBeadsAt(
+		startCtx,
 		cityName,
 		cityPath,
 		beaconTime,
@@ -1501,11 +1508,12 @@ func agentCommandDir(cityPath string, a *config.Agent, rigs []config.Rig) string
 	return resolveAgentDirPath(cityPath, a.Dir)
 }
 
-// providerProcessPassthroughEnv returns non-GC process context that provider
-// sessions need to start reliably: user/home, provider auth/config, locale,
-// XDG, telemetry, and Claude nesting resets.
-func providerProcessPassthroughEnv() map[string]string {
-	return processenv.ProviderProcessPassthroughEnv()
+func providerProcessPassthroughEnvForResolvedProvider(resolved *config.ResolvedProvider) map[string]string {
+	m := processenv.ProviderProcessPassthroughEnv()
+	for key, val := range supervisorCredentialEnvForResolvedProvider(resolved) {
+		m[key] = val
+	}
+	return m
 }
 
 // controllerOnlyEnvKeys is processenv.ControllerOnlyEnvKeys in set form, so the
@@ -1530,19 +1538,21 @@ var controllerOnlyEnvKeys = func() map[string]bool {
 	return keys
 }()
 
-// passthroughEnv returns environment variables from the parent process that
-// agent sessions should inherit. Agents need PATH to find tools (including gc),
-// GC_BEADS/GC_DOLT so they use the same bead store as the parent,
-// GC_DOLT_HOST/PORT/USER/PASSWORD so agents can connect to remote Dolt servers,
-// and Claude auth/home context so managed sessions can launch reliably under
-// shell and supervisor-driven flows. The GC_ sweep is otherwise complete;
-// controllerOnlyEnvKeys is the one exclusion it applies, and those keys come
-// back pinned to the empty string rather than absent.
+// passthroughEnv returns non-secret environment variables from the parent
+// process that agent sessions should inherit. Agents need PATH to find tools
+// (including gc) and GC_ runtime context for the same bead store as the parent.
+// Secret values must enter through typed provider credential mappings; the GC_
+// sweep skips controller-only keys, known supervisor secrets, and configured
+// credential names.
 func passthroughEnv() map[string]string {
-	m := providerProcessPassthroughEnv()
+	return passthroughEnvForResolvedProvider(nil)
+}
+
+func passthroughEnvForResolvedProvider(resolved *config.ResolvedProvider) map[string]string {
+	m := providerProcessPassthroughEnvForResolvedProvider(resolved)
 	for _, entry := range os.Environ() {
 		key, val, ok := strings.Cut(entry, "=")
-		if !ok || val == "" || !strings.HasPrefix(key, "GC_") || controllerOnlyEnvKeys[key] {
+		if !ok || val == "" || !strings.HasPrefix(key, "GC_") || controllerOnlyEnvKeys[key] || supervisorServiceSensitiveEnvKeys[key] || supervisorCredentialEnvNameConfigured(key) {
 			continue
 		}
 		m[key] = val
@@ -1556,12 +1566,88 @@ func passthroughEnv() map[string]string {
 // here, so no config-authored value can copy one into a session under another
 // name.
 func expandEnvMap(m map[string]string) map[string]string {
+	return expandEnvMapForResolvedProvider(m, nil)
+}
+
+func expandEnvMapForResolvedProvider(m map[string]string, resolved *config.ResolvedProvider) map[string]string {
 	if m == nil {
 		return nil
 	}
 	out := make(map[string]string, len(m))
 	for k, v := range m {
-		out[k] = processenv.ExpandSessionEnvValue(v)
+		out[k] = expandSessionEnvValueForResolvedProvider(v, resolved)
+	}
+	return out
+}
+
+func expandSessionEnvValueForResolvedProvider(value string, resolved *config.ResolvedProvider) string {
+	return os.Expand(value, func(key string) string {
+		for _, controllerOnly := range processenv.ControllerOnlyEnvKeys {
+			if key == controllerOnly {
+				return ""
+			}
+		}
+		if val, ok := supervisorCredentialValueForResolvedProvider(resolved, key); ok {
+			return val
+		}
+		if supervisorCredentialsActivated() && (supervisorCredentialEnvNameConfigured(key) || supervisorServiceSensitiveEnvKeys[key] || processenv.IsProviderCredentialEnv(key)) {
+			return ""
+		}
+		return os.Getenv(key)
+	})
+}
+
+func expandUpstreamEnvValueForResolvedProvider(value string, resolved *config.ResolvedProvider) (string, error) {
+	var missing []string
+	expanded := os.Expand(value, func(key string) string {
+		for _, controllerOnly := range processenv.ControllerOnlyEnvKeys {
+			if key == controllerOnly {
+				return ""
+			}
+		}
+		if val, ok := supervisorCredentialValueForResolvedProvider(resolved, key); ok {
+			return val
+		}
+		if supervisorCredentialsActivated() && (supervisorCredentialEnvNameConfigured(key) || supervisorServiceSensitiveEnvKeys[key] || processenv.IsProviderCredentialEnv(key)) {
+			missing = append(missing, key)
+			return ""
+		}
+		return os.Getenv(key)
+	})
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return "", fmt.Errorf("no encrypted supervisor credential mapping for %s on provider %q", strings.Join(dedupeStrings(missing), ","), resolvedProviderName(resolved))
+	}
+	return expanded, nil
+}
+
+func expandUpstreamEnvMapForResolvedProvider(m map[string]string, resolved *config.ResolvedProvider) (map[string]string, error) {
+	if m == nil {
+		return nil, nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		expanded, err := expandUpstreamEnvValueForResolvedProvider(v, resolved)
+		if err != nil {
+			return nil, fmt.Errorf("expanding upstream env %q: %w", k, err)
+		}
+		out[k] = expanded
+	}
+	return out, nil
+}
+
+func dedupeStrings(values []string) []string {
+	if len(values) < 2 {
+		return values
+	}
+	out := values[:0]
+	var prev string
+	for i, value := range values {
+		if i > 0 && value == prev {
+			continue
+		}
+		out = append(out, value)
+		prev = value
 	}
 	return out
 }

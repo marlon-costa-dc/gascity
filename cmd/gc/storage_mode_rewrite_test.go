@@ -2,12 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/doctor"
@@ -409,12 +409,8 @@ func TestAdoptingAFreshlyInitializedWorkspaceStillReads(t *testing.T) {
 	var readNotices bytes.Buffer
 	store := beads.NewBdStore(scope, emptyBdRunner, beads.WithBdStoreNoticeSink(&readNotices))
 	// The readiness gate `gc rig add` and `gc start` block adoption on.
-	slept := 0
-	if err := verifyCanonicalBdScopeStoreReady(store, func(time.Duration) { slept++ }); err != nil {
+	if err := verifyCanonicalBdScopeStoreReady(context.Background(), store); err != nil {
 		t.Fatalf("verifyCanonicalBdScopeStoreReady = %v, want nil: a rig with no beads yet is not a broken rig", err)
-	}
-	if slept != 0 {
-		t.Fatalf("adoption slept %d time(s) before succeeding; the gate must pass on the first attempt", slept)
 	}
 	if got, err := store.Ready(); err != nil || len(got) != 0 {
 		t.Fatalf("Ready = (%d beads, %v), want (0, nil)", len(got), err)

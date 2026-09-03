@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -353,6 +354,7 @@ func evaluatePendingPoolsMap(
 // when rigStores is missing, they report zero new demand plus a diagnostic
 // rather than counting work from the wrong store.
 func buildDesiredState(
+	ctx context.Context,
 	cityName, cityPath string,
 	beaconTime time.Time,
 	cfg *config.City,
@@ -372,6 +374,7 @@ func buildDesiredState(
 	}
 	poolDecisionTime := time.Now()
 	result := buildDesiredStateWithSessionBeadsAt(
+		ctx,
 		cityName,
 		cityPath,
 		beaconTime,
@@ -404,6 +407,7 @@ func recordDemandSubPhase(trace *sessionReconcilerTraceCycle, name string, start
 }
 
 func buildDesiredStateWithSessionBeads(
+	ctx context.Context,
 	cityName, cityPath string,
 	beaconTime time.Time,
 	cfg *config.City,
@@ -415,6 +419,7 @@ func buildDesiredStateWithSessionBeads(
 	stderr io.Writer,
 ) DesiredStateResult {
 	return buildDesiredStateWithSessionBeadsAt(
+		ctx,
 		cityName,
 		cityPath,
 		beaconTime,
@@ -430,6 +435,7 @@ func buildDesiredStateWithSessionBeads(
 }
 
 func buildDesiredStateWithSessionBeadsAt(
+	ctx context.Context,
 	cityName, cityPath string,
 	beaconTime, poolDecisionTime time.Time,
 	cfg *config.City,
@@ -445,7 +451,7 @@ func buildDesiredStateWithSessionBeadsAt(
 		return DesiredStateResult{}
 	}
 
-	bp := newAgentBuildParams(cityName, cityPath, cfg, sp, beaconTime, store, stderr)
+	bp := newAgentBuildParams(ctx, cityName, cityPath, cfg, sp, beaconTime, store, stderr)
 	bp.sessionBeads = sessionBeads
 	bp.sessionSnapshotCompletenessKnown = true
 	bp.sessionSnapshotComplete = store == nil || (sessionBeads != nil && sessionBeads.LoadError() == nil)
@@ -732,7 +738,7 @@ func buildDesiredStateWithSessionBeadsAt(
 			}
 			coldWakeTemplates[template] = true
 		}
-		env, err := controllerQueryRuntimeEnv(cityPath, cfg, &cfg.Agents[i])
+		env, err := controllerQueryRuntimeEnv(ctx, cityPath, cfg, &cfg.Agents[i])
 		if err != nil {
 			fmt.Fprintf(stderr, "scaleCheck: building env for %s: %v\n", cfg.Agents[i].QualifiedName(), err) //nolint:errcheck
 			continue
@@ -1370,6 +1376,7 @@ func applySessionBeadDesiredOverlay(
 }
 
 func refreshDesiredStateWithSessionBeads(
+	ctx context.Context,
 	result DesiredStateResult,
 	cityName, cityPath string,
 	cfg *config.City,
@@ -1392,7 +1399,7 @@ func refreshDesiredStateWithSessionBeads(
 		refreshed.State = make(map[string]TemplateParams)
 	}
 
-	bp := newAgentBuildParams(cityName, cityPath, cfg, sp, result.BeaconTime, store, stderr)
+	bp := newAgentBuildParams(ctx, cityName, cityPath, cfg, sp, result.BeaconTime, store, stderr)
 	bp.sessionBeads = sessionBeads
 	bp.sessionSnapshotCompletenessKnown = true
 	bp.sessionSnapshotComplete = false

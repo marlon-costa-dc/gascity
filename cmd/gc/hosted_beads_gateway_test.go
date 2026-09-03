@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -137,9 +138,8 @@ func TestOverlayEnvEntriesPreservesHostedBeadsCredentialEnv(t *testing.T) {
 // post-init catalog check short-circuits for an external/hosted dolt endpoint.
 // A per-tenant beads-gateway scopes each connection to its own project DB and
 // denies the SHOW DATABASES listing this guard relies on, so the managed-catalog
-// lister must never run. The test plants a resolvable managed port so that,
-// without the external short-circuit, verify would reach (and fail at) the
-// lister — making the assertion bite if the guard regresses.
+// lister must never run. Without the external short-circuit, the managed-city
+// missing-port branch fails before any catalog lookup.
 func TestVerifyManagedDoltDatabaseExistsAfterInitSkipsExternalDolt(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	for _, k := range []string{"GC_DOLT_HOST", "GC_DOLT_PORT", "GC_DOLT_USER", "GC_DOLT_PASSWORD"} {
@@ -162,29 +162,22 @@ dolt.user: orchestrator
 		t.Fatal(err)
 	}
 
-	// Make currentResolvableManagedDoltPort resolve a real port via the provider
-	// managed-dolt state fallback.
-	writeReachableProviderManagedDoltState(t, cityPath)
-
-	if !isExternalDolt(cityPath) {
+	if !isExternalDolt(context.Background(), cityPath) {
 		t.Fatalf("precondition: expected isExternalDolt(cityPath)=true for a canonical external config")
 	}
 	if !cityUsesBdStoreContract(cityPath) {
 		t.Fatalf("precondition: expected cityUsesBdStoreContract(cityPath)=true for the default bd provider")
 	}
-	if port := currentResolvableManagedDoltPort(cityPath); port == "" {
-		t.Fatalf("precondition: expected a resolvable managed port so the guard regression would be observable")
-	}
 
 	orig := managedDoltListUserDatabasesAfterInit
 	t.Cleanup(func() { managedDoltListUserDatabasesAfterInit = orig })
 	called := false
-	managedDoltListUserDatabasesAfterInit = func(string) ([]string, error) {
+	managedDoltListUserDatabasesAfterInit = func(context.Context, string) ([]string, error) {
 		called = true
 		return nil, fmt.Errorf("managed-catalog lister must not run for an external dolt endpoint")
 	}
 
-	if err := verifyManagedDoltDatabaseExistsAfterInit(cityPath, cityPath, "bd_prj_47890a40d5bee1d9"); err != nil {
+	if err := verifyManagedDoltDatabaseExistsAfterInit(context.Background(), cityPath, cityPath, "bd_prj_47890a40d5bee1d9"); err != nil {
 		t.Fatalf("verifyManagedDoltDatabaseExistsAfterInit() for external dolt = %v, want nil", err)
 	}
 	if called {
@@ -233,7 +226,7 @@ dolt.user: orchestrator
 		t.Fatalf("precondition: expected cityUsesBdStoreContract(cityPath)=true for the default bd provider")
 	}
 
-	env, err := cityRuntimeProcessEnvWithError(cityPath)
+	env, err := cityRuntimeProcessEnvWithError(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("cityRuntimeProcessEnvWithError() error = %v", err)
 	}

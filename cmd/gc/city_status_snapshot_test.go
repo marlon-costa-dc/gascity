@@ -216,7 +216,7 @@ func TestLoadStatusSessionSnapshotKillsBdChildOnTimeout(t *testing.T) {
 		"wait\n")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	realStore := bdStoreForCity(cityDir, cityDir)
+	realStore := bdStoreForCity(context.Background(), cityDir, cityDir)
 
 	var stderr bytes.Buffer
 	start := time.Now()
@@ -495,7 +495,7 @@ func TestCityStatusUsesStatusSnapshotToRouteACPDrainMetadata(t *testing.T) {
 		Session:   config.SessionConfig{Provider: "fake"},
 		Agents:    []config.Agent{{Name: "reviewer", Session: "acp", MaxActiveSessions: intPtr(1)}},
 	}
-	sp, err := newStatusSessionProviderForCity(cfg, t.TempDir())
+	sp, err := newStatusSessionProviderForCity(context.Background(), cfg, t.TempDir())
 	if err != nil {
 		t.Fatalf("newStatusSessionProviderForCity: %v", err)
 	}

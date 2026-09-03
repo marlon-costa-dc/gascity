@@ -48,6 +48,7 @@ func TestInstallSupervisorSystemdBinaryMismatchGuard(t *testing.T) {
 			t.Setenv("HOME", homeDir)
 			t.Setenv("GC_HOME", gcHome)
 			setSupervisorInstallForceForTest(t, tc.force)
+			stubSupervisorSystemctlShowEnvironment(t)
 
 			data := supervisorInstallGuardServiceData(gcHome, currentBinary)
 			unitPath := supervisorSystemdServicePath()
