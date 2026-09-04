@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -36,12 +37,12 @@ func (s executionEmitWorkStore) Get(id string) (beads.Bead, error) {
 // resolve launch beads across the city's convoy stores (city + per-rig). The
 // resolver probes every candidate and refuses ambiguous ids, so a bead id
 // present in more than one store never anchors to a guessed row.
-func executionEmitStore(store beads.Store, cityPath string) beads.Store {
+func executionEmitStore(ctx context.Context, store beads.Store, cityPath string) beads.Store {
 	if store == nil || strings.TrimSpace(cityPath) == "" {
 		return store
 	}
 	return executionEmitWorkStore{Store: store, resolveOwning: func(id string) (beads.Store, bool) {
-		owning, _, ok := autocloseOwningStore(id, cityPath)
+		owning, _, ok := autocloseOwningStore(ctx, id, cityPath)
 		return owning, ok
 	}}
 }

@@ -92,7 +92,7 @@ func assertRigAddArtifactsIdentical(t *testing.T, cityToml string, wantPacksLock
 	if gitBranch != "" {
 		gitInitWithOriginHead(t, rigA, gitBranch)
 	}
-	if _, code := doRigAddWithResult(fsys.OSFS{}, cityA, rigA, nil, "", "", "", false, false, io.Discard, io.Discard); code != 0 {
+	if _, code := doRigAddWithResult(context.Background(), fsys.OSFS{}, cityA, rigA, nil, "", "", "", false, false, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("CLI doRigAddWithResult returned non-zero code %d", code)
 	}
 

@@ -26,8 +26,8 @@ the fresh restart.
 
 Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionReset(args, stdout, stderr, jsonOutput) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionReset(cmd.Context(), args, stdout, stderr, jsonOutput) != 0 {
 				return errExit
 			}
 			return nil
@@ -43,9 +43,9 @@ Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 // This command intentionally requires a managed controller. The controller owns
 // the fresh restart lifecycle, including key rotation and immediate restart of
 // already-desired sessions.
-func cmdSessionReset(args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
+func cmdSessionReset(ctx context.Context, args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
 	asJSON := sessionJSONRequested(jsonOutput)
-	store, code := openCityStore(stderr, "gc session reset")
+	store, code := openCityStore(ctx, stderr, "gc session reset")
 	if store == nil {
 		return code
 	}
@@ -76,7 +76,7 @@ func cmdSessionReset(args []string, stdout, stderr io.Writer, jsonOutput ...bool
 		return 1
 	}
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session reset: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1

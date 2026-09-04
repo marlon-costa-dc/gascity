@@ -104,7 +104,7 @@ func TestApplyGraphRouting_LegacyStampsRoutedTo(t *testing.T) {
 		},
 	}
 	a := config.Agent{Name: "worker", MaxActiveSessions: intPtr(1)}
-	err := ApplyGraphRouting(r, &a, "worker", nil, "", "", "", "", nil, "city", &config.City{}, Deps{})
+	err := ApplyGraphRouting(context.Background(), r, &a, "worker", nil, "", "", "", "", nil, "city", &config.City{}, Deps{})
 	if err != nil {
 		t.Fatalf("unexpected error for legacy recipe: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestApplyGraphRouting_LegacyNilAgent(t *testing.T) {
 			{ID: "mol-legacy.step1", Metadata: map[string]string{}},
 		},
 	}
-	err := ApplyGraphRouting(r, nil, "worker", nil, "", "", "", "", nil, "city", &config.City{}, Deps{})
+	err := ApplyGraphRouting(context.Background(), r, nil, "worker", nil, "", "", "", "", nil, "city", &config.City{}, Deps{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestApplyGraphRouting_LegacyAttachmentKeepsRoutingOnSourceBeadOnly(t *testi
 		},
 	}
 	a := config.Agent{Name: "worker", MaxActiveSessions: intPtr(1)}
-	err := ApplyGraphRouting(r, &a, "worker", nil, "source-1", "", "", "", nil, "city", &config.City{}, Deps{})
+	err := ApplyGraphRouting(context.Background(), r, &a, "worker", nil, "source-1", "", "", "", nil, "city", &config.City{}, Deps{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestApplyGraphRouting_LegacyNilCfg(t *testing.T) {
 			{ID: "step1", Metadata: map[string]string{}},
 		},
 	}
-	err := ApplyGraphRouting(r, nil, "worker", nil, "", "", "", "", nil, "city", nil, Deps{})
+	err := ApplyGraphRouting(context.Background(), r, nil, "worker", nil, "", "", "", "", nil, "city", nil, Deps{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestApplyGraphRouting_LegacyOverwritesExistingRouting(t *testing.T) {
 		},
 	}
 	a := config.Agent{Name: "worker", MaxActiveSessions: intPtr(1)}
-	err := ApplyGraphRouting(r, &a, "worker", nil, "", "", "", "", nil, "city", &config.City{}, Deps{})
+	err := ApplyGraphRouting(context.Background(), r, &a, "worker", nil, "", "", "", "", nil, "city", &config.City{}, Deps{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestApplyGraphRouting_LegacySkipsWorkflowKinds(t *testing.T) {
 		},
 	}
 	a := config.Agent{Name: "worker", MaxActiveSessions: intPtr(1)}
-	err := ApplyGraphRouting(r, &a, "worker", nil, "", "", "", "", nil, "city", &config.City{}, Deps{})
+	err := ApplyGraphRouting(context.Background(), r, &a, "worker", nil, "", "", "", "", nil, "city", &config.City{}, Deps{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestDecorateGraphWorkflowRecipe_SetsRootMetadata(t *testing.T) {
 		},
 	}
 	deps := Deps{Resolver: testAgentResolver{}}
-	err := DecorateGraphWorkflowRecipe(r, nil, "src-1", "city", "test-city", "city:test", "mayor", "test--mayor", nil, "test-city", cfg, deps)
+	err := DecorateGraphWorkflowRecipe(context.Background(), r, nil, "src-1", "city", "test-city", "city:test", "mayor", "test--mayor", nil, "test-city", cfg, deps)
 	if err != nil {
 		t.Fatalf("DecorateGraphWorkflowRecipe: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestDecorateGraphWorkflowRecipe_ControlRouteUsesOwningStoreScope(t *testing
 		},
 	}
 
-	err := DecorateGraphWorkflowRecipe(
+	err := DecorateGraphWorkflowRecipe(context.Background(),
 		recipe,
 		nil,
 		"",
@@ -372,7 +372,7 @@ func TestDecorateGraphWorkflowRecipe_OwningStoreDoesNotRetargetExplicitWorkerSte
 		},
 	}
 
-	err := DecorateGraphWorkflowRecipe(
+	err := DecorateGraphWorkflowRecipe(context.Background(),
 		recipe,
 		nil,
 		"",
@@ -424,7 +424,7 @@ func TestDecorateGraphWorkflowRecipe_RootStampsRoutedToForClaim(t *testing.T) {
 		},
 	}
 	deps := Deps{Resolver: testAgentResolver{}}
-	if err := DecorateGraphWorkflowRecipe(r, nil, "src-1", "city", "test-city", "city:test", "mayor", "test--mayor", nil, "test-city", cfg, deps); err != nil {
+	if err := DecorateGraphWorkflowRecipe(context.Background(), r, nil, "src-1", "city", "test-city", "city:test", "mayor", "test--mayor", nil, "test-city", cfg, deps); err != nil {
 		t.Fatalf("DecorateGraphWorkflowRecipe: %v", err)
 	}
 	root := r.Steps[0]
@@ -434,7 +434,7 @@ func TestDecorateGraphWorkflowRecipe_RootStampsRoutedToForClaim(t *testing.T) {
 }
 
 func TestDecorateGraphWorkflowRecipe_NilRecipe(t *testing.T) {
-	err := DecorateGraphWorkflowRecipe(nil, nil, "", "", "", "", "", "", nil, "", nil, Deps{})
+	err := DecorateGraphWorkflowRecipe(context.Background(), nil, nil, "", "", "", "", "", "", nil, "", nil, Deps{})
 	if err == nil {
 		t.Error("expected error for nil recipe")
 	}
@@ -494,7 +494,7 @@ on_exhausted = "hard_fail"
 	}}
 	deps := Deps{Resolver: testAgentResolver{}}
 	a := cfg.Agents[0]
-	err = ApplyGraphRouting(recipe, &a, a.QualifiedName(), nil, "", "", "", "", nil, "test-city", cfg, deps)
+	err = ApplyGraphRouting(context.Background(), recipe, &a, a.QualifiedName(), nil, "", "", "", "", nil, "test-city", cfg, deps)
 	if err != nil {
 		t.Fatalf("ApplyGraphRouting: %v", err)
 	}
@@ -620,7 +620,7 @@ func TestResolveGraphStepBinding_CycleDetection(t *testing.T) {
 	resolving := make(map[string]bool)
 	fallback := GraphRouteBinding{QualifiedName: "default"}
 
-	_, err := ResolveGraphStepBinding("A", stepByID, nil, depsByStep, cache, resolving, fallback, "", nil, "", nil, Deps{})
+	_, err := ResolveGraphStepBinding(context.Background(), "A", stepByID, nil, depsByStep, cache, resolving, fallback, "", nil, "", nil, Deps{})
 	if err == nil {
 		t.Error("expected cycle detection error")
 	}
@@ -646,7 +646,7 @@ func TestResolveGraphStepBinding_AssigneeTemplateTargetRejected(t *testing.T) {
 	cache := make(map[string]GraphRouteBinding)
 	resolving := make(map[string]bool)
 
-	_, err := ResolveGraphStepBinding("demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", beads.NewMemStore(), cfg.Workspace.Name, cfg, Deps{Resolver: testAgentResolver{}})
+	_, err := ResolveGraphStepBinding(context.Background(), "demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", beads.NewMemStore(), cfg.Workspace.Name, cfg, Deps{Resolver: testAgentResolver{}})
 	if err == nil {
 		t.Fatal("ResolveGraphStepBinding unexpectedly succeeded for template assignee")
 	}
@@ -683,12 +683,12 @@ func TestResolveGraphStepBinding_AssigneeDirectResolverBeatsTemplateTarget(t *te
 	cache := make(map[string]GraphRouteBinding)
 	resolving := make(map[string]bool)
 	called := false
-	direct := func(beads.Store, string, string, *config.City, string, string) (string, bool, error) {
+	direct := func(context.Context, beads.Store, string, string, *config.City, string, string) (string, bool, error) {
 		called = true
 		return "materialized-worker", true, nil
 	}
 
-	binding, err := ResolveGraphStepBinding("demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", store, cfg.Workspace.Name, cfg, Deps{
+	binding, err := ResolveGraphStepBinding(context.Background(), "demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", store, cfg.Workspace.Name, cfg, Deps{
 		Resolver:              testAgentResolver{},
 		DirectSessionResolver: direct,
 	})
@@ -732,7 +732,7 @@ func TestResolveGraphStepBinding_AssigneeConcreteSessionBeatsTemplateCollision(t
 	cache := make(map[string]GraphRouteBinding)
 	resolving := make(map[string]bool)
 
-	binding, err := ResolveGraphStepBinding("demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", store, cfg.Workspace.Name, cfg, Deps{Resolver: testAgentResolver{}})
+	binding, err := ResolveGraphStepBinding(context.Background(), "demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", store, cfg.Workspace.Name, cfg, Deps{Resolver: testAgentResolver{}})
 	if err != nil {
 		t.Fatalf("ResolveGraphStepBinding: %v", err)
 	}
@@ -763,7 +763,7 @@ func TestResolveGraphStepBinding_CanonicalSingletonPoolUsesMetadataOnlyRoute(t *
 	cache := make(map[string]GraphRouteBinding)
 	resolving := make(map[string]bool)
 
-	binding, err := ResolveGraphStepBinding("demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", beads.NewMemStore(), cfg.Workspace.Name, cfg, Deps{Resolver: testAgentResolver{}})
+	binding, err := ResolveGraphStepBinding(context.Background(), "demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", beads.NewMemStore(), cfg.Workspace.Name, cfg, Deps{Resolver: testAgentResolver{}})
 	if err != nil {
 		t.Fatalf("ResolveGraphStepBinding: %v", err)
 	}
@@ -800,7 +800,7 @@ func TestResolveGraphStepBinding_CanonicalSingletonPoolIgnoresMissingSessionName
 	cache := make(map[string]GraphRouteBinding)
 	resolving := make(map[string]bool)
 
-	binding, err := ResolveGraphStepBinding("demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", beads.NewMemStore(), cfg.Workspace.Name, cfg, Deps{Resolver: testAgentResolver{}})
+	binding, err := ResolveGraphStepBinding(context.Background(), "demo.work", stepByID, nil, nil, cache, resolving, GraphRouteBinding{}, "frontend", beads.NewMemStore(), cfg.Workspace.Name, cfg, Deps{Resolver: testAgentResolver{}})
 	if err != nil {
 		t.Fatalf("ResolveGraphStepBinding: %v", err)
 	}
@@ -1222,7 +1222,7 @@ func TestDecorateGraphWorkflowRecipe_PoolContinuationGroupOptIn(t *testing.T) {
 		},
 	}
 
-	err := DecorateGraphWorkflowRecipe(
+	err := DecorateGraphWorkflowRecipe(context.Background(),
 		recipe, nil, "", "city", "test-city", "city:test",
 		"polecat", "", nil, "test-city", cfg, Deps{Resolver: testAgentResolver{}},
 	)

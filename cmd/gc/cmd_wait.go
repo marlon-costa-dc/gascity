@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -115,8 +116,8 @@ func newSessionWaitCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "wait [session-id-or-alias]",
 		Short: "Register a dependency wait for a session",
 		Args:  cobra.MaximumNArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionWait(args, depIDs, matchAny, note, sleep, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionWait(cmd.Context(), args, depIDs, matchAny, note, sleep, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -137,8 +138,8 @@ func newWaitListCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List durable waits",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if cmdWaitList(stateFilter, sessionFilter, jsonOutput, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmdWaitList(cmd.Context(), stateFilter, sessionFilter, jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -156,8 +157,8 @@ func newWaitInspectCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "inspect <wait-id>",
 		Short: "Show details for a wait",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdWaitInspect(args[0], jsonOutput, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdWaitInspect(cmd.Context(), args[0], jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -173,9 +174,9 @@ func newWaitCancelCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "cancel <wait-id>",
 		Short: "Cancel a wait",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonOutput {
-				result, code := cmdWaitSetStateResult(args[0], waitStateCanceled, io.Discard, stderr)
+				result, code := cmdWaitSetStateResult(cmd.Context(), args[0], waitStateCanceled, io.Discard, stderr)
 				if code != 0 {
 					return errExit
 				}
@@ -186,7 +187,7 @@ func newWaitCancelCmd(stdout, stderr io.Writer) *cobra.Command {
 					State:   waitStateCanceled,
 				})
 			}
-			if cmdWaitSetState(args[0], waitStateCanceled, stdout, stderr) != 0 {
+			if cmdWaitSetState(cmd.Context(), args[0], waitStateCanceled, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -202,9 +203,9 @@ func newWaitReadyCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "ready <wait-id>",
 		Short: "Manually mark a wait ready",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonOutput {
-				result, code := cmdWaitSetStateResult(args[0], waitStateReady, io.Discard, stderr)
+				result, code := cmdWaitSetStateResult(cmd.Context(), args[0], waitStateReady, io.Discard, stderr)
 				if code != 0 {
 					return errExit
 				}
@@ -221,7 +222,7 @@ func newWaitReadyCmd(stdout, stderr io.Writer) *cobra.Command {
 				}
 				return writeManagementActionJSON(stdout, payload)
 			}
-			if cmdWaitSetState(args[0], waitStateReady, stdout, stderr) != 0 {
+			if cmdWaitSetState(cmd.Context(), args[0], waitStateReady, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -231,7 +232,7 @@ func newWaitReadyCmd(stdout, stderr io.Writer) *cobra.Command {
 	return cmd
 }
 
-func cmdSessionWait(args, depIDs []string, matchAny bool, note string, sleep bool, stdout, stderr io.Writer) int {
+func cmdSessionWait(ctx context.Context, args, depIDs []string, matchAny bool, note string, sleep bool, stdout, stderr io.Writer) int {
 	if len(depIDs) == 0 {
 		fmt.Fprintln(stderr, "gc session wait: at least one --on-beads value is required") //nolint:errcheck
 		return 1
@@ -240,7 +241,7 @@ func cmdSessionWait(args, depIDs []string, matchAny bool, note string, sleep boo
 		fmt.Fprintln(stderr, "gc session wait: --note is required") //nolint:errcheck
 		return 1
 	}
-	store, code := openCityStore(stderr, "gc session wait")
+	store, code := openCityStore(ctx, stderr, "gc session wait")
 	if store == nil {
 		return code
 	}
@@ -280,7 +281,7 @@ func cmdSessionWait(args, depIDs []string, matchAny bool, note string, sleep boo
 		return 1
 	}
 	dependencies := waitDependencyReaderFunc(func(depID string) (beads.Bead, error) {
-		return loadWaitDependencyBead(cityPath, store, depID)
+		return loadWaitDependencyBead(ctx, cityPath, store, depID)
 	})
 	return doSessionWait(sessionID, depIDs, matchAny, note, sleep, stdout, stderr, sessionWaitDeps{
 		sessions:         sessFront,
@@ -357,9 +358,9 @@ func doSessionWait(sessionID string, depIDs []string, matchAny bool, note string
 	return 0
 }
 
-func cmdWaitList(stateFilter, sessionFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdWaitList(ctx context.Context, stateFilter, sessionFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
 	return routeReadCmd("wait list", stderr, waitListAPIClient, func(cityPath string, c *api.Client, nilReason string) int {
-		return routeWaitList(cityPath, c, nilReason, stateFilter, sessionFilter, jsonOutput, stdout, stderr)
+		return routeWaitList(ctx, cityPath, c, nilReason, stateFilter, sessionFilter, jsonOutput, stdout, stderr)
 	})
 }
 
@@ -379,7 +380,7 @@ var waitListAPIClient = func(cityPath string) (*api.Client, string) {
 // generic-beads leg when an old server lacks that route (rung 2), and the local
 // store leg for connection/cache errors (rung 3). Exactly one route=... line per
 // exit path (gated on GC_DEBUG).
-func routeWaitList(cityPath string, c *api.Client, nilReason, stateFilter, sessionFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
+func routeWaitList(ctx context.Context, cityPath string, c *api.Client, nilReason, stateFilter, sessionFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
 	const cmdName = "wait list"
 	if c != nil {
 		cr, err := c.ListWaits(stateFilter, sessionFilter)
@@ -408,7 +409,7 @@ func routeWaitList(cityPath string, c *api.Client, nilReason, stateFilter, sessi
 	} else {
 		logRoute(stderr, cmdName, "fallback", nilReason)
 	}
-	return doWaitListFallback(cityPath, stateFilter, sessionFilter, jsonOutput, stdout, stderr)
+	return doWaitListFallback(ctx, cityPath, stateFilter, sessionFilter, jsonOutput, stdout, stderr)
 }
 
 // emitWaitListPartialNotice surfaces a degraded (partial) wait read on stderr
@@ -444,8 +445,8 @@ func renderWaitList(cityPath string, waits []sessionpkg.WaitInfo, ageSeconds flo
 	return 0
 }
 
-func doWaitListFallback(cityPath, stateFilter, sessionFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
-	store, err := openStoreAtForCity(cityPath, cityPath)
+func doWaitListFallback(ctx context.Context, cityPath, stateFilter, sessionFilter string, jsonOutput bool, stdout, stderr io.Writer) int {
+	store, err := openStoreAtForCity(ctx, cityPath, cityPath)
 	if err != nil {
 		if jsonOutput {
 			return writeJSONError(stdout, stderr, "store_open_failed", fmt.Sprintf("gc wait list: %v", err), 1)
@@ -520,9 +521,9 @@ func writeWaitListTable(items []sessionpkg.WaitInfo, stdout io.Writer) {
 	_ = tw.Flush()
 }
 
-func cmdWaitInspect(waitID string, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdWaitInspect(ctx context.Context, waitID string, jsonOutput bool, stdout, stderr io.Writer) int {
 	return routeReadCmd("wait inspect", stderr, waitInspectAPIClient, func(cityPath string, c *api.Client, nilReason string) int {
-		return routeWaitInspect(cityPath, c, nilReason, waitID, jsonOutput, stdout, stderr)
+		return routeWaitInspect(ctx, cityPath, c, nilReason, waitID, jsonOutput, stdout, stderr)
 	})
 }
 
@@ -537,7 +538,7 @@ var waitInspectAPIClient = func(cityPath string) (*api.Client, string) {
 // API and falls back to a direct store lookup otherwise. Three-rung ladder like
 // routeWaitList; a not-a-wait answer (from either the typed not_a_wait 404 or a
 // legacy IsWaitBead rejection) is definitive and never triggers a fallback.
-func routeWaitInspect(cityPath string, c *api.Client, nilReason, waitID string, jsonOutput bool, stdout, stderr io.Writer) int {
+func routeWaitInspect(ctx context.Context, cityPath string, c *api.Client, nilReason, waitID string, jsonOutput bool, stdout, stderr io.Writer) int {
 	const cmdName = "wait inspect"
 	if c != nil {
 		cr, err := c.GetWait(waitID)
@@ -573,7 +574,7 @@ func routeWaitInspect(cityPath string, c *api.Client, nilReason, waitID string, 
 	} else {
 		logRoute(stderr, cmdName, "fallback", nilReason)
 	}
-	return doWaitInspectFallback(cityPath, waitID, jsonOutput, stdout, stderr)
+	return doWaitInspectFallback(ctx, cityPath, waitID, jsonOutput, stdout, stderr)
 }
 
 func renderWaitInspect(cityPath string, wait sessionpkg.WaitInfo, ageSeconds float64, jsonOutput bool, stdout, stderr io.Writer) int {
@@ -587,8 +588,8 @@ func renderWaitInspect(cityPath string, wait sessionpkg.WaitInfo, ageSeconds flo
 	return 0
 }
 
-func doWaitInspectFallback(cityPath, waitID string, jsonOutput bool, stdout, stderr io.Writer) int {
-	store, err := openStoreAtForCity(cityPath, cityPath)
+func doWaitInspectFallback(ctx context.Context, cityPath, waitID string, jsonOutput bool, stdout, stderr io.Writer) int {
+	store, err := openStoreAtForCity(ctx, cityPath, cityPath)
 	if err != nil {
 		if jsonOutput {
 			return writeJSONError(stdout, stderr, "store_open_failed", fmt.Sprintf("gc wait inspect: %v", err), 1)
@@ -704,14 +705,14 @@ func writeWaitInspectJSON(stdout, stderr io.Writer, cityPath string, wait sessio
 	return 0
 }
 
-func cmdWaitSetState(waitID, state string, stdout, stderr io.Writer) int {
-	_, code := cmdWaitSetStateResult(waitID, state, stdout, stderr)
+func cmdWaitSetState(ctx context.Context, waitID, state string, stdout, stderr io.Writer) int {
+	_, code := cmdWaitSetStateResult(ctx, waitID, state, stdout, stderr)
 	return code
 }
 
-func cmdWaitSetStateResult(waitID, state string, stdout, stderr io.Writer) (waitSetStateResult, int) {
+func cmdWaitSetStateResult(ctx context.Context, waitID, state string, stdout, stderr io.Writer) (waitSetStateResult, int) {
 	result := waitSetStateResult{WaitID: waitID}
-	store, cityPath, code := openCityStoreWithPath(stderr, "gc wait")
+	store, cityPath, code := openCityStoreWithPath(ctx, stderr, "gc wait")
 	if store == nil {
 		return result, code
 	}
@@ -775,7 +776,7 @@ func cmdWaitSetStateResult(waitID, state string, stdout, stderr io.Writer) (wait
 	}
 	if state == waitStateCanceled {
 		if cityPath, err := resolveCity(); err == nil {
-			if err := withdrawQueuedWaitNudges(cityPath, []string{w.NudgeID}); err != nil {
+			if err := withdrawQueuedWaitNudges(ctx, cityPath, []string{w.NudgeID}); err != nil {
 				fmt.Fprintf(stderr, "gc wait: withdrawing queued nudge: %v\n", err) //nolint:errcheck
 				return result, 1
 			}
@@ -950,7 +951,7 @@ func depsWaitReadyDetailedFrom(dependencies waitDependencyReader, wait sessionpk
 	return closedCount == len(depIDs), nil
 }
 
-func loadWaitDependencyBead(cityPath string, cityStore beads.Store, depID string) (beads.Bead, error) {
+func loadWaitDependencyBead(ctx context.Context, cityPath string, cityStore beads.Store, depID string) (beads.Bead, error) {
 	if strings.TrimSpace(cityPath) == "" {
 		if cityStore == nil {
 			return beads.Bead{}, beads.ErrNotFound
@@ -981,7 +982,7 @@ func loadWaitDependencyBead(cityPath string, cityStore beads.Store, depID string
 			}
 			continue
 		}
-		scopeStore, err := openStoreAtForCity(scopeRoot, cityPath)
+		scopeStore, err := openStoreAtForCity(ctx, scopeRoot, cityPath)
 		if err != nil {
 			continue
 		}
@@ -996,11 +997,11 @@ func loadWaitDependencyBead(cityPath string, cityStore beads.Store, depID string
 	return beads.Bead{}, beads.ErrNotFound
 }
 
-func prepareWaitWakeState(store beads.Store, now time.Time) (map[string]bool, error) {
-	return prepareWaitWakeStateForCity("", store, now)
+func prepareWaitWakeState(ctx context.Context, store beads.Store, now time.Time) (map[string]bool, error) {
+	return prepareWaitWakeStateForCity(ctx, "", store, now)
 }
 
-func prepareWaitWakeStateForCity(cityPath string, store beads.Store, now time.Time) (map[string]bool, error) {
+func prepareWaitWakeStateForCity(ctx context.Context, cityPath string, store beads.Store, now time.Time) (map[string]bool, error) {
 	// Single-store wrapper: fan the one work store into every class param so the
 	// ~22 existing test call sites stay untouched. Route the session arm through
 	// the session coordination-class store (via cliSessionFrontDoor) so a
@@ -1011,7 +1012,7 @@ func prepareWaitWakeStateForCity(cityPath string, store beads.Store, now time.Ti
 		cfg, _ = loadCityConfigWithoutBuiltinPackRefresh(cityPath, io.Discard)
 	}
 	dependencies := waitDependencyReaderFunc(func(depID string) (beads.Bead, error) {
-		return loadWaitDependencyBead(cityPath, store, depID)
+		return loadWaitDependencyBead(ctx, cityPath, store, depID)
 	})
 	return prepareWaitWakeStateWithSnapshot(cliSessionFrontDoor(store, cfg, cityPath), dependencies, cliNudgesStore(store, cfg, cityPath), now, nil)
 }
@@ -1145,7 +1146,7 @@ func lookupSessionBeadByIDInfo(sessFront *sessionpkg.Store, id string) (sessionp
 	return info, true, nil
 }
 
-func dispatchReadyWaitNudges(cityPath string, store beads.Store, _ runtime.Provider, now time.Time) error {
+func dispatchReadyWaitNudges(ctx context.Context, cityPath string, store beads.Store, _ runtime.Provider, now time.Time) error {
 	// Single-store wrapper: fan the one work store into the session and nudges
 	// class params so existing test call sites stay untouched. Both arms route
 	// through their coordination-class store (cliSessionFrontDoor, cliNudgesStore)
@@ -1155,10 +1156,10 @@ func dispatchReadyWaitNudges(cityPath string, store beads.Store, _ runtime.Provi
 	if strings.TrimSpace(cityPath) != "" {
 		cfg, _ = loadCityConfigWithoutBuiltinPackRefresh(cityPath, io.Discard)
 	}
-	return dispatchReadyWaitNudgesWithSnapshot(cityPath, cfg, cliSessionFrontDoor(store, cfg, cityPath), cliNudgesStore(store, cfg, cityPath), now, nil)
+	return dispatchReadyWaitNudgesWithSnapshot(ctx, cityPath, cfg, cliSessionFrontDoor(store, cfg, cityPath), cliNudgesStore(store, cfg, cityPath), now, nil)
 }
 
-func dispatchReadyWaitNudgesWithSnapshot(cityPath string, cfg *config.City, sessFront *sessionpkg.Store, nudges beads.NudgesStore, now time.Time, sessionBeads *sessionBeadSnapshot) error {
+func dispatchReadyWaitNudgesWithSnapshot(ctx context.Context, cityPath string, cfg *config.City, sessFront *sessionpkg.Store, nudges beads.NudgesStore, now time.Time, sessionBeads *sessionBeadSnapshot) error {
 	if sessionBeads == nil {
 		var err error
 		sessionBeads, err = loadSessionBeadSnapshot(sessFront.Store().Store)
@@ -1211,7 +1212,7 @@ func dispatchReadyWaitNudgesWithSnapshot(cityPath string, cfg *config.City, sess
 			ContinuationEpoch: wait.RegisteredEpoch,
 			Reference:         &nudgeReference{Kind: "bead", ID: wait.ID},
 		})
-		if err := enqueueQueuedNudgeWithStore(cityPath, nudges, item); err != nil {
+		if err := enqueueQueuedNudgeWithStore(ctx, cityPath, nudges, item); err != nil {
 			return err
 		}
 		if err := sessFront.SetWaitNudgeID(wait.ID, nudgeID); err != nil {
@@ -1281,7 +1282,7 @@ func finalizeReadyWaitFromNudge(sessFront *sessionpkg.Store, nudges beads.Nudges
 	}
 }
 
-func cancelWaitsForSession(sessFront *sessionpkg.Store, sessionID string) error {
+func cancelWaitsForSession(ctx context.Context, sessFront *sessionpkg.Store, sessionID string) error {
 	if !sessFront.Backed() || sessionID == "" {
 		return nil
 	}
@@ -1292,7 +1293,7 @@ func cancelWaitsForSession(sessFront *sessionpkg.Store, sessionID string) error 
 		}
 	}
 	if cityPath, err := resolveCity(); err == nil {
-		if err := withdrawQueuedWaitNudges(cityPath, nudgeIDs); err != nil {
+		if err := withdrawQueuedWaitNudges(ctx, cityPath, nudgeIDs); err != nil {
 			return err
 		}
 	}
@@ -1404,8 +1405,8 @@ func nextWaitDeliveryAttempt(front *nudgequeue.Store, wait sessionpkg.WaitInfo) 
 	return "", nil
 }
 
-func withdrawQueuedWaitNudges(cityPath string, nudgeIDs []string) error {
-	return nudgequeue.WithdrawWaitNudges(openNudgeBeadStore(cityPath).Store, cityPath, nudgeIDs)
+func withdrawQueuedWaitNudges(ctx context.Context, cityPath string, nudgeIDs []string) error {
+	return nudgequeue.WithdrawWaitNudges(openNudgeBeadStore(ctx, cityPath).Store, cityPath, nudgeIDs)
 }
 
 func waitLifecycleEnabled() error {

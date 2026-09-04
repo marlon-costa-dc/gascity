@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,8 +30,8 @@ Accepts a session ID (e.g., gc-42) or session alias (e.g., mayor).`,
 		Example: `  gc session wake gc-42
   gc session wake mayor`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionWake(args, stdout, stderr, jsonOutput) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionWake(cmd.Context(), args, stdout, stderr, jsonOutput) != 0 {
 				return errExit
 			}
 			return nil
@@ -47,15 +48,15 @@ type sessionWakeDeps struct {
 	cityPath                  string
 	cityResolved              bool
 	now                       func() time.Time
-	withdrawQueuedWaitNudges  func(string, []string) error
+	withdrawQueuedWaitNudges  func(context.Context, string, []string) error
 	cityUsesManagedReconciler func(string) bool
 	pokeController            func(string) error
 }
 
 // cmdSessionWake is the CLI entry point for "gc session wake".
-func cmdSessionWake(args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
+func cmdSessionWake(ctx context.Context, args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
 	asJSON := sessionJSONRequested(jsonOutput)
-	store, code := openCityStore(stderr, "gc session wake")
+	store, code := openCityStore(ctx, stderr, "gc session wake")
 	if store == nil {
 		return code
 	}
@@ -65,7 +66,7 @@ func cmdSessionWake(args []string, stdout, stderr io.Writer, jsonOutput ...bool)
 	if cityErr == nil {
 		cfg, _ = loadCityConfig(cityPath, stderr)
 	}
-	return doSessionWake(args[0], stdout, stderr, asJSON, sessionWakeDeps{
+	return doSessionWake(ctx, args[0], stdout, stderr, asJSON, sessionWakeDeps{
 		store:                     store,
 		cfg:                       cfg,
 		cityPath:                  cityPath,
@@ -77,9 +78,9 @@ func cmdSessionWake(args []string, stdout, stderr io.Writer, jsonOutput ...bool)
 	})
 }
 
-func doSessionWake(target string, stdout, stderr io.Writer, asJSON bool, deps sessionWakeDeps) int {
+func doSessionWake(ctx context.Context, target string, stdout, stderr io.Writer, asJSON bool, deps sessionWakeDeps) int {
 	sessStore := cliSessionStore(deps.store, deps.cfg, deps.cityPath)
-	id, err := resolveSessionIDMaterializingNamed(deps.cityPath, deps.cfg, sessStore, target)
+	id, err := resolveSessionIDMaterializingNamed(ctx, deps.cityPath, deps.cfg, sessStore, target)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc session wake: %v\n", err) //nolint:errcheck
 		return 1
@@ -137,7 +138,7 @@ func doSessionWake(target string, stdout, stderr io.Writer, asJSON bool, deps se
 		rejectStuck = true
 	}
 	if deps.cityResolved {
-		if err := deps.withdrawQueuedWaitNudges(deps.cityPath, nudgeIDs); err != nil {
+		if err := deps.withdrawQueuedWaitNudges(ctx, deps.cityPath, nudgeIDs); err != nil {
 			fmt.Fprintf(stderr, "gc session wake: warning: withdrawing queued wait nudges: %v\n", err) //nolint:errcheck
 		}
 		if deps.cityUsesManagedReconciler(deps.cityPath) {

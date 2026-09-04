@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -92,14 +93,14 @@ to empty output from valid conditional logic, or on suspended states
 (city or agent) — those are legitimate quiet states, not mistakes.`,
 		Args: cobra.MaximumNArgs(1),
 	}
-	cmd.RunE = func(_ *cobra.Command, args []string) error {
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if jsonOut {
 			var buf strings.Builder
 			// Preview only: a strings.Builder write never fails, so a
 			// consuming run here would archive durable handoff mail before
 			// the real stdout write — and even on success would eat the
 			// continuation the next SessionStart hook must deliver.
-			if doPrimeWithHookFormatOpts(args, &buf, stderr, hookMode, hookFormat, strictMode, false) != 0 {
+			if doPrimeWithHookFormatOpts(cmd.Context(), args, &buf, stderr, hookMode, hookFormat, strictMode, false) != 0 {
 				return errExit
 			}
 			agentName, _ := primeInvocationAgentName(args)
@@ -112,7 +113,7 @@ to empty output from valid conditional logic, or on suspended states
 				Bytes:         buf.Len(),
 			})
 		}
-		if doPrimeWithHookFormat(args, stdout, stderr, hookMode, hookFormat, strictMode) != 0 {
+		if doPrimeWithHookFormat(cmd.Context(), args, stdout, stderr, hookMode, hookFormat, strictMode) != 0 {
 			return errExit
 		}
 		return nil
@@ -137,7 +138,7 @@ type primeJSONResult struct {
 // need to know about the strict flag; its return type stays int because
 // the caller shape matches other cmd/gc entry points.
 func doPrime(args []string, stdout, stderr io.Writer) int { //nolint:unparam // strictMode=false means always returns 0
-	return doPrimeWithMode(args, stdout, stderr, false, false)
+	return doPrimeWithMode(context.Background(), args, stdout, stderr, false, false)
 }
 
 // doPrimeWithMode's strict-mode contract: only states that would indicate
@@ -153,8 +154,8 @@ func doPrime(args []string, stdout, stderr io.Writer) int { //nolint:unparam // 
 // provider resume metadata for an agent that doesn't exist. Suspended paths
 // still run side effects because suspension is a legitimate quiet state, not a
 // failure.
-func doPrimeWithMode(args []string, stdout, stderr io.Writer, hookMode, strictMode bool) int {
-	return doPrimeWithHookFormat(args, stdout, stderr, hookMode, "", strictMode)
+func doPrimeWithMode(ctx context.Context, args []string, stdout, stderr io.Writer, hookMode, strictMode bool) int {
+	return doPrimeWithHookFormat(ctx, args, stdout, stderr, hookMode, "", strictMode)
 }
 
 func primeInvocationAgentName(args []string) (string, bool) {
@@ -178,8 +179,8 @@ func primeInvocationAgentName(args []string) (string, bool) {
 	return strings.TrimSpace(agentName), sessionTemplateContext
 }
 
-func doPrimeWithHookFormat(args []string, stdout, stderr io.Writer, hookMode bool, hookFormat string, strictMode bool) int {
-	return doPrimeWithHookFormatOpts(args, stdout, stderr, hookMode, hookFormat, strictMode, true)
+func doPrimeWithHookFormat(ctx context.Context, args []string, stdout, stderr io.Writer, hookMode bool, hookFormat string, strictMode bool) int {
+	return doPrimeWithHookFormatOpts(ctx, args, stdout, stderr, hookMode, hookFormat, strictMode, true)
 }
 
 // doPrimeWithHookFormatOpts is the full entry point. consumeHandoff=false makes
@@ -187,7 +188,7 @@ func doPrimeWithHookFormat(args []string, stdout, stderr io.Writer, hookMode boo
 // into the output, but is not archived. Preview callers (--json) pass false so
 // that a diagnostic run cannot eat the continuation the real SessionStart hook
 // is supposed to deliver.
-func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode bool, hookFormat string, strictMode, consumeHandoff bool) int {
+func doPrimeWithHookFormatOpts(ctx context.Context, args []string, stdout, stderr io.Writer, hookMode bool, hookFormat string, strictMode, consumeHandoff bool) int {
 	agentName, sessionTemplateContext := primeInvocationAgentName(args)
 	var hookContext primeHookContext
 	suppressHookPrompt := false
@@ -226,7 +227,7 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 		if !hookMode {
 			return
 		}
-		persistPrimeHookProviderSessionKey(hookContext.ProviderSessionID, stderr)
+		persistPrimeHookProviderSessionKey(ctx, hookContext.ProviderSessionID, stderr)
 	}
 	if !strictMode && !primeHookSessionStart(hookContext) {
 		runHookSideEffects()
@@ -242,11 +243,11 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 			writePrimePromptWithFormat(stdout, "", "", "", hookMode, hookFormat, false, "", nil)
 			return 0
 		}
-		injection := primeHookContextSuffix("", hookMode, hookContext, stderr, consumeHandoff)
+		injection := primeHookContextSuffix(ctx, "", hookMode, hookContext, stderr, consumeHandoff)
 		writePrimePromptWithFormat(stdout, "", "", defaultPrimePrompt, hookMode, hookFormat, suppressHookPrompt, injection.text, injection.afterDelivery)
 		return 0
 	}
-	if hookMode && primeHookSessionStart(hookContext) && !primeHookHasLiveManagedSession(cityPath) {
+	if hookMode && primeHookSessionStart(hookContext) && !primeHookHasLiveManagedSession(ctx, cityPath) {
 		writePrimePromptWithFormat(stdout, "", "", "", hookMode, hookFormat, false, "", nil)
 		return 0
 	}
@@ -259,7 +260,7 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 			fmt.Fprintf(stderr, "gc prime: loading city config: %v\n", err) //nolint:errcheck
 			return 1
 		}
-		injection := primeHookContextSuffix(cityPath, hookMode, hookContext, stderr, consumeHandoff)
+		injection := primeHookContextSuffix(ctx, cityPath, hookMode, hookContext, stderr, consumeHandoff)
 		writePrimePromptWithFormat(stdout, "", "", defaultPrimePrompt, hookMode, hookFormat, suppressHookPrompt, injection.text, injection.afterDelivery)
 		return 0
 	}
@@ -288,7 +289,7 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 	// agent name, so also try GC_TEMPLATE before falling back to the generic
 	// run-once prompt.
 	var resolvedAgents []config.Agent
-	agentCandidates := primeAgentCandidates(agentName, hookMode, cityPath)
+	agentCandidates := primeAgentCandidates(ctx, agentName, hookMode, cityPath)
 	for _, candidate := range agentCandidates {
 		a, ok := resolveAgentIdentity(cfg, candidate, currentRigContext(cfg))
 		if !ok {
@@ -336,9 +337,9 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 		if resolved, rErr := config.ResolveProvider(&a, &cfg.Workspace, cfg.Providers, exec.LookPath); rErr == nil && hookMode {
 			sessionName := os.Getenv("GC_SESSION_NAME")
 			if sessionName == "" {
-				sessionName = cliSessionName(cityPath, cityName, a.QualifiedName(), cfg.Workspace.SessionTemplate)
+				sessionName = cliSessionName(ctx, cityPath, cityName, a.QualifiedName(), cfg.Workspace.SessionTemplate)
 			}
-			maybeStartNudgePoller(withNudgeTargetFence(openNudgeBeadStore(cityPath).Store, nudgeTarget{
+			maybeStartNudgePoller(withNudgeTargetFence(openNudgeBeadStore(ctx, cityPath).Store, nudgeTarget{
 				cityPath:          cityPath,
 				cityName:          cityName,
 				cfg:               cfg,
@@ -349,11 +350,11 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 				sessionName:       sessionName,
 			}))
 		}
-		var ctx PromptContext
+		var promptCtx PromptContext
 		if a.PromptTemplate != "" || hookMode || sessionTemplateContext {
-			ctx = buildPrimeContextFor(cityPath, cityName, &a, cfg.Rigs, cityQueryTopology(cityPath, cfg), stderr)
-			ctx.ProviderKey, ctx.ProviderDisplayName = providerInfoForAgent(&a, &cfg.Workspace, cfg.Providers)
-			ctx.InstructionsFile = instructionsFileForAgent(&a, &cfg.Workspace, cfg.Providers)
+			promptCtx = buildPrimeContextFor(cityPath, cityName, &a, cfg.Rigs, cityQueryTopology(cityPath, cfg), stderr)
+			promptCtx.ProviderKey, promptCtx.ProviderDisplayName = providerInfoForAgent(&a, &cfg.Workspace, cfg.Providers)
+			promptCtx.InstructionsFile = instructionsFileForAgent(&a, &cfg.Workspace, cfg.Providers)
 		}
 		if a.PromptTemplate != "" {
 			fragments := effectivePromptFragments(
@@ -363,12 +364,12 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 				a.InheritedAppendFragments,
 				cfg.AgentDefaults.AppendFragments,
 			)
-			packDirs := cfg.PackDirsForRig(ctx.RigName)
-			prompt := renderPrompt(fsys.OSFS{}, cityPath, cityName, a.PromptTemplate, ctx, cfg.Workspace.SessionTemplate, stderr,
+			packDirs := cfg.PackDirsForRig(promptCtx.RigName)
+			prompt := renderPrompt(fsys.OSFS{}, cityPath, cityName, a.PromptTemplate, promptCtx, cfg.Workspace.SessionTemplate, stderr,
 				packDirs, fragments, nil)
 			if prompt != "" {
-				injection := primeHookContextSuffix(cityPath, hookMode, hookContext, stderr, consumeHandoff)
-				writePrimePromptWithFormat(stdout, cityName, ctx.AgentName, prompt, hookMode, hookFormat, suppressHookPrompt, injection.text, injection.afterDelivery)
+				injection := primeHookContextSuffix(ctx, cityPath, hookMode, hookContext, stderr, consumeHandoff)
+				writePrimePromptWithFormat(stdout, cityName, promptCtx.AgentName, prompt, hookMode, hookFormat, suppressHookPrompt, injection.text, injection.afterDelivery)
 				return 0
 			}
 			// File is present but rendered empty. Treat as a legitimate
@@ -396,11 +397,11 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 				}
 			}
 			if promptFile != "" {
-				content := renderPrompt(fsys.OSFS{}, cityPath, cityName, promptFile, ctx, cfg.Workspace.SessionTemplate, stderr,
-					cfg.PackDirsForRig(ctx.RigName), nil, nil)
+				content := renderPrompt(fsys.OSFS{}, cityPath, cityName, promptFile, promptCtx, cfg.Workspace.SessionTemplate, stderr,
+					cfg.PackDirsForRig(promptCtx.RigName), nil, nil)
 				if content != "" {
-					injection := primeHookContextSuffix(cityPath, hookMode, hookContext, stderr, consumeHandoff)
-					writePrimePromptWithFormat(stdout, cityName, ctx.AgentName, content, hookMode, hookFormat, suppressHookPrompt, injection.text, injection.afterDelivery)
+					injection := primeHookContextSuffix(ctx, cityPath, hookMode, hookContext, stderr, consumeHandoff)
+					writePrimePromptWithFormat(stdout, cityName, promptCtx.AgentName, content, hookMode, hookFormat, suppressHookPrompt, injection.text, injection.afterDelivery)
 					return 0
 				}
 			}
@@ -411,12 +412,12 @@ func doPrimeWithHookFormatOpts(args []string, stdout, stderr io.Writer, hookMode
 	// when the agent has no prompt_template and doesn't match a builtin
 	// worker prompt — a supported config shape, so the default prompt is
 	// the correct output even under --strict.
-	injection := primeHookContextSuffix(cityPath, hookMode, hookContext, stderr, consumeHandoff)
+	injection := primeHookContextSuffix(ctx, cityPath, hookMode, hookContext, stderr, consumeHandoff)
 	writePrimePromptWithFormat(stdout, cityName, agentName, defaultPrimePrompt, hookMode, hookFormat, suppressHookPrompt, injection.text, injection.afterDelivery)
 	return 0
 }
 
-func primeAgentCandidates(agentName string, hookMode bool, cityPath string) []string {
+func primeAgentCandidates(ctx context.Context, agentName string, hookMode bool, cityPath string) []string {
 	var candidates []string
 	add := func(value string) {
 		value = strings.TrimSpace(value)
@@ -435,18 +436,18 @@ func primeAgentCandidates(agentName string, hookMode bool, cityPath string) []st
 		if gcTemplate := os.Getenv("GC_TEMPLATE"); strings.TrimSpace(gcTemplate) != "" {
 			add(gcTemplate)
 		} else {
-			add(primeHookSessionTemplate(cityPath))
+			add(primeHookSessionTemplate(ctx, cityPath))
 		}
 	}
 	return candidates
 }
 
-func primeHookSessionTemplate(cityPath string) string {
+func primeHookSessionTemplate(ctx context.Context, cityPath string) string {
 	sessionID := strings.TrimSpace(os.Getenv("GC_SESSION_ID"))
 	if cityPath == "" || sessionID == "" {
 		return ""
 	}
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(ctx, cityPath)
 	if err != nil {
 		return ""
 	}
@@ -565,7 +566,7 @@ func hookHasManagedIdentity() bool {
 	return false
 }
 
-func primeHookHasLiveManagedSession(cityPath string) bool {
+func primeHookHasLiveManagedSession(ctx context.Context, cityPath string) bool {
 	sessionID := strings.TrimSpace(os.Getenv("GC_SESSION_ID"))
 	if sessionID == "" {
 		return false
@@ -574,7 +575,7 @@ func primeHookHasLiveManagedSession(cityPath string) bool {
 	if sessionName == "" {
 		return false
 	}
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(ctx, cityPath)
 	if err != nil {
 		return false
 	}
@@ -697,7 +698,7 @@ func readPrimeHookStdin() *primeHookInput {
 	return &input
 }
 
-func persistPrimeHookProviderSessionKey(hookProviderSessionID string, stderr io.Writer) {
+func persistPrimeHookProviderSessionKey(ctx context.Context, hookProviderSessionID string, stderr io.Writer) {
 	gcSessionID := strings.TrimSpace(os.Getenv("GC_SESSION_ID"))
 	providerSessionID := strings.TrimSpace(os.Getenv("GC_PROVIDER_SESSION_ID"))
 	if providerSessionID == "" {
@@ -742,7 +743,7 @@ func persistPrimeHookProviderSessionKey(hookProviderSessionID string, stderr io.
 		warn("resolving city for session %q: %v", gcSessionID, err)
 		return
 	}
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(ctx, cityPath)
 	if err != nil {
 		warn("opening city store for session %q: %v", gcSessionID, err)
 		return

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -1036,7 +1037,7 @@ schema = 2
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doDoctor(true, false, false, 0, &stdout, &stderr); code != 0 {
+	if code := doDoctor(context.Background(), true, false, false, 0, &stdout, &stderr); code != 0 {
 		t.Fatalf("gc doctor --fix = %d, want 0; stdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
 	}
 	output := stdout.String() + stderr.String()

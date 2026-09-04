@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -147,7 +148,7 @@ func runE2c1ProviderFailureHelper(t *testing.T, cityPath, markerPath string) {
 
 	oldShutdown := shutdownBeadsProviderForStop
 	shutdownCalls := 0
-	shutdownBeadsProviderForStop = func(string) error {
+	shutdownBeadsProviderForStop = func(_ context.Context, _ string) error {
 		shutdownCalls++
 		return nil
 	}

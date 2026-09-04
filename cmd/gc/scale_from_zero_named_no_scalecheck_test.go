@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -66,10 +67,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_CrossStore_NamedPath(t *te
 		t.Fatal(err)
 	}
 
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if result.NamedSessionDemand[identity] {
 		t.Errorf("cross-store cold-wake: NamedSessionDemand[%q] = true, want false for pool-routed work", identity)
@@ -97,10 +97,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_NamedPath_OwnRigStillWakes
 		t.Fatal(err)
 	}
 
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if result.NamedSessionDemand[identity] {
 		t.Errorf("own-rig cold-wake: NamedSessionDemand[%q] = true, want false for pool-routed work", identity)
@@ -116,10 +115,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_NamedPath_OwnRigStillWakes
 func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_NamedPath_NoDemandNoWake(t *testing.T) {
 	cfg, cityStore, rigStores, identity := newNoScaleCheckNamedBackingCity(t)
 
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if result.NamedSessionDemand[identity] {
 		t.Errorf("no-demand: NamedSessionDemand[%q] = true, want false (must not spuriously wake)", identity)
@@ -145,10 +143,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_NamedPath_MissingRigStoreN
 	}
 
 	// Rig store absent (nil map): the own-rig target is unavailable.
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, nil, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, nil, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if result.NamedSessionDemand[identity] {
 		t.Errorf("missing rig store: NamedSessionDemand[%q] = true, want false (must not cross-store-wake without rig store)", identity)
@@ -173,10 +170,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_NamedPath_AliasedRigStoreN
 
 	// Rig store IS the city store (aliased).
 	aliased := map[string]beads.Store{"rig-A": cityStore}
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, aliased, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, aliased, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	// With an aliased store, demand should still be detected (it's a real bead)
 	// but must not be double-counted.

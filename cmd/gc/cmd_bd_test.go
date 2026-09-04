@@ -173,7 +173,7 @@ func TestResolveBdScopeTarget(t *testing.T) {
 
 	origProbe := bdBeadExists
 	defer func() { bdBeadExists = origProbe }()
-	bdBeadExists = func(_ string, _ *config.City, _ execStoreTarget, beadID string) bool {
+	bdBeadExists = func(_ context.Context, _ string, _ *config.City, _ execStoreTarget, beadID string) bool {
 		return beadID == "projectwrenunity-0xk" || beadID == "projectwrenunity-abc"
 	}
 	cityDir := filepath.Join(t.TempDir(), "city")
@@ -328,7 +328,7 @@ func TestResolveBdScopeTarget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveBdScopeTarget(cfgForTest(), cityDir, tt.rigName, tt.args, tt.cityExplicit, io.Discard)
+			got, err := resolveBdScopeTarget(context.Background(), cfgForTest(), cityDir, tt.rigName, tt.args, tt.cityExplicit, io.Discard)
 			if tt.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
 					t.Fatalf("resolveBdScopeTarget() error = %v, want %q", err, tt.wantError)
@@ -363,7 +363,7 @@ func TestResolveBdScopeTargetUsesRedirectedWorktreeRig(t *testing.T) {
 		Workspace: config.Workspace{Name: "gascity"},
 		Rigs:      []config.Rig{{Name: "frontend", Path: filepath.Join("rigs", "frontend"), Prefix: "fr"}},
 	}
-	got, err := resolveBdScopeTarget(cfg, cityDir, "", []string{"list"}, false, io.Discard)
+	got, err := resolveBdScopeTarget(context.Background(), cfg, cityDir, "", []string{"list"}, false, io.Discard)
 	if err != nil {
 		t.Fatalf("resolveBdScopeTarget() error = %v", err)
 	}
@@ -386,7 +386,7 @@ func TestResolveBdScopeTargetUsesGCRIGEnv(t *testing.T) {
 	setCwd(t, t.TempDir())
 	origProbe := bdBeadExists
 	defer func() { bdBeadExists = origProbe }()
-	bdBeadExists = func(_ string, _ *config.City, _ execStoreTarget, _ string) bool { return false }
+	bdBeadExists = func(_ context.Context, _ string, _ *config.City, _ execStoreTarget, _ string) bool { return false }
 
 	cityDir := filepath.Join(t.TempDir(), "city")
 	cfg := &config.City{
@@ -400,7 +400,7 @@ func TestResolveBdScopeTargetUsesGCRIGEnv(t *testing.T) {
 	t.Run("GC_RIG env routes to rig when no flag and no bead-id args", func(t *testing.T) {
 		t.Setenv("GC_RIG", "chatehr")
 		var stderr bytes.Buffer
-		got, err := resolveBdScopeTarget(cfg, cityDir, "", []string{"list", "--assignee=chatehr/gastown.refinery", "--status=open"}, false, &stderr)
+		got, err := resolveBdScopeTarget(context.Background(), cfg, cityDir, "", []string{"list", "--assignee=chatehr/gastown.refinery", "--status=open"}, false, &stderr)
 		if err != nil {
 			t.Fatalf("resolveBdScopeTarget() error = %v", err)
 		}
@@ -422,7 +422,7 @@ func TestResolveBdScopeTargetUsesGCRIGEnv(t *testing.T) {
 
 	t.Run("explicit --rig flag overrides GC_RIG env", func(t *testing.T) {
 		t.Setenv("GC_RIG", "chatehr")
-		got, err := resolveBdScopeTarget(cfg, cityDir, "wren", []string{"list"}, false, io.Discard)
+		got, err := resolveBdScopeTarget(context.Background(), cfg, cityDir, "wren", []string{"list"}, false, io.Discard)
 		if err != nil {
 			t.Fatalf("resolveBdScopeTarget() error = %v", err)
 		}
@@ -442,10 +442,10 @@ func TestResolveBdScopeTargetUsesGCRIGEnv(t *testing.T) {
 		// Restore bdBeadExists to return true for a wren bead
 		origProbe2 := bdBeadExists
 		defer func() { bdBeadExists = origProbe2 }()
-		bdBeadExists = func(_ string, _ *config.City, target execStoreTarget, beadID string) bool {
+		bdBeadExists = func(_ context.Context, _ string, _ *config.City, target execStoreTarget, beadID string) bool {
 			return beadID == "projectwrenunity-0xk" && target.RigName == "wren"
 		}
-		got, err := resolveBdScopeTarget(cfg, cityDir, "", []string{"show", "projectwrenunity-0xk"}, false, io.Discard)
+		got, err := resolveBdScopeTarget(context.Background(), cfg, cityDir, "", []string{"show", "projectwrenunity-0xk"}, false, io.Discard)
 		if err != nil {
 			t.Fatalf("resolveBdScopeTarget() error = %v", err)
 		}
@@ -463,7 +463,7 @@ func TestResolveBdScopeTargetUsesGCRIGEnv(t *testing.T) {
 	t.Run("unknown GC_RIG env falls through to city root and warns", func(t *testing.T) {
 		t.Setenv("GC_RIG", "nonexistent-rig")
 		var stderr bytes.Buffer
-		got, err := resolveBdScopeTarget(cfg, cityDir, "", []string{"list"}, false, &stderr)
+		got, err := resolveBdScopeTarget(context.Background(), cfg, cityDir, "", []string{"list"}, false, &stderr)
 		if err != nil {
 			t.Fatalf("resolveBdScopeTarget() error = %v", err)
 		}
@@ -508,7 +508,7 @@ func TestResolveBdScopeTargetErrorsOnForeignRedirect(t *testing.T) {
 		Workspace: config.Workspace{Name: "gascity"},
 		Rigs:      []config.Rig{{Name: "frontend", Path: filepath.Join("rigs", "frontend"), Prefix: "fr"}},
 	}
-	_, err := resolveBdScopeTarget(cfg, cityDir, "", []string{"list"}, false, io.Discard)
+	_, err := resolveBdScopeTarget(context.Background(), cfg, cityDir, "", []string{"list"}, false, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "points outside declared city rigs") {
 		t.Fatalf("resolveBdScopeTarget() error = %v, want foreign redirect error", err)
 	}
@@ -533,7 +533,7 @@ dolt.auto-start: false
 		t.Fatal(err)
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}
-	envList, err := bdCommandEnv(cityDir, cfg, execStoreTarget{
+	envList, err := bdCommandEnv(context.Background(), cityDir, cfg, execStoreTarget{
 		ScopeRoot: rigDir,
 		ScopeKind: "rig",
 		Prefix:    "repo",
@@ -594,12 +594,13 @@ dolt.auto-start: false
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "pg", Path: "rigs/pg", Prefix: "pg"}}}
 
-	_, err := bdCommandEnv(cityDir, cfg, execStoreTarget{
+	_, err := bdCommandEnv(context.Background(), cityDir, cfg, execStoreTarget{
 		ScopeRoot: rigDir,
 		ScopeKind: "rig",
 		Prefix:    "pg",
 		RigName:   "pg",
 	})
+
 	assertRefusesUnregisteredBackend(t, err)
 }
 
@@ -612,7 +613,7 @@ func TestBdCommandRunnerForCityDoesNotDefaultBeadsActorWhenUnset(t *testing.T) {
 	t.Cleanup(func() { beadsExecCommandRunnerWithEnv = origRunner })
 
 	var captured map[string]string
-	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
+	beadsExecCommandRunnerWithEnv = func(_ context.Context, env map[string]string) beads.CommandRunner {
 		captured = map[string]string{}
 		for key, value := range env {
 			captured[key] = value
@@ -623,7 +624,7 @@ func TestBdCommandRunnerForCityDoesNotDefaultBeadsActorWhenUnset(t *testing.T) {
 	}
 
 	cityPath := t.TempDir()
-	runner := bdCommandRunnerForCity(cityPath)
+	runner := bdCommandRunnerForCity(context.Background(), cityPath)
 	if _, err := runner(cityPath, "bd", "list", "--json"); err != nil {
 		t.Fatalf("bd runner error = %v, want nil", err)
 	}
@@ -642,7 +643,7 @@ func TestGcBdUsesProjectionNotAmbientEnv(t *testing.T) {
 		rigFlag = origRigFlag
 		bdBeadExists = origProbe
 	}()
-	bdBeadExists = func(_ string, _ *config.City, _ execStoreTarget, beadID string) bool {
+	bdBeadExists = func(_ context.Context, _ string, _ *config.City, _ execStoreTarget, beadID string) bool {
 		return beadID == "repo-abc"
 	}
 	cityFlag = ""
@@ -707,7 +708,7 @@ set -eu
 	t.Setenv("GC_STORE_ROOT", "/ambient/store")
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"show", "repo-abc"}, &stdout, &stderr); got != 0 {
+	if got := doBd(context.Background(), []string{"show", "repo-abc"}, &stdout, &stderr); got != 0 {
 		t.Fatalf("doBd() = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	data, err := os.ReadFile(capture)
@@ -823,7 +824,7 @@ esac
 	} {
 		args := tc.args
 		var stdout, stderr bytes.Buffer
-		if got := doBd(args, &stdout, &stderr); got != 0 {
+		if got := doBd(context.Background(), args, &stdout, &stderr); got != 0 {
 			t.Fatalf("doBd(%v) = %d, want 0; stdout=%q stderr=%q", args, got, stdout.String(), stderr.String())
 		}
 		if strings.TrimSpace(stdout.String()) == "" {
@@ -877,7 +878,7 @@ printf '[{"id":"gc-1","title":"ok"}]\n'
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"show", "gc-1", "--json"}, &stdout, &stderr); got != 0 {
+	if got := doBd(context.Background(), []string{"show", "gc-1", "--json"}, &stdout, &stderr); got != 0 {
 		t.Fatalf("doBd() = %d, want 0; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 	}
 	if _, err := os.Stat(jsonlPath); !os.IsNotExist(err) {
@@ -898,7 +899,7 @@ func TestGcBdDoesNotAutoRouteHyphenatedFlagValue(t *testing.T) {
 	}()
 	cityFlag = ""
 	rigFlag = ""
-	bdBeadExists = func(string, *config.City, execStoreTarget, string) bool { return false }
+	bdBeadExists = func(context.Context, string, *config.City, execStoreTarget, string) bool { return false }
 
 	cityDir := t.TempDir()
 	rigDir := filepath.Join(cityDir, "repo")
@@ -944,7 +945,7 @@ set -eu
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"list", "--label", "repo-open"}, &stdout, &stderr); got != 0 {
+	if got := doBd(context.Background(), []string{"list", "--label", "repo-open"}, &stdout, &stderr); got != 0 {
 		t.Fatalf("doBd() = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	data, err := os.ReadFile(capture)
@@ -1013,7 +1014,7 @@ name = "demo"
 	t.Setenv("GC_BEADS_SCOPE_ROOT", "")
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"list"}, &stdout, &stderr); got == 0 {
+	if got := doBd(context.Background(), []string{"list"}, &stdout, &stderr); got == 0 {
 		t.Fatalf("doBd() = %d, want non-zero", got)
 	}
 	if !strings.Contains(stderr.String(), "only supported for bd-backed beads providers") {
@@ -1046,7 +1047,7 @@ provider = "file"
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"list"}, &stdout, &stderr); got == 0 {
+	if got := doBd(context.Background(), []string{"list"}, &stdout, &stderr); got == 0 {
 		t.Fatalf("doBd() = %d, want non-zero", got)
 	}
 	if !strings.Contains(stderr.String(), "only supported for bd-backed beads providers") {
@@ -1094,7 +1095,7 @@ prefix = "lg"
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"--rig", "legacy-rig", "list"}, &stdout, &stderr); got == 0 {
+	if got := doBd(context.Background(), []string{"--rig", "legacy-rig", "list"}, &stdout, &stderr); got == 0 {
 		t.Fatalf("doBd() = %d, want non-zero", got)
 	}
 	out := stderr.String()
@@ -1159,7 +1160,7 @@ set -eu
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"--rig", "frontend", "list"}, &stdout, &stderr); got != 0 {
+	if got := doBd(context.Background(), []string{"--rig", "frontend", "list"}, &stdout, &stderr); got != 0 {
 		t.Fatalf("doBd() = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	if strings.Contains(stderr.String(), "only supported for bd-backed beads providers") {
@@ -1300,7 +1301,7 @@ func TestBdRigWorktreeStoreConsistentAcrossRawBdGcBdAndProviderStore(t *testing.
 		"GC_CITY":             cityPath,
 		"GC_CITY_PATH":        cityPath,
 	})
-	nativeEnv, err := nativeDoltOpenEnvForScope(cityPath, nil, rigPath)
+	nativeEnv, err := nativeDoltOpenEnvForScope(context.Background(), cityPath, nil, rigPath)
 	if err != nil {
 		t.Fatalf("nativeDoltOpenEnvForScope(rig): %v", err)
 	}
@@ -1322,7 +1323,7 @@ func TestBdRigWorktreeStoreConsistentAcrossRawBdGcBdAndProviderStore(t *testing.
 	// optional bd-context cross-check strict and fast without replacing the real
 	// raw bd and gc bd processes exercised below.
 	originalRunner := beadsExecCommandRunnerWithEnv
-	beadsExecCommandRunnerWithEnv = func(map[string]string) beads.CommandRunner {
+	beadsExecCommandRunnerWithEnv = func(_ context.Context, _ map[string]string) beads.CommandRunner {
 		return func(string, string, ...string) ([]byte, error) {
 			return nil, errors.New("bd context unavailable in direct-Dolt fixture")
 		}
@@ -1337,7 +1338,7 @@ func TestBdRigWorktreeStoreConsistentAcrossRawBdGcBdAndProviderStore(t *testing.
 		t.Fatalf("WriteFile(redirect): %v", err)
 	}
 
-	providerResult, err := openStoreResultAtForCity(rigPath, cityPath)
+	providerResult, err := openStoreResultAtForCity(context.Background(), rigPath, cityPath)
 	if err != nil {
 		t.Fatalf("openStoreResultAtForCity(rig): %v", err)
 	}
@@ -1364,7 +1365,7 @@ func TestBdRigWorktreeStoreConsistentAcrossRawBdGcBdAndProviderStore(t *testing.
 	})
 	t.Setenv("GC_DOLT_PORT", "9999")
 	var stdout, stderr bytes.Buffer
-	if code := doBd([]string{"show", rawID}, &stdout, &stderr); code != 0 {
+	if code := doBd(context.Background(), []string{"show", rawID}, &stdout, &stderr); code != 0 {
 		t.Fatalf("gc bd show rawID from worktree = %d; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), rawID) {
@@ -1381,7 +1382,7 @@ func TestBdRigWorktreeStoreConsistentAcrossRawBdGcBdAndProviderStore(t *testing.
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := doBd([]string{"create", "--json", "gc worktree bead", "-t", "task"}, &stdout, &stderr); code != 0 {
+	if code := doBd(context.Background(), []string{"create", "--json", "gc worktree bead", "-t", "task"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("gc bd create from worktree = %d; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	gcID := parseCreatedBeadID(t, stdout.String())
@@ -1412,7 +1413,7 @@ func TestFreshManagedBdCityInitSeedsPinnedHQDatabaseAndKeepsGCPrefix(t *testing.
 	if got := beadPrefix(nil, rawID); got != "gc" {
 		t.Fatalf("raw city bead prefix = %q, want %q", got, "gc")
 	}
-	providerStore, err := openStoreAtForCity(cityPath, cityPath)
+	providerStore, err := openStoreAtForCity(context.Background(), cityPath, cityPath)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
@@ -1439,7 +1440,7 @@ func listToMap(env []string) map[string]string {
 func TestResolveBdScopeTargetUsesEnclosingRig(t *testing.T) {
 	origProbe := bdBeadExists
 	defer func() { bdBeadExists = origProbe }()
-	bdBeadExists = func(string, *config.City, execStoreTarget, string) bool { return false }
+	bdBeadExists = func(context.Context, string, *config.City, execStoreTarget, string) bool { return false }
 
 	cityDir := filepath.Join(t.TempDir(), "city")
 	rigDir := filepath.Join(cityDir, "frontend")
@@ -1452,7 +1453,7 @@ func TestResolveBdScopeTargetUsesEnclosingRig(t *testing.T) {
 	}
 	setCwd(t, filepath.Join(rigDir, "nested"))
 
-	got, err := resolveBdScopeTarget(cfg, cityDir, "", []string{"context", "--json"}, false, io.Discard)
+	got, err := resolveBdScopeTarget(context.Background(), cfg, cityDir, "", []string{"context", "--json"}, false, io.Discard)
 	if err != nil {
 		t.Fatalf("resolveBdScopeTarget() error = %v", err)
 	}
@@ -1521,7 +1522,7 @@ printf '{"id":"scratch-1","metadata":{"written":true}}\n' > "$SCRATCH_BEAD"
 				args = append(args, "scratch")
 			}
 			args = append(args, tc.args...)
-			if got := doBd(args, &stdout, &stderr); got == 0 {
+			if got := doBd(context.Background(), args, &stdout, &stderr); got == 0 {
 				t.Fatalf("doBd() = 0, want refusal; stdout=%q stderr=%q", stdout.String(), stderr.String())
 			}
 			if !strings.Contains(stderr.String(), "not configured") || !strings.Contains(stderr.String(), tc.actor) {
@@ -1580,7 +1581,7 @@ printf 'called' > "$BD_CAPTURE"
 			}
 			var stdout, stderr bytes.Buffer
 			args := append([]string{"--city", cityDir, "update", "scratch-1"}, tc.args...)
-			if got := doBd(args, &stdout, &stderr); got == 0 {
+			if got := doBd(context.Background(), args, &stdout, &stderr); got == 0 {
 				t.Fatalf("doBd() = 0, want refusal; stdout=%q stderr=%q", stdout.String(), stderr.String())
 			}
 			if !strings.Contains(stderr.String(), tc.want) {
@@ -1636,7 +1637,7 @@ printf '%s' "$*" > "$BD_CAPTURE"
 			}
 			args := append([]string{"--city", cityDir}, tc.args...)
 			var stdout, stderr bytes.Buffer
-			if got := doBd(args, &stdout, &stderr); got != 0 {
+			if got := doBd(context.Background(), args, &stdout, &stderr); got != 0 {
 				t.Fatalf("doBd() = %d, want success; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 			}
 			if _, err := os.Stat(capture); err != nil {
@@ -1649,7 +1650,7 @@ printf '%s' "$*" > "$BD_CAPTURE"
 func TestResolveBdScopeTargetRoutesExistingCityBeadFromRigCwd(t *testing.T) {
 	origProbe := bdBeadExists
 	defer func() { bdBeadExists = origProbe }()
-	bdBeadExists = func(_ string, _ *config.City, target execStoreTarget, beadID string) bool {
+	bdBeadExists = func(_ context.Context, _ string, _ *config.City, target execStoreTarget, beadID string) bool {
 		return target.ScopeKind == "city" && beadID == "mc-city1"
 	}
 
@@ -1664,7 +1665,7 @@ func TestResolveBdScopeTargetRoutesExistingCityBeadFromRigCwd(t *testing.T) {
 	}
 	setCwd(t, filepath.Join(rigDir, "nested"))
 
-	got, err := resolveBdScopeTarget(cfg, cityDir, "", []string{"show", "mc-city1"}, false, io.Discard)
+	got, err := resolveBdScopeTarget(context.Background(), cfg, cityDir, "", []string{"show", "mc-city1"}, false, io.Discard)
 	if err != nil {
 		t.Fatalf("resolveBdScopeTarget() error = %v", err)
 	}
@@ -1689,7 +1690,7 @@ func TestGcBdRespectsRawCityFlag(t *testing.T) {
 		rigFlag = origRigFlag
 		bdBeadExists = origProbe
 	}()
-	bdBeadExists = func(string, *config.City, execStoreTarget, string) bool { return false }
+	bdBeadExists = func(context.Context, string, *config.City, execStoreTarget, string) bool { return false }
 	cityFlag = ""
 	rigFlag = ""
 
@@ -1724,7 +1725,7 @@ set -eu
 	t.Setenv("GC_CITY_PATH", "")
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"--city", cityDir, "context", "--json"}, &stdout, &stderr); got != 0 {
+	if got := doBd(context.Background(), []string{"--city", cityDir, "context", "--json"}, &stdout, &stderr); got != 0 {
 		t.Fatalf("doBd() = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	data, err := os.ReadFile(capture)
@@ -1768,7 +1769,7 @@ func TestGcBdUsesEnclosingRigWhenNoFlag(t *testing.T) {
 		rigFlag = origRigFlag
 		bdBeadExists = origProbe
 	}()
-	bdBeadExists = func(string, *config.City, execStoreTarget, string) bool { return false }
+	bdBeadExists = func(context.Context, string, *config.City, execStoreTarget, string) bool { return false }
 	cityFlag = ""
 	rigFlag = ""
 
@@ -1813,7 +1814,7 @@ set -eu
 	t.Setenv("GC_CITY_PATH", "")
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"context", "--json"}, &stdout, &stderr); got != 0 {
+	if got := doBd(context.Background(), []string{"context", "--json"}, &stdout, &stderr); got != 0 {
 		t.Fatalf("doBd() = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	data, err := os.ReadFile(capture)
@@ -1901,7 +1902,7 @@ set -eu
 	t.Setenv("GC_DOLT_PORT", "9999")
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"--city", cityDir, "--rig", "repo", "show", "repo-abc"}, &stdout, &stderr); got != 0 {
+	if got := doBd(context.Background(), []string{"--city", cityDir, "--rig", "repo", "show", "repo-abc"}, &stdout, &stderr); got != 0 {
 		t.Fatalf("doBd() = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	data, err := os.ReadFile(capture)
@@ -2035,7 +2036,7 @@ func TestGcBdSurfacesSilentFallbackAsLoudError_UpdatePath(t *testing.T) {
 	silentFallbackTestSetup(t, silentFallbackFakeBdScript)
 
 	var stdout, stderr bytes.Buffer
-	got := doBd([]string{"update", "demo-abc", "--set-metadata", "k=v"}, &stdout, &stderr)
+	got := doBd(context.Background(), []string{"update", "demo-abc", "--set-metadata", "k=v"}, &stdout, &stderr)
 	if got != bdSilentFallbackExitCode {
 		t.Fatalf("doBd(update) = %d, want %d (silent-fallback exit code); stderr=%q",
 			got, bdSilentFallbackExitCode, stderr.String())
@@ -2057,7 +2058,7 @@ func TestGcBdSurfacesSilentFallbackAsLoudError_ClosePath(t *testing.T) {
 	silentFallbackTestSetup(t, silentFallbackFakeBdScript)
 
 	var stdout, stderr bytes.Buffer
-	got := doBd([]string{"close", "demo-abc", "-r", "duplicate"}, &stdout, &stderr)
+	got := doBd(context.Background(), []string{"close", "demo-abc", "-r", "duplicate"}, &stdout, &stderr)
 	if got != bdSilentFallbackExitCode {
 		t.Fatalf("doBd(close) = %d, want %d (silent-fallback exit code); stderr=%q",
 			got, bdSilentFallbackExitCode, stderr.String())
@@ -2074,7 +2075,7 @@ func TestGcBdSurfacesSilentFallbackAsLoudError_ReleaseIfCurrentPath(t *testing.T
 	silentFallbackTestSetup(t, silentFallbackFakeBdScript)
 
 	var stdout, stderr bytes.Buffer
-	got := doBd([]string{"release-if-current", "demo-abc", "worker-1"}, &stdout, &stderr)
+	got := doBd(context.Background(), []string{"release-if-current", "demo-abc", "worker-1"}, &stdout, &stderr)
 	if got != bdSilentFallbackExitCode {
 		t.Fatalf("doBd(release-if-current) = %d, want %d (silent-fallback exit code); stderr=%q stdout=%q",
 			got, bdSilentFallbackExitCode, stderr.String(), stdout.String())
@@ -2104,7 +2105,7 @@ exit 0
 	silentFallbackTestSetup(t, happyPathFakeBdScript)
 
 	var stdout, stderr bytes.Buffer
-	got := doBd([]string{"list"}, &stdout, &stderr)
+	got := doBd(context.Background(), []string{"list"}, &stdout, &stderr)
 	if got != 0 {
 		t.Fatalf("doBd(list) = %d, want 0; stderr=%q", got, stderr.String())
 	}
@@ -2176,7 +2177,7 @@ func TestGcBdSurfacesDoltStartConflictHint(t *testing.T) {
 	managedDoltTestSetup(t, doltStartConflictFakeBdScript)
 
 	var stdout, stderr bytes.Buffer
-	got := doBd([]string{"list"}, &stdout, &stderr)
+	got := doBd(context.Background(), []string{"list"}, &stdout, &stderr)
 	if got != 1 {
 		t.Fatalf("doBd(list) = %d, want 1 (bd's own exit code preserved); stderr=%q", got, stderr.String())
 	}
@@ -2200,7 +2201,7 @@ func TestGcBdNoDoltStartConflictHintOnExternalEndpoint(t *testing.T) {
 	silentFallbackTestSetup(t, doltStartConflictFakeBdScript)
 
 	var stdout, stderr bytes.Buffer
-	got := doBd([]string{"list"}, &stdout, &stderr)
+	got := doBd(context.Background(), []string{"list"}, &stdout, &stderr)
 	if got != 1 {
 		t.Fatalf("doBd(list) = %d, want 1 (bd's own exit code preserved); stderr=%q", got, stderr.String())
 	}
@@ -2223,7 +2224,7 @@ exit 3
 	silentFallbackTestSetup(t, bdRejectsScript)
 
 	var stdout, stderr bytes.Buffer
-	got := doBd([]string{"list"}, &stdout, &stderr)
+	got := doBd(context.Background(), []string{"list"}, &stdout, &stderr)
 	if got != 3 {
 		t.Fatalf("doBd(list) = %d, want 3 (bd's own exit code preserved); stderr=%q", got, stderr.String())
 	}
@@ -2340,7 +2341,7 @@ func TestGcBdHeartbeatForwardsNativeLeaseRefresh(t *testing.T) {
 	t.Setenv("CAPTURE_PATH", capture)
 
 	var stdout, stderr bytes.Buffer
-	if got := doBd([]string{"heartbeat", "demo-abc"}, &stdout, &stderr); got != 0 {
+	if got := doBd(context.Background(), []string{"heartbeat", "demo-abc"}, &stdout, &stderr); got != 0 {
 		t.Fatalf("doBd(heartbeat) = %d, want 0; stderr=%q", got, stderr.String())
 	}
 
@@ -2694,7 +2695,7 @@ func TestDoBdReleaseIfCurrentUpdatesOnlyMatchingAssignment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cityDir, "city.toml"), []byte("[workspace]\nname = \"demo\"\n\n[beads]\nprovider = \"file\"\n"), 0o644); err != nil {
 		t.Fatalf("write city.toml: %v", err)
 	}
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -2708,7 +2709,7 @@ func TestDoBdReleaseIfCurrentUpdatesOnlyMatchingAssignment(t *testing.T) {
 
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "gc"}
 	var stdout, stderr bytes.Buffer
-	if got := doBdReleaseIfCurrent(cityDir, nil, target, created.ID, "worker-2", &stdout, &stderr); got != 0 {
+	if got := doBdReleaseIfCurrent(context.Background(), cityDir, nil, target, created.ID, "worker-2", &stdout, &stderr); got != 0 {
 		t.Fatalf("doBdReleaseIfCurrent wrong assignee = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	if strings.TrimSpace(stdout.String()) != "skipped" {
@@ -2724,7 +2725,7 @@ func TestDoBdReleaseIfCurrentUpdatesOnlyMatchingAssignment(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if got := doBdReleaseIfCurrent(cityDir, nil, target, created.ID, "worker-1", &stdout, &stderr); got != 0 {
+	if got := doBdReleaseIfCurrent(context.Background(), cityDir, nil, target, created.ID, "worker-1", &stdout, &stderr); got != 0 {
 		t.Fatalf("doBdReleaseIfCurrent matching assignee = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	if strings.TrimSpace(stdout.String()) != "released" {
@@ -2801,7 +2802,7 @@ prefix = "fe"
 	t.Setenv("GC_CITY_PATH", cityDir)
 	t.Setenv("GC_BEADS_FORCE_FALLBACK", "1")
 
-	store, err := openStoreAtForCity(rigDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2811,7 +2812,7 @@ prefix = "fe"
 
 	target := execStoreTarget{ScopeRoot: rigDir, ScopeKind: "rig", Prefix: "fe"}
 	var stdout, stderr bytes.Buffer
-	if got := doBdReleaseIfCurrent(cityDir, nil, target, "fe-abc", "worker-1", &stdout, &stderr); got != 0 {
+	if got := doBdReleaseIfCurrent(context.Background(), cityDir, nil, target, "fe-abc", "worker-1", &stdout, &stderr); got != 0 {
 		t.Fatalf("doBdReleaseIfCurrent = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	if strings.TrimSpace(stdout.String()) != "released" {
@@ -2886,7 +2887,7 @@ prefix = "fe"
 
 	target := execStoreTarget{ScopeRoot: rigDir, ScopeKind: "rig", Prefix: "fe"}
 	var stdout, stderr bytes.Buffer
-	if got := doBdReleaseIfCurrent(cityDir, nil, target, "fe-abc", "worker-1", &stdout, &stderr); got != 0 {
+	if got := doBdReleaseIfCurrent(context.Background(), cityDir, nil, target, "fe-abc", "worker-1", &stdout, &stderr); got != 0 {
 		t.Fatalf("doBdReleaseIfCurrent = %d, want 0 (exit 13 is a verdict, not a failure); stderr=%q", got, stderr.String())
 	}
 	if strings.TrimSpace(stdout.String()) != "skipped" {
@@ -2962,7 +2963,7 @@ prefix = "fe"
 
 	target := execStoreTarget{ScopeRoot: rigDir, ScopeKind: "rig", Prefix: "fe"}
 	var stdout, stderr bytes.Buffer
-	if got := doBdReleaseIfCurrent(cityDir, nil, target, "fe-abc", "worker-1", &stdout, &stderr); got != 1 {
+	if got := doBdReleaseIfCurrent(context.Background(), cityDir, nil, target, "fe-abc", "worker-1", &stdout, &stderr); got != 1 {
 		t.Fatalf("doBdReleaseIfCurrent = %d, want 1 (a substring collision must not be reported as a release); stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 	}
 	if strings.TrimSpace(stdout.String()) != "" {
@@ -3002,7 +3003,7 @@ func TestGcBdPassthroughResolvesBdBinary(t *testing.T) {
 		}
 
 		var stdout, stderr bytes.Buffer
-		if got := doBd([]string{"show", "gc-1"}, &stdout, &stderr); got != 0 {
+		if got := doBd(context.Background(), []string{"show", "gc-1"}, &stdout, &stderr); got != 0 {
 			t.Fatalf("doBd() = %d, want 0; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 		}
 		if got := strings.TrimSpace(stdout.String()); got != "pinned-bd" {
@@ -3017,7 +3018,7 @@ func TestGcBdPassthroughResolvesBdBinary(t *testing.T) {
 		}
 
 		var stdout, stderr bytes.Buffer
-		if got := doBd([]string{"show", "gc-1"}, &stdout, &stderr); got != 0 {
+		if got := doBd(context.Background(), []string{"show", "gc-1"}, &stdout, &stderr); got != 0 {
 			t.Fatalf("doBd() = %d, want 0; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 		}
 		if got := strings.TrimSpace(stdout.String()); got != "ambient-bd" {
@@ -3036,7 +3037,7 @@ func TestGcBdPassthroughResolvesBdBinary(t *testing.T) {
 		}
 
 		var stdout, stderr bytes.Buffer
-		if got := doBd([]string{"list"}, &stdout, &stderr); got != 1 {
+		if got := doBd(context.Background(), []string{"list"}, &stdout, &stderr); got != 1 {
 			t.Fatalf("doBd() = %d, want 1; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 		}
 		if want := "partial beads storage binding"; !strings.Contains(stderr.String(), want) {
@@ -3104,7 +3105,7 @@ func TestGcBdDisclosesAnsweringStore(t *testing.T) {
 		newBdScopeDisclosureTestCity(t)
 
 		var stdout, stderr bytes.Buffer
-		if got := doBd([]string{"list"}, &stdout, &stderr); got != 0 {
+		if got := doBd(context.Background(), []string{"list"}, &stdout, &stderr); got != 0 {
 			t.Fatalf("doBd(list) = %d, want 0; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 		}
 		if !strings.Contains(stderr.String(), "gc bd: answering from the city store") {
@@ -3124,7 +3125,7 @@ func TestGcBdDisclosesAnsweringStore(t *testing.T) {
 				args = append(args, "fe-1")
 			}
 			var stdout, stderr bytes.Buffer
-			if got := doBd(args, &stdout, &stderr); got != 0 {
+			if got := doBd(context.Background(), args, &stdout, &stderr); got != 0 {
 				t.Fatalf("doBd(%v) = %d, want 0; stdout=%q stderr=%q", args, got, stdout.String(), stderr.String())
 			}
 			if !strings.Contains(stderr.String(), `gc bd: answering from the rig "frontend" store`) {
@@ -3137,7 +3138,7 @@ func TestGcBdDisclosesAnsweringStore(t *testing.T) {
 		newBdScopeDisclosureTestCity(t)
 
 		var stdout, stderr bytes.Buffer
-		if got := doBd([]string{"--rig", "frontend", "create", "--json", "x", "-t", "task"}, &stdout, &stderr); got != 0 {
+		if got := doBd(context.Background(), []string{"--rig", "frontend", "create", "--json", "x", "-t", "task"}, &stdout, &stderr); got != 0 {
 			t.Fatalf("doBd(create) = %d, want 0; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 		}
 		if strings.Contains(stderr.String(), "answering from") {
@@ -3163,7 +3164,7 @@ func TestGcBdPassthroughResolvesBdBinaryForRigScope(t *testing.T) {
 		writeGcBdProbeRig(t, cityDir, "frontend", completeStorageBindingJSON)
 
 		var stdout, stderr bytes.Buffer
-		if got := doBd([]string{"--rig", "frontend", "list"}, &stdout, &stderr); got != 0 {
+		if got := doBd(context.Background(), []string{"--rig", "frontend", "list"}, &stdout, &stderr); got != 0 {
 			t.Fatalf("doBd(--rig frontend) = %d, want 0; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 		}
 		if got := strings.TrimSpace(stdout.String()); got != "pinned-bd" {
@@ -3185,7 +3186,7 @@ func TestGcBdPassthroughResolvesBdBinaryForRigScope(t *testing.T) {
 		writeGcBdProbeRig(t, cityDir, "dl", `{"backend":"doltlite"}`)
 
 		var stdout, stderr bytes.Buffer
-		if got := doBd([]string{"--rig", "dl", "list"}, &stdout, &stderr); got != 0 {
+		if got := doBd(context.Background(), []string{"--rig", "dl", "list"}, &stdout, &stderr); got != 0 {
 			t.Fatalf("doBd(--rig dl) = %d, want 0; a city-level binding fault must not take a doltlite rig offline; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 		}
 		if got := strings.TrimSpace(stdout.String()); got != "ambient-bd" {
@@ -3204,7 +3205,7 @@ func TestGcBdPassthroughResolvesBdBinaryForRigScope(t *testing.T) {
 		writeGcBdProbeRig(t, cityDir, "dl", `{"backend":"doltlite"}`)
 
 		var stdout, stderr bytes.Buffer
-		if got := doBd([]string{"--rig", "dl", "list"}, &stdout, &stderr); got != 0 {
+		if got := doBd(context.Background(), []string{"--rig", "dl", "list"}, &stdout, &stderr); got != 0 {
 			t.Fatalf("doBd(--rig dl) = %d, want 0; stdout=%q stderr=%q", got, stdout.String(), stderr.String())
 		}
 		if got := strings.TrimSpace(stdout.String()); got != "ambient-bd" {

@@ -47,7 +47,7 @@ func (r *turnBoundClaimRecorder) ops(t *testing.T, output string) hookClaimOps {
 			r.releases = append(r.releases, beadID)
 			return true, nil
 		},
-		DrainAck: func(io.Writer) error {
+		DrainAck: func(context.Context, io.Writer) error {
 			r.drainAcked = true
 			return nil
 		},
@@ -94,7 +94,7 @@ func TestHookClaimRefusesCallbackLane(t *testing.T) {
 		t.Run(marker, func(t *testing.T) {
 			rec := &turnBoundClaimRecorder{}
 			var stdout, stderr bytes.Buffer
-			code := doHookClaim("query", "/rig", hookClaimOptions{
+			code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 				Assignee:     "worker-1",
 				RouteTargets: []string{"worker"},
 				Env:          []string{marker},
@@ -124,7 +124,7 @@ func TestHookClaimRefusesCallbackLane(t *testing.T) {
 func TestHookClaimClaimsInsideATurn(t *testing.T) {
 	rec := &turnBoundClaimRecorder{}
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		Env:          []string{"GC_SESSION_ID=sess-1"},
@@ -205,7 +205,7 @@ func TestHookClaimWindowExpiredRefusesFreshClaim(t *testing.T) {
 	ops.ClaimWindow = 45 * time.Second
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		DrainAck:     true,
@@ -244,7 +244,7 @@ func TestHookClaimWindowUnspentStillClaims(t *testing.T) {
 	ops.ClaimWindow = 45 * time.Second
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		JSON:         true,
@@ -272,7 +272,7 @@ func TestHookClaimWindowExemptsExistingAssignment(t *testing.T) {
 	ops.ClaimWindow = 45 * time.Second
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:           "worker-1",
 		IdentityCandidates: []string{"worker-1"},
 		RouteTargets:       []string{"worker"},
@@ -323,7 +323,7 @@ func TestHookClaimSlowWorkQueryStillClaimsWithinDerivedWindow(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		JSON:         true,
@@ -368,7 +368,7 @@ func TestHookClaimWindowBoundsTheClaimWriteChild(t *testing.T) {
 	ops.ClaimWindow = 45 * time.Second
 
 	var stdout, stderr bytes.Buffer
-	doHookClaim("query", "/rig", hookClaimOptions{
+	doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		JSON:         true,
@@ -398,7 +398,7 @@ func TestHookClaimUnwindsOnResultDeliveryFailure(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			rec := &turnBoundClaimRecorder{}
 			var stderr bytes.Buffer
-			code := doHookClaim("query", "/rig", hookClaimOptions{
+			code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 				Assignee:     "worker-1",
 				RouteTargets: []string{"worker"},
 				JSON:         jsonOut,
@@ -426,7 +426,7 @@ func TestHookClaimUnwindsOnResultDeliveryFailure(t *testing.T) {
 func TestHookClaimKeepsDeliveredClaim(t *testing.T) {
 	rec := &turnBoundClaimRecorder{}
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		JSON:         true,
@@ -466,7 +466,7 @@ func TestHookClaimStraddleUnwinds(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		JSON:         true,
@@ -503,7 +503,7 @@ func TestHookClaimSlowButInsideWindowStands(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		JSON:         true,
@@ -535,7 +535,7 @@ func TestHookClaimUnwindFailureIsSurfaced(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		JSON:         true,
@@ -590,7 +590,7 @@ func TestHookClaimClearsSessionCurrentClaimOnUndeliveredUnwind(t *testing.T) {
 			}
 
 			var stderr bytes.Buffer
-			code := doHookClaim("query", "/rig", hookClaimOptions{
+			code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 				Assignee:     "worker-1",
 				RouteTargets: []string{"worker"},
 				Env:          []string{"GC_SESSION_ID=mc-sess1"},
@@ -637,7 +637,7 @@ func TestHookClaimStraddleLeavesSessionClaimUntouched(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		Env:          []string{"GC_SESSION_ID=mc-sess1"},

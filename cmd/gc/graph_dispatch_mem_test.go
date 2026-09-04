@@ -325,7 +325,7 @@ func startMemScopedWorkflow(t *testing.T) (*beads.MemStore, string, string) {
 
 	opts := testOpts(worker, convoy.ID)
 	opts.OnFormula = "mol-scoped-work"
-	if code := doSling(opts, deps, store, stdout, stderr); code != 0 {
+	if code := doSling(context.Background(), opts, deps, store, stdout, stderr); code != 0 {
 		t.Fatalf("doSling returned %d; stderr=%s", code, stderr.String())
 	}
 
@@ -614,7 +614,7 @@ func TestGraphWorkflowControlLaneUsesOwningStoreScope(t *testing.T) {
 
 			opts := testOpts(worker, convoy.ID)
 			opts.OnFormula = "mol-scoped-work"
-			if code := doSling(opts, deps, ownerStore, stdout, stderr); code != 0 {
+			if code := doSling(context.Background(), opts, deps, ownerStore, stdout, stderr); code != 0 {
 				t.Fatalf("doSling returned %d; stderr=%s", code, stderr.String())
 			}
 
@@ -658,7 +658,7 @@ func TestGraphWorkflowControlLaneUsesOwningStoreScope(t *testing.T) {
 				t.Fatal("expected graph control beads")
 			}
 
-			result := buildDesiredStateWithSessionBeads(
+			result := buildDesiredStateWithSessionBeads(context.Background(),
 				"test-city",
 				deps.CityPath,
 				time.Now().UTC(),
@@ -668,8 +668,8 @@ func TestGraphWorkflowControlLaneUsesOwningStoreScope(t *testing.T) {
 				map[string]beads.Store{"fixture": rigStore},
 				newSessionBeadSnapshot(nil),
 				nil,
-				io.Discard,
-			)
+				io.Discard)
+
 			if got := result.ScaleCheckCounts[tt.wantDispatcher]; got != 1 {
 				t.Fatalf("ScaleCheckCounts[%q] = %d, want 1", tt.wantDispatcher, got)
 			}
@@ -729,7 +729,7 @@ func TestRigGraphControlLaneMaterializeServeAndAdvanceEndToEnd(t *testing.T) {
 			{StepID: "rig-control-e2e", DependsOnID: "rig-control-e2e.workflow-finalize", Type: "blocks"},
 		},
 	}
-	if err := graphroute.DecorateGraphWorkflowRecipeWithDefaultBinding(
+	if err := graphroute.DecorateGraphWorkflowRecipeWithDefaultBinding(context.Background(),
 		recipe,
 		nil,
 		"",
@@ -784,21 +784,15 @@ func TestRigGraphControlLaneMaterializeServeAndAdvanceEndToEnd(t *testing.T) {
 
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
-	prevInterval := workflowServeIdlePollInterval
-	prevAttempts := workflowServeIdlePollAttempts
-	workflowServeIdlePollInterval = 0
-	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
-		workflowServeIdlePollInterval = prevInterval
-		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	wantBareRoute := "fixture/control-dispatcher"
 	serveQuery := workflowServeControlReadyQuery(rigDispatcher)
 	queryCalls := 0
-	workflowServeList = func(workQuery, dir string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_ context.Context, workQuery, dir string, _ map[string]string) ([]hookBead, error) {
 		queryCalls++
 		if canonicalTestPath(dir) != canonicalTestPath(rigPath) {
 			t.Fatalf("serve query dir = %q, want rig store %q", dir, rigPath)
@@ -833,7 +827,7 @@ func TestRigGraphControlLaneMaterializeServeAndAdvanceEndToEnd(t *testing.T) {
 		}
 		return selected, nil
 	}
-	controlDispatcherServe = func(gotCityPath, storePath, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_ context.Context, gotCityPath, storePath, beadID string, _ io.Writer, _ io.Writer) error {
 		if canonicalTestPath(gotCityPath) != canonicalTestPath(cityPath) {
 			return fmt.Errorf("control city path = %q, want %q", gotCityPath, cityPath)
 		}
@@ -848,7 +842,7 @@ func TestRigGraphControlLaneMaterializeServeAndAdvanceEndToEnd(t *testing.T) {
 		return processErr
 	}
 
-	if _, err := drainWorkflowServeWork(rigDispatcher, cityPath, rigPath, serveQuery, nil, io.Discard); err != nil {
+	if _, err := drainWorkflowServeWork(context.Background(), rigDispatcher, cityPath, rigPath, serveQuery, nil, io.Discard); err != nil {
 		t.Fatalf("drain rig workflow serve: %v", err)
 	}
 	if queryCalls < 2 {
@@ -916,7 +910,7 @@ func TestGraphWorkflowRoutingLeavesSpecBeadsUnrouted(t *testing.T) {
 		},
 	}
 
-	if err := applyGraphRouting(recipe, &worker, worker.QualifiedName(), nil, "", "", "city:test-city", store, cfg.Workspace.Name, cityPath, cfg); err != nil {
+	if err := applyGraphRouting(context.Background(), recipe, &worker, worker.QualifiedName(), nil, "", "", "city:test-city", store, cfg.Workspace.Name, cityPath, cfg); err != nil {
 		t.Fatalf("applyGraphRouting: %v", err)
 	}
 

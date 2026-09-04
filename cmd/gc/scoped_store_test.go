@@ -316,19 +316,19 @@ func TestScopedStoreLikeHonorsCanceledResolutionContext(t *testing.T) {
 	}
 }
 
-// TestScopedStoreLikeAvoidsManagedDoltRecovery is a regression test: an
+// TestScopedStoreLikeAvoidsManagedDoltManagement is a regression test: an
 // earlier version of scopedBdStoreForCity/scopedBdStoreForRig called
-// bdRuntimeEnvWithError/bdRuntimeEnvForRigWithError (allowRecovery=true),
+// bdRuntimeEnvWithError/bdRuntimeEnvForRigWithError,
 // which — the first time a city's bd-CLI store is constructed and no
 // managed dolt server is yet running — spawns and waits on a real `dolt
 // sql-server` before returning env, taking 10+ seconds. That defeats "fast
 // bounded mitigation" and, worse, means every concurrent short-budget
-// status read would each attempt that recovery simultaneously during
+// status read would each attempt lifecycle management simultaneously during
 // exactly the kind of incident this bead exists to bound.
-// scopedBdStoreForCity/scopedBdStoreForRig must stay on the NoRecovery env
+// scopedBdStoreForCity/scopedBdStoreForRig must stay on the no-management env
 // resolution so this path is fast-fail, not fast-fix, when no managed
 // server is reachable.
-func TestScopedStoreLikeAvoidsManagedDoltRecovery(t *testing.T) {
+func TestScopedStoreLikeAvoidsManagedDoltManagement(t *testing.T) {
 	cityDir := t.TempDir()
 	writeMinimalCityToml(t, cityDir)
 
@@ -337,12 +337,12 @@ func TestScopedStoreLikeAvoidsManagedDoltRecovery(t *testing.T) {
 	// .gc/scripts/gc-beads-bd.sh, which is what made a later env
 	// resolution believe a managed dolt server ought to exist and attempt
 	// to start/recover one.
-	realStore := bdStoreForCity(cityDir, cityDir)
+	realStore := bdStoreForCity(context.Background(), cityDir, cityDir)
 
 	start := time.Now()
 	scoped, err := scopedStoreLike(context.Background(), cityDir, &config.City{}, realStore)
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Fatalf("scopedStoreLike took %s, want fast (no managed-dolt recovery attempt)", elapsed)
+		t.Fatalf("scopedStoreLike took %s, want fast (no managed-dolt lifecycle attempt)", elapsed)
 	}
 	if err != nil {
 		t.Fatalf("scopedStoreLike: %v", err)

@@ -71,11 +71,12 @@ func runSigpipeUnwindHelper(mode, markerPath string) {
 		ResolveWorkBranch:        func(string) string { return "" },
 	}
 	// os.Stdout, not a buffer: the whole point is the real file descriptor.
-	code := doHookClaim("query", "/rig", hookClaimOptions{
+	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		JSON:         true,
 	}, ops, os.Stdout, os.Stderr)
+
 	os.Exit(code)
 }
 

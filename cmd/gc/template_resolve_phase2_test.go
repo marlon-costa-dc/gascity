@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -183,6 +184,7 @@ func resolvePhase2Template(t *testing.T, tc phase2ProviderCase) TemplateParams {
 
 	cityPath := t.TempDir()
 	params := &agentBuildParams{
+		ctx:        context.Background(),
 		cityName:   "phase2-city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: tc.family},
@@ -220,6 +222,7 @@ func resolveMimoCodeDefaultTransportTemplate(t *testing.T, session string) Templ
 	t.Helper()
 
 	params := &agentBuildParams{
+		ctx:        context.Background(),
 		cityName:   "default-transport-city",
 		cityPath:   t.TempDir(),
 		workspace:  &config.Workspace{Provider: "mimocode"},

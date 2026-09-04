@@ -287,7 +287,7 @@ func handleSessionCircuitResetSocketCmd(conn net.Conn, cityPath, payload string)
 		})
 		return
 	}
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		writeJSONLine(conn, sessionCircuitResetReply{
 			Outcome: "failed",
@@ -1189,7 +1189,7 @@ func controllerLoop(
 	cityName string,
 	tomlPath string,
 	watchTargets []config.WatchTarget,
-	buildFn func(*config.City, runtime.Provider, beads.Store) DesiredStateResult,
+	buildFn func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult,
 	sp runtime.Provider,
 	dops drainOps,
 	ct crashTracker,
@@ -1283,8 +1283,8 @@ func runController(
 	tomlPath string,
 	cfg *config.City,
 	configRev string,
-	buildFn func(*config.City, runtime.Provider, beads.Store) DesiredStateResult,
-	buildFnWithSessionBeads func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult,
+	buildFn func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult,
+	buildFnWithSessionBeads func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult,
 	sp runtime.Provider,
 	dops drainOps,
 	poolSessions map[string]time.Duration,
@@ -1359,6 +1359,7 @@ func runController(
 		ConfigRev:               configRev,
 		ConfigDirty:             configDirty,
 		Cfg:                     cfg,
+		Ctx:                     ctx,
 		SP:                      sp,
 		Publication:             supervisor.PublicationConfig{},
 		BuildFn:                 buildFn,
@@ -1504,7 +1505,7 @@ func runController(
 		}
 	}
 
-	runPoolOnBoot(cfg, cityPath, shellRunHook, stderr)
+	runPoolOnBoot(ctx, cfg, cityPath, shellRunHook, stderr)
 	cr.run(ctx)
 	cr.shutdown()
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -166,7 +167,7 @@ func assertE2c3SessionMaterializationFailures(t *testing.T, cityPath string) {
 		}},
 		NamedSessions: []config.NamedSession{{Template: "mayor"}},
 	}
-	if _, err := materializeSessionForTemplateWithOptions(cityPath, namedCfg, namedStore, "mayor", io.Discard, ensureSessionForTemplateOptions{}); err == nil || err.Error() != e2c3ProviderConstructionFailure {
+	if _, err := materializeSessionForTemplateWithOptions(context.Background(), cityPath, namedCfg, namedStore, "mayor", io.Discard, ensureSessionForTemplateOptions{}); err == nil || err.Error() != e2c3ProviderConstructionFailure {
 		t.Fatalf("named-session materialization error = %v, want %q", err, e2c3ProviderConstructionFailure)
 	}
 	assertE2c3NoSessionBeads(t, namedStore, "named-session provider failure")
@@ -177,7 +178,7 @@ func assertE2c3SessionMaterializationFailures(t *testing.T, cityPath string) {
 		Workspace: config.Workspace{Name: "test-city"},
 		Agents:    []config.Agent{*agentCfg},
 	}
-	if _, err := materializeSessionForAgentConfig(cityPath, cfg, agentStore, agentCfg); err == nil || err.Error() != e2c3ProviderConstructionFailure {
+	if _, err := materializeSessionForAgentConfig(context.Background(), cityPath, cfg, agentStore, agentCfg); err == nil || err.Error() != e2c3ProviderConstructionFailure {
 		t.Fatalf("agent-session materialization error = %v, want %q", err, e2c3ProviderConstructionFailure)
 	}
 	assertE2c3NoSessionBeads(t, agentStore, "agent-session provider failure")
@@ -210,7 +211,7 @@ func assertE2c3ControlDispatchFailures(t *testing.T, cityPath string) {
 			t.Fatalf("create %s control bead: %v", kind, err)
 		}
 		before := control
-		err = runControlDispatcherWithStoreAndConfig(cityPath, cityPath, store, control.ID, cfg, io.Discard, io.Discard)
+		err = runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, cityPath, store, control.ID, cfg, io.Discard, io.Discard)
 		if err == nil || err.Error() != e2c3ProviderConstructionFailure {
 			t.Fatalf("%s control dispatch error = %v, want %q", kind, err, e2c3ProviderConstructionFailure)
 		}
@@ -227,7 +228,7 @@ func assertE2c3ControlDispatchFailures(t *testing.T, cityPath string) {
 func assertE2c3RigListFailure(t *testing.T, cityPath string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	if code := doRigList(fsys.OSFS{}, cityPath, true, &stdout, &stderr); code != 1 {
+	if code := doRigList(context.Background(), fsys.OSFS{}, cityPath, true, &stdout, &stderr); code != 1 {
 		t.Fatalf("JSON rig list provider failure code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	var payload cliJSONErrorOutput
@@ -250,7 +251,7 @@ func assertE2c3RigListFailure(t *testing.T, cityPath string) {
 func assertE2c3DoctorFailureCheck(t *testing.T, cityPath string) {
 	t.Helper()
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	checks := buildDoctorChecks(cityPath, cfg, nil, buildDoctorChecksOpts{
+	checks := buildDoctorChecks(context.Background(), cityPath, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    false,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,

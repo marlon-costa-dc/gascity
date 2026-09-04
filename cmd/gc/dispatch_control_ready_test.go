@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -336,7 +337,7 @@ func TestTryControlReadyFromCacheOrFallbackAnswersFromCacheWithZeroSubprocessCal
 	agentCfg := config.Agent{Name: config.ControlDispatcherAgentName, Dir: "gascity"}
 	query := workflowServeControlReadyQuery(agentCfg)
 
-	queue, handled, err := tryControlReadyFromCacheOrFallback(query, cityDir, nil)
+	queue, handled, err := tryControlReadyFromCacheOrFallback(context.Background(), query, cityDir, nil)
 	if err != nil {
 		t.Fatalf("tryControlReadyFromCacheOrFallback: %v", err)
 	}
@@ -356,7 +357,7 @@ func TestTryControlReadyFromCacheOrFallbackAnswersFromCacheWithZeroSubprocessCal
 
 func TestTryControlReadyFromCacheOrFallbackReturnsUnhandledForNonControlQuery(t *testing.T) {
 	cityDir := t.TempDir()
-	_, handled, err := tryControlReadyFromCacheOrFallback("bd ready --json --limit=20", cityDir, nil)
+	_, handled, err := tryControlReadyFromCacheOrFallback(context.Background(), "bd ready --json --limit=20", cityDir, nil)
 	if handled {
 		t.Fatalf("handled = true, want false for a non-control-ready query")
 	}
@@ -406,7 +407,7 @@ esac
 	agentCfg := config.Agent{Name: config.ControlDispatcherAgentName, Dir: "gascity"}
 	query := workflowServeControlReadyQuery(agentCfg)
 
-	queue, handled, err := tryControlReadyFromCacheOrFallback(query, cityDir, nil)
+	queue, handled, err := tryControlReadyFromCacheOrFallback(context.Background(), query, cityDir, nil)
 	if err != nil {
 		t.Fatalf("tryControlReadyFromCacheOrFallback: %v", err)
 	}
@@ -521,7 +522,7 @@ printf '[{"id":"ga-plain"}]'
 	}
 	t.Setenv("PATH", tmp+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	got, err := nextWorkflowServeBeads("bd ready --json --limit=20", t.TempDir(), nil)
+	got, err := nextWorkflowServeBeads(context.Background(), "bd ready --json --limit=20", t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("nextWorkflowServeBeads: %v", err)
 	}

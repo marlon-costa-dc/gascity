@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -113,7 +114,7 @@ func TestControlDispatchReadsAndWritesTheGraphStoreOnSplitCity(t *testing.T) {
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStoreAndConfig(cityPath, cityPath, scopeStore, live.ID, cfg, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, cityPath, scopeStore, live.ID, cfg, &stdout, &stderr); err != nil {
 		t.Fatalf("control dispatch: %v", err)
 	}
 
@@ -170,7 +171,7 @@ func TestControlDispatchSingleStoreUsesTheOneStore(t *testing.T) {
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStoreAndConfig(cityPath, cityPath, store, control.ID, cfg, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, cityPath, store, control.ID, cfg, &stdout, &stderr); err != nil {
 		t.Fatalf("control dispatch: %v", err)
 	}
 	got := beadByID(t, store, control.ID)
@@ -213,7 +214,7 @@ func newRoutedControlBead(t *testing.T, store beads.Store, rootID, route string)
 func controlReadyScan(t *testing.T, dir string, agentCfg config.Agent, beadsCfg config.BeadsConfig) []string {
 	t.Helper()
 	resetControlReadyCache(t)
-	queue, handled, err := tryControlReadyFromCacheOrFallback(
+	queue, handled, err := tryControlReadyFromCacheOrFallback(context.Background(),
 		workflowServeControlReadyQueryForBeads(agentCfg, beadsCfg), dir, nil)
 	if err != nil {
 		t.Fatalf("control-ready scan: %v", err)
@@ -332,7 +333,7 @@ func TestControlReadyScanStopsOfferingAControlBeadTheDispatchClosed(t *testing.T
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStoreAndConfig(cityPath, cityPath, scopeStore, live.ID, cfg, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, cityPath, scopeStore, live.ID, cfg, &stdout, &stderr); err != nil {
 		t.Fatalf("control dispatch: %v", err)
 	}
 	if closed := beadByID(t, graphStore, live.ID); closed.Status != "closed" {
@@ -390,7 +391,7 @@ func TestControlDispatchRigScopeStaysOnItsOwnStore(t *testing.T) {
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStoreAndConfig(cityPath, rigPath, rigStore, control.ID, cfg, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, rigPath, rigStore, control.ID, cfg, &stdout, &stderr); err != nil {
 		t.Fatalf("rig-scoped control dispatch: %v", err)
 	}
 	if got := beadByID(t, rigStore, control.ID); got.Status != "closed" {
@@ -460,7 +461,7 @@ func TestControlDispatchGatesOnTheStoreItMutates(t *testing.T) {
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStoreAndConfig(cityPath, cityPath, scopeStore, live.ID, cfg, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, cityPath, scopeStore, live.ID, cfg, &stdout, &stderr); err != nil {
 		t.Fatalf("control dispatch: %v", err)
 	}
 	if action := stdout.String(); action != "" {
@@ -568,7 +569,7 @@ func TestControlDispatchDrainNamesTheWorkLegForConvoyMembership(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	// The dispatch may fail loudly downstream of the expansion; what it may not
 	// do is silently report the convoy as drained.
-	_ = runControlDispatcherWithStoreAndConfig(cityPath, cityPath, scopeStore, drain.ID, cfg, &stdout, &stderr)
+	_ = runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, cityPath, scopeStore, drain.ID, cfg, &stdout, &stderr)
 
 	got := beadByID(t, graphStore, drain.ID)
 	raw := got.Metadata[beadmeta.DrainManifestMetadataKey]
@@ -632,7 +633,7 @@ func TestSourceWorkflowStoresScanTheLedgerThatHoldsWorkflowRoots(t *testing.T) {
 	}
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	stores, err := makeSourceWorkflowStoresLister(cityPath, cfg)()
+	stores, err := makeSourceWorkflowStoresLister(context.Background(), cityPath, cfg)()
 	if err != nil {
 		t.Fatalf("source workflow stores: %v", err)
 	}
@@ -664,7 +665,7 @@ func TestSourceWorkflowStoresStayOnTheScopeStoreWithNoRelocation(t *testing.T) {
 	graphStore := beads.NewMemStoreFrom(1000, nil, nil)
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	stores, err := makeSourceWorkflowStoresLister(cityPath, cfg)()
+	stores, err := makeSourceWorkflowStoresLister(context.Background(), cityPath, cfg)()
 	if err != nil {
 		t.Fatalf("source workflow stores: %v", err)
 	}

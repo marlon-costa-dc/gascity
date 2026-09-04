@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"path/filepath"
@@ -109,14 +110,14 @@ func TestCityStatusJSONIncludesStoreHealthWhenSupervisorAlive(t *testing.T) {
 
 	store := beads.NewMemStore()
 	oldOpen := openCityStoreAtForStatus
-	openCityStoreAtForStatus = func(string) (beads.StoreOpenResult, error) {
+	openCityStoreAtForStatus = func(context.Context, string) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: store}, nil
 	}
 	t.Cleanup(func() { openCityStoreAtForStatus = oldOpen })
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "bright-lights"}}
 	var stdout, stderr bytes.Buffer
-	code := doCityStatusJSON(runtime.NewFake(), cfg, cityPath, &stdout, &stderr)
+	code := doCityStatusJSON(context.Background(), runtime.NewFake(), cfg, cityPath, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr: %s", code, stderr.String())
 	}
@@ -136,7 +137,7 @@ func TestCityStatusJSONIncludesStoreHealthWhenSupervisorAlive(t *testing.T) {
 func TestCityStatusJSONOmitsStoreHealthWhenSupervisorDown(t *testing.T) {
 	cfg := &config.City{Workspace: config.Workspace{Name: "bright-lights"}}
 	var stdout, stderr bytes.Buffer
-	code := doCityStatusJSON(runtime.NewFake(), cfg, "/tmp/no-city", &stdout, &stderr)
+	code := doCityStatusJSON(context.Background(), runtime.NewFake(), cfg, "/tmp/no-city", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr: %s", code, stderr.String())
 	}
@@ -152,7 +153,7 @@ func TestCityStatusTextIncludesStoreHealthBlockWhenSupervisorAlive(t *testing.T)
 
 	store := beads.NewMemStore()
 	oldOpen := openCityStoreAtForStatus
-	openCityStoreAtForStatus = func(string) (beads.StoreOpenResult, error) {
+	openCityStoreAtForStatus = func(context.Context, string) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: store}, nil
 	}
 	t.Cleanup(func() { openCityStoreAtForStatus = oldOpen })
@@ -161,7 +162,7 @@ func TestCityStatusTextIncludesStoreHealthBlockWhenSupervisorAlive(t *testing.T)
 	sp := runtime.NewFake()
 	dops := newFakeDrainOps()
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(sp, dops, cfg, cityPath, &stdout, &stderr)
+	code := doCityStatus(context.Background(), sp, dops, cfg, cityPath, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr: %s", code, stderr.String())
 	}

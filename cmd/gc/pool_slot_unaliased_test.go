@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"strings"
 	"testing"
@@ -53,7 +54,7 @@ func TestBuildDesiredState_PoolSlotSessionBeadCarriesNoSlotAlias(t *testing.T) {
 	cityPath := t.TempDir()
 	store := beads.NewMemStore()
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), transientSlotPoolConfig(), runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), transientSlotPoolConfig(), runtime.NewFake(), store, io.Discard)
 
 	sessionBeads, err := loadSessionBeads(store)
 	if err != nil {
@@ -127,7 +128,7 @@ func TestPoolSlotStaysUnaliasedAcrossReconcileTicks(t *testing.T) {
 	var beadID string
 	for tick := 1; tick <= 2; tick++ {
 		var stderr bytes.Buffer
-		dsResult := buildDesiredState("test-city", cityPath, clk.Now(), cfg, runtime.NewFake(), store, &stderr)
+		dsResult := buildDesiredState(context.Background(), "test-city", cityPath, clk.Now(), cfg, runtime.NewFake(), store, &stderr)
 		syncSessionBeads(cityPath, store, dsResult.State, runtime.NewFake(), allConfiguredDS(dsResult.State), cfg, clk, &stderr, true)
 
 		sessionBeads, err := loadSessionBeads(store)
@@ -256,7 +257,7 @@ func TestCanonicalSingletonPoolKeepsStableAlias(t *testing.T) {
 		}},
 	}
 
-	buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	sessionBeads, err := loadSessionBeads(store)
 	if err != nil {

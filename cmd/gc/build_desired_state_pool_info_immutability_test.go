@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"testing"
 	"time"
 
@@ -70,7 +71,7 @@ func TestNormalizeNonExpandingPoolSessionInfoCopiesCallerLabelsBeforeAddOnlyAppe
 
 	cfgAgent := staleSingletonAgent()
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), &config.City{Workspace: config.Workspace{Name: "test-city"}}, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), &config.City{Workspace: config.Workspace{Name: "test-city"}}, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 
 	folded, err := normalizeNonExpandingPoolSessionInfo(bp, &cfgAgent, info)
 	if err != nil {
@@ -118,7 +119,7 @@ func TestNormalizeNonExpandingPoolSessionInfoDoesNotMutateCallerInput(t *testing
 
 	cfgAgent := staleSingletonAgent()
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), &config.City{Workspace: config.Workspace{Name: "test-city"}}, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), &config.City{Workspace: config.Workspace{Name: "test-city"}}, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 
 	folded, err := normalizeNonExpandingPoolSessionInfo(bp, &cfgAgent, info)
 	if err != nil {

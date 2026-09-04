@@ -362,7 +362,7 @@ func TestOrderDispatchConstructorDeliversRoutesToTheWispBirth(t *testing.T) {
 	graphStore.IDPrefix = "gcg"
 
 	var rec memRecorder
-	od := buildOrderDispatcherFromOrderSet(messagingSplitRoutes(graphStore), cityPath, cfg, []orders.Order{a}, &rec, io.Discard)
+	od := buildOrderDispatcherFromOrderSet(context.Background(), messagingSplitRoutes(graphStore), cityPath, cfg, []orders.Order{a}, &rec, io.Discard)
 	m, ok := od.(*memoryOrderDispatcher)
 	if !ok {
 		t.Fatalf("buildOrderDispatcherFromOrderSet returned %T, want *memoryOrderDispatcher", od)
@@ -450,7 +450,7 @@ func TestWebhookOrderDispatcherServesTheBootResolvedBinding(t *testing.T) {
 		storageRoutes: routes,
 	}
 
-	md := controllerWebhookDispatcher{cs: cs}.dispatcher()
+	md := controllerWebhookDispatcher{cs: cs}.dispatcher(context.Background())
 	if md.storageRoutes != routes {
 		t.Fatalf("webhook dispatcher routes = %p, want the controller's %p; a webhook-fired wisp would be born in the work ledger", md.storageRoutes, routes)
 	}
@@ -686,12 +686,13 @@ func bootSplitCityForReloadWithOrder(t *testing.T) (*CityRuntime, string, *bytes
 	sp := runtime.NewFake()
 	var stdout, stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
+		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -738,7 +739,7 @@ func TestOrderTrackingSweepResolverPairsTheWispStoreWithTheTrackingStores(t *tes
 		entry := cliStorageRoutesEntryFor(filepath.Clean(cityPath))
 		entry.once.Do(func() { entry.routes = messagingSplitRoutes(graphStore) })
 
-		_, wispStore, _ := orderTrackingSweepStoresForConfigTargets(cityPath, cfg, nil)
+		_, wispStore, _ := orderTrackingSweepStoresForConfigTargets(context.Background(), cityPath, cfg, nil)
 		if wispStore != beads.Store(graphStore) {
 			t.Fatalf("wisp sweep store = %T(%p), want the graph binding %p; --include-wisps would report wispClosed: 0 and exit 0", wispStore, wispStore, graphStore)
 		}
@@ -748,7 +749,7 @@ func TestOrderTrackingSweepResolverPairsTheWispStoreWithTheTrackingStores(t *tes
 		cityPath := t.TempDir()
 		resetCLIStorageRoutes(t)
 
-		_, wispStore, _ := orderTrackingSweepStoresForConfigTargets(cityPath, cfg, nil)
+		_, wispStore, _ := orderTrackingSweepStoresForConfigTargets(context.Background(), cityPath, cfg, nil)
 		if wispStore != nil {
 			t.Fatalf("wisp sweep store = %T(%p) for a city with no [storage]; want nil so the sweep stays on the store it always used", wispStore, wispStore)
 		}

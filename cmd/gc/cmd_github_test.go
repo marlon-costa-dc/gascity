@@ -123,7 +123,7 @@ func TestGitHubPRBackfillCommandCreatesDedupedRepairBeads(t *testing.T) {
 			},
 		}}
 	}
-	openGitHubPRRepairStore = func(string, string) (beads.Store, error) {
+	openGitHubPRRepairStore = func(context.Context, string, string) (beads.Store, error) {
 		return store, nil
 	}
 	attachCalls := stubGitHubRepairWorkflowAttach(t)
@@ -179,7 +179,7 @@ func TestGitHubPRBackfillCoalescesAcrossFailureKindTransition(t *testing.T) {
 	oldStore := openGitHubPRRepairStore
 	resolveGitHubTokenForBackfill = func(context.Context) (string, error) { return "token", nil }
 	newGitHubPRBackfillClient = func(string) githubPRLister { return lister }
-	openGitHubPRRepairStore = func(string, string) (beads.Store, error) { return store, nil }
+	openGitHubPRRepairStore = func(context.Context, string, string) (beads.Store, error) { return store, nil }
 	stubGitHubRepairWorkflowAttach(t)
 	t.Cleanup(func() {
 		resolveGitHubTokenForBackfill = oldToken
@@ -234,7 +234,7 @@ func TestGitHubPRBackfillCreatesSeparateBeadForNewHeadSHA(t *testing.T) {
 	oldStore := openGitHubPRRepairStore
 	resolveGitHubTokenForBackfill = func(context.Context) (string, error) { return "token", nil }
 	newGitHubPRBackfillClient = func(string) githubPRLister { return lister }
-	openGitHubPRRepairStore = func(string, string) (beads.Store, error) { return store, nil }
+	openGitHubPRRepairStore = func(context.Context, string, string) (beads.Store, error) { return store, nil }
 	stubGitHubRepairWorkflowAttach(t)
 	t.Cleanup(func() {
 		resolveGitHubTokenForBackfill = oldToken
@@ -284,7 +284,7 @@ func TestGitHubPRBackfillDispatchesWorkflowOnCreateOnly(t *testing.T) {
 	oldStore := openGitHubPRRepairStore
 	resolveGitHubTokenForBackfill = func(context.Context) (string, error) { return "token", nil }
 	newGitHubPRBackfillClient = func(string) githubPRLister { return lister }
-	openGitHubPRRepairStore = func(string, string) (beads.Store, error) { return store, nil }
+	openGitHubPRRepairStore = func(context.Context, string, string) (beads.Store, error) { return store, nil }
 	attachCalls := stubGitHubRepairWorkflowAttach(t)
 	t.Cleanup(func() {
 		resolveGitHubTokenForBackfill = oldToken
@@ -401,7 +401,7 @@ func TestGitHubPRBackfillCommandPropagatesRepairStoreError(t *testing.T) {
 	newGitHubPRBackfillClient = func(string) githubPRLister {
 		return fakeGitHubPRLister{prs: []githubmonitor.PullRequest{{Number: 1, BaseRefName: "main", HeadSHA: "abc", MergeStateStatus: "DIRTY"}}}
 	}
-	openGitHubPRRepairStore = func(string, string) (beads.Store, error) {
+	openGitHubPRRepairStore = func(context.Context, string, string) (beads.Store, error) {
 		return nil, fmt.Errorf("store unavailable")
 	}
 	t.Cleanup(func() {

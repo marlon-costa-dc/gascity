@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -291,7 +292,7 @@ provider = "fake"
 provider = "file"
 `)
 	isolateCompletionContext(t, cityPath)
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityPath, err)
 	}
@@ -376,7 +377,7 @@ provider = "fake"
 provider = "file"
 `)
 	isolateCompletionContext(t, cityPath)
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityPath, err)
 	}
@@ -401,7 +402,7 @@ provider = "file"
 	older := mkSession("older")
 	newer := mkSession("newer")
 
-	got := loadSessionsForCompletion()
+	got := loadSessionsForCompletion(context.Background())
 
 	posOlder, posNewer := -1, -1
 	for i, sinfo := range got {
@@ -444,7 +445,7 @@ provider = "opencode"
 session = "acp"
 `)
 	isolateCompletionContext(t, cityPath)
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityPath, err)
 	}
@@ -464,7 +465,7 @@ session = "acp"
 		return oldBuild(cfg, name, sc, cityName, cityPath)
 	}
 
-	got := loadSessionsForCompletion()
+	got := loadSessionsForCompletion(context.Background())
 	if len(got) != 0 {
 		t.Fatalf("sessions = %v, want none after provider construction failure", got)
 	}

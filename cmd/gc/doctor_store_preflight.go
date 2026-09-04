@@ -27,8 +27,7 @@ func defaultDoctorBeadStorePreflight(cityPath string, _ func(string) (beads.Stor
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// NoRecovery + context-bound runner (O(1) list; process-group kill on timeout).
-	env, err := bdRuntimeEnvWithErrorRecoveryContext(ctx, cityPath, false)
+	env, err := bdRuntimeEnvWithError(ctx, cityPath)
 	if err != nil {
 		return err
 	}

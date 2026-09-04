@@ -777,7 +777,7 @@ func TestPrepareStartCandidate_UsesSessionIDForTaskWorkDir(t *testing.T) {
 		t.Fatalf("temp workDir not available: %v", err)
 	}
 
-	prepared, err := prepareStartCandidate(startCandidate{
+	prepared, err := prepareStartCandidate(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp: TemplateParams{
 			TemplateName: "frontend/worker",
@@ -850,7 +850,7 @@ func TestPrepareStartCandidate_UsesTriggerBeadWorkDirBeforeClaim(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prepared, err := prepareStartCandidate(startCandidate{
+	prepared, err := prepareStartCandidate(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp: TemplateParams{
 			TemplateName: "frontend/worker",
@@ -906,7 +906,7 @@ func TestPrepareStartCandidate_UsesAssignedWorkSnapshotForTaskWorkDir(t *testing
 		t.Fatal(err)
 	}
 
-	prepared, err := prepareStartCandidateForCity(startCandidate{
+	prepared, err := prepareStartCandidateForCity(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp: TemplateParams{
 			TemplateName: "frontend/worker",
@@ -950,7 +950,7 @@ func TestPrepareStartCandidateReloadsOverridesBeforeWake(t *testing.T) {
 		t.Fatalf("SetMetadata(template_overrides): %v", err)
 	}
 
-	prepared, err := prepareStartCandidate(startCandidate{
+	prepared, err := prepareStartCandidate(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp: TemplateParams{
 			TemplateName: "worker",
@@ -1117,7 +1117,7 @@ func TestPrepareStartCandidate_GeneratesMissingSessionKeyBeforeWake(t *testing.T
 		t.Fatal(err)
 	}
 
-	prepared, err := prepareStartCandidate(startCandidate{
+	prepared, err := prepareStartCandidate(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp: TemplateParams{
 			TemplateName: "wendy",
@@ -1169,7 +1169,7 @@ func TestPrepareStartCandidate_ResumeCapableWithoutSessionKeyKeepsStartupPrompt(
 		t.Fatal(err)
 	}
 
-	prepared, err := prepareStartCandidate(startCandidate{
+	prepared, err := prepareStartCandidate(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp: TemplateParams{
 			TemplateName: "codex-worker",
@@ -1222,7 +1222,7 @@ func TestPrepareStartCandidate_DoesNotAppendCLIResumeFlagForACP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prepared, err := prepareStartCandidate(startCandidate{
+	prepared, err := prepareStartCandidate(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp: TemplateParams{
 			TemplateName: "mayor",
@@ -1465,7 +1465,7 @@ func TestPrepareStartCandidate_NoneModeInitialMessageStaysInNudge(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	prepared, err := prepareStartCandidate(startCandidate{
+	prepared, err := prepareStartCandidate(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, bead),
 		tp: TemplateParams{
 			TemplateName: "mayor",
@@ -4484,7 +4484,7 @@ func TestRefreshConfiguredNamedStartCandidateAddsCurrentSkillFingerprint(t *test
 		WorkDir:      cityPath,
 	}
 	candidate := startCandidate{info: sessiontest.SeedBead(t, bead), tp: stale}
-	refreshed := refreshConfiguredNamedStartCandidate(
+	refreshed := refreshConfiguredNamedStartCandidate(context.Background(),
 		candidate,
 		cityPath,
 		cfg.Workspace.Name,
@@ -4492,8 +4492,7 @@ func TestRefreshConfiguredNamedStartCandidateAddsCurrentSkillFingerprint(t *test
 		runtime.NewFake(),
 		store,
 		&clock.Fake{Time: time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)},
-		ioDiscard{},
-	)
+		ioDiscard{})
 
 	if _, ok := stale.FPExtra["skills:plan"]; ok {
 		t.Fatal("test setup invalid: stale candidate already had skills fingerprint")
@@ -7099,15 +7098,14 @@ func TestPrepareStartCandidate_PreservesRuntimeConfigAndProviderEnv(t *testing.T
 		InstanceName:     "mayor",
 	}
 
-	prepared, err := prepareStartCandidate(
+	prepared, err := prepareStartCandidate(context.Background(),
 		startCandidate{
 			info: sessiontest.SeedBead(t, bead),
 			tp:   tp,
 		},
 		&config.City{},
 		store,
-		clock.Real{},
-	)
+		clock.Real{})
 	if err != nil {
 		t.Fatalf("prepareStartCandidate: %v", err)
 	}
@@ -7172,22 +7170,20 @@ func TestPrepareStartCandidateUsesBuiltinAncestorForGCProviderEnv(t *testing.T) 
 		Alias:       "mayor",
 		ResolvedProvider: &config.ResolvedProvider{
 			Name:            "claude-max",
-			Kind:            "claude",
 			BuiltinAncestor: "claude",
 		},
 		TemplateName: "mayor",
 		InstanceName: "mayor",
 	}
 
-	prepared, err := prepareStartCandidate(
+	prepared, err := prepareStartCandidate(context.Background(),
 		startCandidate{
 			info: sessiontest.SeedBead(t, bead),
 			tp:   tp,
 		},
 		&config.City{},
 		store,
-		clock.Real{},
-	)
+		clock.Real{})
 	if err != nil {
 		t.Fatalf("prepareStartCandidate: %v", err)
 	}
@@ -7231,12 +7227,11 @@ func TestPrepareStartCandidate_EmptyPoolBeadAliasScrubsStampedTemplateIdentity(t
 		TemplateName:       "ants",
 	}
 
-	prepared, err := prepareStartCandidate(
+	prepared, err := prepareStartCandidate(context.Background(),
 		startCandidate{info: sessiontest.SeedBead(t, bead), tp: tp},
 		&config.City{},
 		store,
-		clock.Real{},
-	)
+		clock.Real{})
 	if err != nil {
 		t.Fatalf("prepareStartCandidate: %v", err)
 	}
@@ -7285,12 +7280,11 @@ func TestPrepareStartCandidate_EmptyAliasEverywhereKeepsEmptyForTmuxScrub(t *tes
 		// EnvIdentityStamped is false — setTemplateEnvIdentity was not called.
 	}
 
-	prepared, err := prepareStartCandidate(
+	prepared, err := prepareStartCandidate(context.Background(),
 		startCandidate{info: sessiontest.SeedBead(t, bead), tp: tp},
 		&config.City{},
 		store,
-		clock.Real{},
-	)
+		clock.Real{})
 	if err != nil {
 		t.Fatalf("prepareStartCandidate: %v", err)
 	}
@@ -7330,12 +7324,11 @@ func TestPrepareStartCandidate_NonEmptyBeadAliasOverridesTemplate(t *testing.T) 
 		TemplateName:     "mayor",
 	}
 
-	prepared, err := prepareStartCandidate(
+	prepared, err := prepareStartCandidate(context.Background(),
 		startCandidate{info: sessiontest.SeedBead(t, bead), tp: tp},
 		&config.City{},
 		store,
-		clock.Real{},
-	)
+		clock.Real{})
 	if err != nil {
 		t.Fatalf("prepareStartCandidate: %v", err)
 	}
@@ -7743,7 +7736,7 @@ func TestPrepareStartCandidateForCity_ClearsStaleNamedTriggerEnv(t *testing.T) {
 		t.Fatalf("create session bead: %v", err)
 	}
 
-	prepared, err := prepareStartCandidateForCity(startCandidate{
+	prepared, err := prepareStartCandidateForCity(context.Background(), startCandidate{
 		info:  sessiontest.SeedBead(t, session),
 		tp:    TemplateParams{TemplateName: "worker", SessionName: sessionName},
 		order: 0,

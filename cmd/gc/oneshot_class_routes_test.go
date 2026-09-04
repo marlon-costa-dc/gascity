@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -150,7 +151,7 @@ assignee = "worker"
 func runOneShotOrder(t *testing.T, cityPath string, a orders.Order, scope beads.Store, ep events.Provider) string {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := doOrderRunWithJSON([]orders.Order{a}, a.Name, a.Rig, cityPath, beads.OrdersStore{Store: scope}, ep, true, nil, &stdout, &stderr)
+	code := doOrderRunWithJSON(context.Background(), []orders.Order{a}, a.Name, a.Rig, cityPath, beads.OrdersStore{Store: scope}, ep, true, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("gc order run = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -393,7 +394,7 @@ func TestFormulaCookGraphV2RootLandsInGraphStoreOnSplitCity(t *testing.T) {
 	if got := root.Metadata[beadmeta.RootStoreRefMetadataKey]; got != "city:cook-city" {
 		t.Errorf("cooked root %s: gc.root_store_ref = %q, want %q — the recipe must be decorated through the store that will own it", res.RootID, got, "city:cook-city")
 	}
-	work, err := openStoreAtForCity(cityDir, cityDir)
+	work, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open work store: %v", err)
 	}
@@ -416,7 +417,7 @@ func TestFormulaCookLegacyMoleculeStaysOnTheWorkStore(t *testing.T) {
 
 	res := cookFormula(t, "legacy-work")
 
-	work, err := openStoreAtForCity(cityDir, cityDir)
+	work, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open work store: %v", err)
 	}
@@ -447,7 +448,7 @@ func TestFormulaCookGraphV2StaysOnTheOneStoreOnSingleStoreCity(t *testing.T) {
 
 	res := cookFormula(t, "graph-work")
 
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -508,7 +509,7 @@ func TestFormulaCookAttachLeavesTheSourceBeadUnblockableOnSplitCity(t *testing.T
 	graph := splittest.NewClassStore(t, config.BeadClassGraph)
 	seedCLIStorageRoutes(t, cityDir, messagingSplitRoutes(graph))
 
-	work, err := openStoreAtForCity(cityDir, cityDir)
+	work, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open work store: %v", err)
 	}
@@ -568,7 +569,7 @@ func TestFormulaCookRootOnlyLegacyWispLandsInGraphStoreOnSplitCity(t *testing.T)
 	if got := root.Metadata[beadmeta.KindMetadataKey]; got != beadmeta.KindWisp {
 		t.Fatalf("cooked root %s: gc.kind = %q, want %q — the fixture must actually be the root-only shape", res.RootID, got, beadmeta.KindWisp)
 	}
-	work, err := openStoreAtForCity(cityDir, cityDir)
+	work, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open work store: %v", err)
 	}
@@ -586,7 +587,7 @@ func TestFormulaCookRootOnlyLegacyWispStaysOnTheOneStoreOnSingleStoreCity(t *tes
 
 	res := cookFormula(t, "vapor-work")
 
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -631,7 +632,7 @@ func TestFormulaCookAttachIsIdempotent(t *testing.T) {
 	t.Run("single-store adopts the live workflow", func(t *testing.T) {
 		cityDir := oneShotCookCity(t)
 		seedCLIStorageRoutes(t, cityDir, nil)
-		work, err := openStoreAtForCity(cityDir, cityDir)
+		work, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 		if err != nil {
 			t.Fatalf("open work store: %v", err)
 		}
@@ -655,7 +656,7 @@ func TestFormulaCookAttachIsIdempotent(t *testing.T) {
 		cityDir := oneShotCookCity(t)
 		graph := splittest.NewClassStore(t, config.BeadClassGraph)
 		seedCLIStorageRoutes(t, cityDir, messagingSplitRoutes(graph))
-		work, err := openStoreAtForCity(cityDir, cityDir)
+		work, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 		if err != nil {
 			t.Fatalf("open work store: %v", err)
 		}

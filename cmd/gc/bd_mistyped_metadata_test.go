@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 )
@@ -30,7 +31,7 @@ func TestGCBdRefusesMistypedMetadataPairs(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := doBd(tc.args, &stdout, &stderr)
+			code := doBd(context.Background(), tc.args, &stdout, &stderr)
 			if code == 0 {
 				t.Fatalf("doBd(%v) = 0, want non-zero; stderr=%q", tc.args, stderr.String())
 			}
@@ -76,7 +77,7 @@ func TestGCBdRefusesMistypedMetadataPairsBehindGlobalFlags(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := doBd(tc.args, &stdout, &stderr)
+			code := doBd(context.Background(), tc.args, &stdout, &stderr)
 			if code == 0 {
 				t.Fatalf("doBd(%v) = 0, want non-zero; stderr=%q", tc.args, stderr.String())
 			}
@@ -118,7 +119,7 @@ func TestGCBdAllowsCorrectMetadataForms(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			_ = doBd(tc.args, &stdout, &stderr)
+			_ = doBd(context.Background(), tc.args, &stdout, &stderr)
 			// The call fails later for want of a city/store in this environment;
 			// what matters is that it was NOT stopped by the mistyped-pair guard.
 			if strings.Contains(stderr.String(), "would be dropped") {

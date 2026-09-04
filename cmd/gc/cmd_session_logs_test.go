@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -406,7 +407,7 @@ func TestResolveStoredSessionLogSource_UniqueWorkDirFallsBackBeyondLatestAlias(t
 		},
 	})
 
-	got, provider, ok, diagnostic := resolveStoredSessionLogSource("", nil, sessionFrontDoor(store), "mayor", []string{searchBase})
+	got, provider, ok, diagnostic := resolveStoredSessionLogSource(context.Background(), "", nil, sessionFrontDoor(store), "mayor", []string{searchBase})
 	if !ok {
 		t.Fatal("resolveStoredSessionLogSource() = not found, want found")
 	}
@@ -445,7 +446,7 @@ func TestResolveStoredSessionLogSource_ProviderConstructionFailureReturnsDiagnos
 		t.Fatalf("create session bead: %v", err)
 	}
 
-	path, provider, ok, diagnostic := resolveStoredSessionLogSource("", nil, sessionFrontDoor(store), "mayor", []string{t.TempDir()})
+	path, provider, ok, diagnostic := resolveStoredSessionLogSource(context.Background(), "", nil, sessionFrontDoor(store), "mayor", []string{t.TempDir()})
 	if !ok {
 		t.Fatal("resolveStoredSessionLogSource() = not found, want provider failure diagnostic")
 	}
@@ -492,7 +493,7 @@ func TestResolveStoredSessionLogSource_DoesNotCrossAmbiguousWorkDir(t *testing.T
 		},
 	})
 
-	got, provider, ok, diagnostic := resolveStoredSessionLogSource("", nil, sessionFrontDoor(store), "mayor", []string{searchBase})
+	got, provider, ok, diagnostic := resolveStoredSessionLogSource(context.Background(), "", nil, sessionFrontDoor(store), "mayor", []string{searchBase})
 	if !ok {
 		t.Fatal("resolveStoredSessionLogSource() = not found, want found")
 	}
@@ -532,7 +533,7 @@ func TestResolveStoredSessionLogSource_CodexDoesNotUseAmbiguousWorkDirFallback(t
 		_ = store.Close(b.ID)
 	}
 
-	got, provider, ok, diagnostic := resolveStoredSessionLogSource("", nil, sessionFrontDoor(store), "workflows__codex-max-mc-one", []string{searchBase})
+	got, provider, ok, diagnostic := resolveStoredSessionLogSource(context.Background(), "", nil, sessionFrontDoor(store), "workflows__codex-max-mc-one", []string{searchBase})
 	if !ok {
 		t.Fatal("resolveStoredSessionLogSource() = not found, want found")
 	}
@@ -602,7 +603,7 @@ func TestResolveStoredSessionLogSource_CodexAmbiguousWorkDirUsesStartOrder(t *te
 		t.Fatal(err)
 	}
 
-	got, provider, ok, diagnostic := resolveStoredSessionLogSource("", nil, sessionFrontDoor(store), "workflows__codex-max-mc-two", []string{searchBase})
+	got, provider, ok, diagnostic := resolveStoredSessionLogSource(context.Background(), "", nil, sessionFrontDoor(store), "workflows__codex-max-mc-two", []string{searchBase})
 	if !ok {
 		t.Fatal("resolveStoredSessionLogSource() = not found, want found")
 	}
@@ -809,7 +810,7 @@ observe_paths = [%q]
 	}
 	writeBuiltinImportsFixture(t, cityDir, "core")
 
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityDir, err)
 	}
@@ -835,7 +836,7 @@ observe_paths = [%q]
 	)
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionLogs([]string{b.ID}, false, 1, true, &stdout, &stderr); code != 0 {
+	if code := cmdSessionLogs(context.Background(), []string{b.ID}, false, 1, true, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionLogs(--json) = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if stderr.Len() != 0 {
@@ -877,7 +878,7 @@ observe_paths = [%q]
 		t.Fatalf("write city.toml: %v", err)
 	}
 
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityDir, err)
 	}
@@ -902,7 +903,7 @@ observe_paths = [%q]
 	)
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionLogs([]string{b.ID}, false, 1, true, &stdout, &stderr); code != 0 {
+	if code := cmdSessionLogs(context.Background(), []string{b.ID}, false, 1, true, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionLogs(--json) = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	var got sessionLogsJSONResult

@@ -269,7 +269,7 @@ func (s strictCloseReasonStore) CloseAll(ids []string, metadata map[string]strin
 }
 
 func TestOrderDispatcherNil(t *testing.T) {
-	ad := buildOrderDispatcher(nil, t.TempDir(), &config.City{}, events.Discard, &bytes.Buffer{})
+	ad := buildOrderDispatcher(context.Background(), nil, t.TempDir(), &config.City{}, events.Discard, &bytes.Buffer{})
 	if ad != nil {
 		t.Error("expected nil dispatcher for empty orders")
 	}
@@ -279,7 +279,7 @@ func TestBuildOrderDispatcherNoOrders(t *testing.T) {
 	// City with formula layers that exist but contain no orders.
 	dir := t.TempDir()
 	cfg := &config.City{}
-	ad := buildOrderDispatcher(nil, dir, cfg, events.Discard, &bytes.Buffer{})
+	ad := buildOrderDispatcher(context.Background(), nil, dir, cfg, events.Discard, &bytes.Buffer{})
 	if ad != nil {
 		t.Error("expected nil dispatcher when no orders exist")
 	}
@@ -1343,7 +1343,7 @@ func TestApplyOrderRecipeRoutingNoPoolRejectsMissingAndUnknownStepTargets(t *tes
 					{ID: "order-graph.work", Title: "Work", Metadata: metadata},
 				},
 			}
-			err := applyOrderRecipeRouting(recipe, "", nil, target, beads.NewMemStore(), "test-city", cityPath, cfg)
+			err := applyOrderRecipeRouting(context.Background(), recipe, "", nil, target, beads.NewMemStore(), "test-city", cityPath, cfg)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErrSub) {
 				t.Fatalf("applyOrderRecipeRouting error = %v, want %q", err, tt.wantErrSub)
 			}
@@ -1915,7 +1915,7 @@ func TestOrderDispatchDoesNotReparseConfigPerTick(t *testing.T) {
 		Interval: "1h",
 		Exec:     "true",
 	}}
-	ad := newMemoryOrderDispatcher(nil, aa, cityDir, cfg, events.Discard, io.Discard)
+	ad := newMemoryOrderDispatcher(context.Background(), nil, aa, cityDir, cfg, events.Discard, io.Discard)
 
 	before := loadCityConfigCalls.Load()
 	now := time.Now()
@@ -2812,6 +2812,7 @@ func TestOrderDispatchExecManagedDoltUsesTrustedCityRuntimeDir(t *testing.T) {
 	dataDir := filepath.Join(cityDir, ".beads", "dolt")
 	customRuntimeDir := filepath.Join(t.TempDir(), "runtime-root")
 	packStateDir := filepath.Join(customRuntimeDir, "packs", "dolt")
+	writeReachableManagedDoltState(t, cityDir)
 	t.Setenv("GC_CITY_PATH", cityDir)
 	t.Setenv("GC_CITY_RUNTIME_DIR", customRuntimeDir)
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
@@ -2884,6 +2885,7 @@ func TestOrderDispatchExecManagedDoltCoercesInCityRuntimeDirForControlTraceDefau
 	dataDir := filepath.Join(cityDir, ".beads", "dolt")
 	unsafeRuntimeDir := filepath.Join(cityDir, "runtime-outside-gc")
 	packStateDir := filepath.Join(unsafeRuntimeDir, "packs", "dolt")
+	writeReachableManagedDoltState(t, cityDir)
 	t.Setenv("GC_CITY_PATH", cityDir)
 	t.Setenv("GC_CITY_RUNTIME_DIR", unsafeRuntimeDir)
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
@@ -3093,7 +3095,7 @@ func TestOrderDispatchExecMarksExternalDoltTargetForManagedLocalOnlyOrders(t *te
 func TestOrderDispatchExecPropagatesManagedDoltLayout(t *testing.T) {
 	store := beads.NewMemStore()
 	cityDir := normalizePathForCompare(t.TempDir())
-	dataDir := normalizePathForCompare(filepath.Join(t.TempDir(), "managed-dolt"))
+	dataDir := normalizePathForCompare(filepath.Join(cityDir, ".beads", "dolt"))
 	configFile := filepath.Join(cityDir, ".gc", "runtime", "packs", "dolt", "dolt-config.yaml")
 	if err := os.MkdirAll(filepath.Join(cityDir, ".beads"), 0o755); err != nil {
 		t.Fatal(err)
@@ -3164,7 +3166,7 @@ func TestOrderDispatchExecPropagatesManagedDoltLayout(t *testing.T) {
 func TestOrderDispatchExecPropagatesLegacyManagedDoltDataDir(t *testing.T) {
 	store := beads.NewMemStore()
 	cityDir := normalizePathForCompare(t.TempDir())
-	dataDir := normalizePathForCompare(filepath.Join(cityDir, ".gc", "dolt-data"))
+	dataDir := normalizePathForCompare(filepath.Join(cityDir, ".beads", "dolt"))
 	if err := os.MkdirAll(filepath.Join(cityDir, ".beads"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -3226,11 +3228,11 @@ func TestOrderDispatchExecPropagatesLegacyManagedDoltDataDir(t *testing.T) {
 	}
 }
 
-func TestOrderDispatchExecIgnoresPublishedRunningDataDirWithUnreachablePort(t *testing.T) {
-	store := beads.NewMemStore()
+func TestOrderDispatchExecRejectsPublishedRunningDataDirWithUnreachablePort(t *testing.T) {
 	cityDir := t.TempDir()
 	staleDataDir := filepath.Join(t.TempDir(), "stale-published-dolt")
 	defaultDataDir := filepath.Join(cityDir, ".beads", "dolt")
+	writeReachableManagedDoltState(t, cityDir)
 	if err := os.MkdirAll(defaultDataDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -3263,23 +3265,11 @@ func TestOrderDispatchExecIgnoresPublishedRunningDataDirWithUnreachablePort(t *t
 		staleDataDir,
 	))
 
-	envCh := make(chan []string, 1)
-	fakeExec := func(_ context.Context, _, _ string, env []string) ([]byte, error) {
-		envCh <- env
-		return nil, nil
-	}
-	aa := []orders.Order{{
-		Name:     "dolt-test-cooldown",
-		Trigger:  "cooldown",
-		Interval: "1m",
-		Exec:     "echo test",
-	}}
-	ad := buildOrderDispatcherFromListExec(aa, store, nil, fakeExec, nil)
-	ad.dispatch(context.Background(), cityDir, time.Now())
-
-	got := orderDispatchTestEnv(t, envCh)
-	if got["GC_DOLT_DATA_DIR"] != defaultDataDir {
-		t.Fatalf("GC_DOLT_DATA_DIR = %q, want default %q; env=%v", got["GC_DOLT_DATA_DIR"], defaultDataDir, got)
+	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "ct"}
+	a := orders.Order{Name: "dolt-test-cooldown", Trigger: "cooldown", Interval: "1m", Exec: "echo test"}
+	_, err = orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
+	if err == nil || !strings.Contains(err.Error(), "dolt runtime state unavailable") {
+		t.Fatalf("orderExecEnvWithError error = %v, want causal unavailable managed runtime", err)
 	}
 }
 
@@ -6603,7 +6593,7 @@ pool = "polecat"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, t.TempDir(), cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, t.TempDir(), cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("expected non-nil dispatcher; stderr: %s", stderr.String())
 	}
@@ -6884,7 +6874,7 @@ pool = "worker"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, cityDir, cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, cityDir, cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("expected non-nil dispatcher; stderr: %s", stderr.String())
 	}
@@ -6892,7 +6882,7 @@ pool = "worker"
 	ad.dispatch(context.Background(), cityDir, time.Now())
 	ad.drain(context.Background())
 
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -6953,7 +6943,7 @@ pool = "worker"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, cityDir, cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, cityDir, cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("expected non-nil dispatcher; stderr: %s", stderr.String())
 	}
@@ -6961,7 +6951,7 @@ pool = "worker"
 	ad.dispatch(context.Background(), cityDir, time.Now())
 	ad.drain(context.Background())
 
-	cityStore, err := openStoreAtForCity(cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
@@ -6970,7 +6960,7 @@ pool = "worker"
 		t.Fatalf("city store has %d rig order bead(s), want 0", len(cityRuns))
 	}
 
-	rigStore, err := openStoreAtForCity(rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -7035,7 +7025,7 @@ pool = "dog"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, cityDir, cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, cityDir, cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("expected non-nil dispatcher; stderr: %s", stderr.String())
 	}
@@ -7043,7 +7033,7 @@ pool = "dog"
 	ad.dispatch(context.Background(), cityDir, time.Now())
 	ad.drain(context.Background())
 
-	cityStore, err := openStoreAtForCity(cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
@@ -7052,7 +7042,7 @@ pool = "dog"
 		t.Errorf("city work gc.routed_to = %q, want maintenance.dog", work.Metadata["gc.routed_to"])
 	}
 
-	rigStore, err := openStoreAtForCity(rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -7097,7 +7087,7 @@ pool = "worker"
 		t.Fatal(err)
 	}
 
-	cityStore, err := openStoreAtForCity(cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
@@ -7124,7 +7114,7 @@ pool = "worker"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, cityDir, cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, cityDir, cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("expected non-nil dispatcher; stderr: %s", stderr.String())
 	}
@@ -7132,7 +7122,7 @@ pool = "worker"
 	ad.dispatch(context.Background(), cityDir, time.Now())
 	ad.drain(context.Background())
 
-	rigStore, err := openStoreAtForCity(rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -7400,12 +7390,12 @@ pool = "worker"
 		},
 	}
 
-	ad := buildOrderDispatcher(nil, cityDir, cfg, events.Discard, &bytes.Buffer{})
+	ad := buildOrderDispatcher(context.Background(), nil, cityDir, cfg, events.Discard, &bytes.Buffer{})
 	if ad == nil {
 		t.Fatal("expected non-nil dispatcher")
 	}
 
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -7472,7 +7462,7 @@ interval = "2m"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, t.TempDir(), cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, t.TempDir(), cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("expected non-nil dispatcher; stderr: %s", stderr.String())
 	}
@@ -7539,7 +7529,7 @@ interval = "2m"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, t.TempDir(), cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, t.TempDir(), cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("expected non-nil dispatcher; stderr: %s", stderr.String())
 	}
@@ -7615,7 +7605,7 @@ interval = "2m"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, t.TempDir(), cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, t.TempDir(), cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("expected non-nil dispatcher; stderr: %s", stderr.String())
 	}
@@ -7669,7 +7659,7 @@ interval = "30s"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, t.TempDir(), cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, t.TempDir(), cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("expected non-nil dispatcher (beads-health should still be found); stderr: %s", stderr.String())
 	}
@@ -9139,7 +9129,7 @@ func TestOrderExecEnvSetsBeadsActorToOrderName(t *testing.T) {
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "pc"}
 	a := orders.Order{Name: "order-tracking-sweep", Trigger: "cooldown", Interval: "1m", Exec: "true"}
 
-	envSlice, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+	envSlice, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 	if err != nil {
 		t.Fatalf("orderExecEnvWithError() error = %v", err)
 	}
@@ -9173,7 +9163,7 @@ func TestOrderExecEnvScrubsAmbientDoltEnvForCityWithoutDoltTarget(t *testing.T) 
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "pc"}
 	a := orders.Order{Name: "jsonl-export", Trigger: "cooldown", Interval: "15m", Exec: "true"}
 
-	envSlice, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+	envSlice, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 	if err != nil {
 		t.Fatalf("orderExecEnvWithError() error = %v", err)
 	}
@@ -9225,7 +9215,7 @@ func TestOrderExecEnvAppliesOrderEnvOverrides(t *testing.T) {
 		},
 	}
 
-	envSlice, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+	envSlice, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 	if err != nil {
 		t.Fatalf("orderExecEnvWithError() error = %v", err)
 	}
@@ -9264,7 +9254,7 @@ func TestOrderExecEnvProjectsGitHubToken(t *testing.T) {
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "pc"}
 	a := orders.Order{Name: "pr-merge", Trigger: "cooldown", Interval: "1m", Exec: "gh pr merge"}
 
-	envSlice, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+	envSlice, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 	if err != nil {
 		t.Fatalf("orderExecEnvWithError() error = %v", err)
 	}
@@ -9340,7 +9330,7 @@ func TestOrderExecEnvGitHubTokenOrderEnvOverrideWins(t *testing.T) {
 		Env:      map[string]string{"GH_TOKEN": "ghs_order_scoped"},
 	}
 
-	envSlice, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+	envSlice, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 	if err != nil {
 		t.Fatalf("orderExecEnvWithError() error = %v", err)
 	}
@@ -9389,7 +9379,7 @@ func TestOrderExecEnvRejectsReservedOrderEnvKeys(t *testing.T) {
 				},
 			}
 
-			_, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+			_, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 			if err == nil {
 				t.Fatal("orderExecEnvWithError() succeeded; want reserved env key error")
 			}
@@ -9436,7 +9426,7 @@ func TestOrderExecEnvReservedKeysCoverProjectedEnv(t *testing.T) {
 		FormulaLayer: filepath.Join(packDir, "formulas"),
 	}
 
-	envSlice, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+	envSlice, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 	if err != nil {
 		t.Fatalf("orderExecEnvWithError() error = %v", err)
 	}
@@ -9491,7 +9481,7 @@ func TestOrderExecEnvSkipsBeadsActorForUnnamedOrder(t *testing.T) {
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "pc"}
 	a := orders.Order{Trigger: "cooldown", Interval: "1m", Exec: "true"} // no Name
 
-	envSlice, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+	envSlice, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 	if err != nil {
 		t.Fatalf("orderExecEnvWithError() error = %v", err)
 	}
@@ -9518,7 +9508,7 @@ dolt.auto-start: false
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "pc"}
 	a := orders.Order{Name: "pg-order", Trigger: "cooldown", Interval: "1m", Exec: "true"}
 
-	_, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+	_, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 	assertRefusesUnregisteredBackend(t, err)
 }
 
@@ -9543,7 +9533,7 @@ dolt.auto-start: false
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "ct"}
 	a := orders.Order{Name: "pg-city-order", Trigger: "cooldown", Interval: "1m", Exec: "true"}
 
-	env, err := orderExecEnvWithError(cityDir, nil, target, a, nil)
+	env, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, nil)
 	if err != nil {
 		t.Fatalf("orderExecEnvWithError() error = %v", err)
 	}
@@ -9585,7 +9575,7 @@ dolt.auto-start: false
 	target := execStoreTarget{ScopeRoot: rigDir, ScopeKind: "rig", Prefix: "pg", RigName: "pg"}
 	a := orders.Order{Name: "pg-rig-order", Rig: "pg", Trigger: "condition", Check: "bd ready --json", Exec: "true"}
 
-	opts, err := orderTriggerOptionsForTarget(cityDir, cfg, target, a)
+	opts, err := orderTriggerOptionsForTarget(context.Background(), cityDir, cfg, target, a)
 	if err != nil {
 		t.Fatalf("orderTriggerOptionsForTarget() error = %v", err)
 	}
@@ -9611,7 +9601,7 @@ func TestOrderTriggerOptionsForTargetSetsCheckTimeout(t *testing.T) {
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "pc"}
 
 	custom := orders.Order{Name: "pr-merge-queue", Trigger: "condition", Check: "queue-pending", Exec: "true", CheckTimeout: "60s"}
-	opts, err := orderTriggerOptionsForTarget(cityDir, nil, target, custom)
+	opts, err := orderTriggerOptionsForTarget(context.Background(), cityDir, nil, target, custom)
 	if err != nil {
 		t.Fatalf("orderTriggerOptionsForTarget() error = %v", err)
 	}
@@ -9623,7 +9613,7 @@ func TestOrderTriggerOptionsForTargetSetsCheckTimeout(t *testing.T) {
 	}
 
 	unset := orders.Order{Name: "pr-merge-queue", Trigger: "condition", Check: "queue-pending", Exec: "true"}
-	opts, err = orderTriggerOptionsForTarget(cityDir, nil, target, unset)
+	opts, err = orderTriggerOptionsForTarget(context.Background(), cityDir, nil, target, unset)
 	if err != nil {
 		t.Fatalf("orderTriggerOptionsForTarget() error = %v", err)
 	}
@@ -9885,7 +9875,7 @@ func TestOrderDispatchSingleFlightLockSeesNoHistoryTracker(t *testing.T) {
 func TestOrderDispatchSingleFlightLockSeesBackingOnlyCachedTracker(t *testing.T) {
 	backing := beads.NewMemStore()
 	store := beads.NewCachingStoreForTest(backing, nil)
-	if err := store.PrimeActive(); err != nil {
+	if err := store.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("prime cache: %v", err)
 	}
 	if _, err := backing.Create(beads.Bead{
@@ -10396,7 +10386,7 @@ func TestOrderDispatchMaxDispatchesPerTickConfig(t *testing.T) {
 
 	// Unset (zero) preserves the historical default of 4.
 	cfgDefault := &config.City{}
-	adDefault := buildOrderDispatcherFromOrderSet(nil, t.TempDir(), cfgDefault, aa, events.Discard, &bytes.Buffer{})
+	adDefault := buildOrderDispatcherFromOrderSet(context.Background(), nil, t.TempDir(), cfgDefault, aa, events.Discard, &bytes.Buffer{})
 	mDefault, ok := adDefault.(*memoryOrderDispatcher)
 	if !ok {
 		t.Fatalf("expected *memoryOrderDispatcher, got %T", adDefault)
@@ -10409,7 +10399,7 @@ func TestOrderDispatchMaxDispatchesPerTickConfig(t *testing.T) {
 	one := 1
 	cfgOne := &config.City{}
 	cfgOne.Orders.MaxDispatchesPerTick = &one
-	adOne := buildOrderDispatcherFromOrderSet(nil, t.TempDir(), cfgOne, aa, events.Discard, &bytes.Buffer{})
+	adOne := buildOrderDispatcherFromOrderSet(context.Background(), nil, t.TempDir(), cfgOne, aa, events.Discard, &bytes.Buffer{})
 	mOne, ok := adOne.(*memoryOrderDispatcher)
 	if !ok {
 		t.Fatalf("expected *memoryOrderDispatcher, got %T", adOne)
@@ -10425,7 +10415,7 @@ func TestOrderDispatchMaxDispatchesPerTickConfig(t *testing.T) {
 		v := bad
 		cfgBad := &config.City{}
 		cfgBad.Orders.MaxDispatchesPerTick = &v
-		adBad := buildOrderDispatcherFromOrderSet(nil, t.TempDir(), cfgBad, aa, events.Discard, &bytes.Buffer{})
+		adBad := buildOrderDispatcherFromOrderSet(context.Background(), nil, t.TempDir(), cfgBad, aa, events.Discard, &bytes.Buffer{})
 		mBad, ok := adBad.(*memoryOrderDispatcher)
 		if !ok {
 			t.Fatalf("expected *memoryOrderDispatcher, got %T", adBad)

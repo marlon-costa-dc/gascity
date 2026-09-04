@@ -24,16 +24,18 @@ type ensureSessionForTemplateOptions struct {
 }
 
 func ensureSessionForTemplate(
+	ctx context.Context,
 	cityPath string,
 	cfg *config.City,
 	store beads.Store,
 	templateName string,
 	stderr io.Writer,
 ) (string, error) {
-	return ensureSessionForTemplateWithOptions(cityPath, cfg, store, templateName, stderr, ensureSessionForTemplateOptions{})
+	return ensureSessionForTemplateWithOptions(ctx, cityPath, cfg, store, templateName, stderr, ensureSessionForTemplateOptions{})
 }
 
 func ensureSessionForTemplateWithOptions(
+	ctx context.Context,
 	cityPath string,
 	cfg *config.City,
 	store beads.Store,
@@ -41,10 +43,11 @@ func ensureSessionForTemplateWithOptions(
 	stderr io.Writer,
 	opts ensureSessionForTemplateOptions,
 ) (string, error) {
-	return materializeSessionForTemplateWithOptions(cityPath, cfg, store, templateName, stderr, opts)
+	return materializeSessionForTemplateWithOptions(ctx, cityPath, cfg, store, templateName, stderr, opts)
 }
 
 func materializeSessionForTemplateWithOptions(
+	ctx context.Context,
 	cityPath string,
 	cfg *config.City,
 	store beads.Store,
@@ -119,7 +122,7 @@ func materializeSessionForTemplateWithOptions(
 			return "", err
 		}
 		sessionTransport := config.ResolveSessionCreateTransport(spec.Agent.Session, resolved)
-		sp, err := newSessionProvider()
+		sp, err := newSessionProvider(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -241,10 +244,11 @@ func materializeSessionForTemplateWithOptions(
 		return "", err
 	}
 
-	return materializeSessionForAgentConfig(cityPath, cfg, store, &found)
+	return materializeSessionForAgentConfig(ctx, cityPath, cfg, store, &found)
 }
 
 func ensureSessionIDForTemplateWithOptions(
+	ctx context.Context,
 	cityPath string,
 	cfg *config.City,
 	store beads.Store,
@@ -252,7 +256,7 @@ func ensureSessionIDForTemplateWithOptions(
 	stderr io.Writer,
 	opts ensureSessionForTemplateOptions,
 ) (string, error) {
-	sessionName, err := materializeSessionForTemplateWithOptions(cityPath, cfg, store, templateName, stderr, opts)
+	sessionName, err := materializeSessionForTemplateWithOptions(ctx, cityPath, cfg, store, templateName, stderr, opts)
 	if err != nil {
 		return "", err
 	}
@@ -263,7 +267,7 @@ func ensureSessionIDForTemplateWithOptions(
 	return sessionID, nil
 }
 
-func materializeSessionForAgentConfig(cityPath string, cfg *config.City, store beads.Store, agentCfg *config.Agent) (string, error) {
+func materializeSessionForAgentConfig(ctx context.Context, cityPath string, cfg *config.City, store beads.Store, agentCfg *config.Agent) (string, error) {
 	if cfg == nil {
 		return "", fmt.Errorf("city config unavailable")
 	}
@@ -279,7 +283,7 @@ func materializeSessionForAgentConfig(cityPath string, cfg *config.City, store b
 		return "", err
 	}
 	sessionTransport := config.ResolveSessionCreateTransport(agentCfg.Session, resolved)
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		return "", err
 	}

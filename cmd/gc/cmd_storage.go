@@ -263,13 +263,13 @@ it would create the very database the report is being asked about.
 
 It exits non-zero when the city is configured for a binding it has not
 converged on, so a deployment script can gate on it.`,
-		RunE: func(*cobra.Command, []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			request, err := resolveStorageOperatorRequest()
 			if err != nil {
 				fmt.Fprintf(stderr, "gc %s %s: %v\n", surface.Namespace, storageStatusVerb, err) //nolint:errcheck // best-effort stderr
 				return errExit
 			}
-			return exitForCode(doStorageStatus(request, stdout, stderr))
+			return exitForCode(doStorageStatus(cmd.Context(), request, stdout, stderr))
 		},
 	}
 	return cmd
@@ -358,12 +358,12 @@ func doStorageMigrate(ctx context.Context, request storageOperatorRequest, stdou
 		}
 	}()
 
-	if err := censusRigInfraResidue(request.CityPath, request.Cfg); err != nil {
+	if err := censusRigInfraResidue(ctx, request.CityPath, request.Cfg); err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
 
-	report := runInfraClassMigration(request.CityPath, target, logPrefix, stderr)
+	report := runInfraClassMigration(ctx, request.CityPath, target, logPrefix, stderr)
 	report.Target = target
 	report.BindingProvenEmpty, report.BindingProbe = infraBindingHoldsNothing(target)
 	rec := openCityRecorderAt(request.CityPath, stderr)
@@ -382,7 +382,7 @@ func doStorageMigrate(ctx context.Context, request storageOperatorRequest, stdou
 }
 
 // doStorageStatus reports the layout without changing it.
-func doStorageStatus(request storageOperatorRequest, stdout, stderr io.Writer) int {
+func doStorageStatus(ctx context.Context, request storageOperatorRequest, stdout, stderr io.Writer) int {
 	const logPrefix = "gc storage status"
 
 	storage := request.Cfg.EffectiveStorage()
@@ -427,7 +427,7 @@ func doStorageStatus(request storageOperatorRequest, stdout, stderr io.Writer) i
 				fmt.Fprintf(stdout, "born-split: BLOCKED — %s\n", infraMigrationOperatorAdvice(blocked, logPrefix)) //nolint:errcheck // best-effort stdout
 				return 1
 			}
-			report := checkBornSplitDiscipline(request.CityPath, logPrefix, stderr)
+			report := checkBornSplitDiscipline(ctx, request.CityPath, logPrefix, stderr)
 			switch report.Outcome {
 			case infraMigrationConverged:
 				fmt.Fprintln(stdout, "born-split: clean — the work store holds no infrastructure bead, so the binding may serve.") //nolint:errcheck // best-effort stdout
@@ -458,7 +458,7 @@ func doStorageStatus(request storageOperatorRequest, stdout, stderr io.Writer) i
 		fmt.Fprintf(stderr, "%s: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	source, err := openInfraMigrationSource(request.CityPath)
+	source, err := openInfraMigrationSource(ctx, request.CityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: opening the work store: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -486,7 +486,7 @@ func doStorageStatus(request storageOperatorRequest, stdout, stderr io.Writer) i
 		fmt.Fprintln(stdout, "converged: yes (no proven-copy manifest, so stranded-write detection is off for this city)") //nolint:errcheck // best-effort stdout
 		return 0
 	}
-	gap, err := classifyInfraContainmentGap(request.CityPath, target, proven)
+	gap, err := classifyInfraContainmentGap(ctx, request.CityPath, target, proven)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -557,7 +557,7 @@ var openStorageScopeStore = openStoreAtForCity
 // than counted or repaired. Repairing it would mean importing rig rows into the
 // city work store, and this binary carries no such importer — naming one in the
 // remedy would send the operator to a command that does not exist.
-func censusRigInfraResidue(cityPath string, cfg *config.City) error {
+func censusRigInfraResidue(ctx context.Context, cityPath string, cfg *config.City) error {
 	if cfg == nil {
 		return nil
 	}
@@ -569,7 +569,7 @@ func censusRigInfraResidue(cityPath string, cfg *config.City) error {
 			// would fall back to the city scope and census it twice.
 			continue
 		}
-		store, err := openStorageScopeStore(root, cityPath)
+		store, err := openStorageScopeStore(ctx, root, cityPath)
 		if err != nil {
 			return fmt.Errorf("censusing rig %q for infrastructure beads: %w (the census must complete before a cutover, so this is a refusal rather than a skip)", rig.Name, err)
 		}

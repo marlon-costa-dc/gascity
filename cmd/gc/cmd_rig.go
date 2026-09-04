@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -118,7 +119,7 @@ check remains informational.`,
   gc rig add ./my-project --include gastown --start-suspended
   gc rig add /path/to/existing --adopt`,
 		Args: cobra.ArbitraryArgs,
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			// Remote city: drive server-side provisioning over the control plane
 			// before any local city/config/store work. The branch runs ahead of both
 			// resolveCity() paths below so a resolved remote target never touches
@@ -201,13 +202,13 @@ check remains informational.`,
 					fmt.Fprintf(stderr, "gc rig add: %v\n", err) //nolint:errcheck // best-effort stderr
 					return errExit
 				}
-				rig, code := doRigAddWithResult(fsys.OSFS{}, cityPath, rigPath, includes, nameFlag, prefixFlag, defaultBranchFlag, startSuspended, adoptFlag, io.Discard, stderr, withAllowEphemeralPath(allowEphemeralFlag))
+				rig, code := doRigAddWithResult(cmd.Context(), fsys.OSFS{}, cityPath, rigPath, includes, nameFlag, prefixFlag, defaultBranchFlag, startSuspended, adoptFlag, io.Discard, stderr, withAllowEphemeralPath(allowEphemeralFlag))
 				if code != 0 {
 					return errExit
 				}
 				return writeManagementActionJSON(stdout, rigAddJSONSummary(rigPath, rig))
 			}
-			if cmdRigAdd(args, includes, nameFlag, prefixFlag, defaultBranchFlag, startSuspended, adoptFlag, stdout, stderr, withAllowEphemeralPath(allowEphemeralFlag)) != 0 {
+			if cmdRigAdd(cmd.Context(), args, includes, nameFlag, prefixFlag, defaultBranchFlag, startSuspended, adoptFlag, stdout, stderr, withAllowEphemeralPath(allowEphemeralFlag)) != 0 {
 				return errExit
 			}
 			return nil
@@ -237,8 +238,8 @@ Shows the HQ rig (the city itself) and all configured rigs. Each rig
 displays its bead ID prefix, recorded default branch when set, and whether
 its beads database is initialized.`,
 		Args: cobra.ArbitraryArgs,
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdRigList(args, jsonFlag, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdRigList(cmd.Context(), args, jsonFlag, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -249,7 +250,7 @@ its beads database is initialized.`,
 }
 
 // cmdRigAdd registers an external project directory as a rig in the city.
-func cmdRigAdd(args []string, includes []string, nameOverride, prefixOverride, defaultBranchOverride string, startSuspended, adopt bool, stdout, stderr io.Writer, opts ...rigAddOption) int {
+func cmdRigAdd(ctx context.Context, args []string, includes []string, nameOverride, prefixOverride, defaultBranchOverride string, startSuspended, adopt bool, stdout, stderr io.Writer, opts ...rigAddOption) int {
 	if len(args) < 1 {
 		fmt.Fprintln(stderr, "gc rig add: missing path") //nolint:errcheck // best-effort stderr
 		return 1
@@ -266,7 +267,7 @@ func cmdRigAdd(args []string, includes []string, nameOverride, prefixOverride, d
 		fmt.Fprintf(stderr, "gc rig add: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	return doRigAdd(fsys.OSFS{}, cityPath, rigPath, includes, nameOverride, prefixOverride, defaultBranchOverride, startSuspended, adopt, stdout, stderr, opts...)
+	return doRigAdd(ctx, fsys.OSFS{}, cityPath, rigPath, includes, nameOverride, prefixOverride, defaultBranchOverride, startSuspended, adopt, stdout, stderr, opts...)
 }
 
 func resolveRigAddPath(cityPath, rigArg string) (string, error) {
@@ -291,12 +292,12 @@ func resolveRigAddPath(cityPath, rigArg string) (string, error) {
 // city.toml is written last — if any earlier step fails, config is unchanged.
 // This prevents partial-state bugs where city.toml lists a rig but the rig's
 // infrastructure (beads, routes) was never created.
-func doRigAdd(fs fsys.FS, cityPath, rigPath string, includes []string, nameOverride, prefixOverride, defaultBranchOverride string, startSuspended, adopt bool, stdout, stderr io.Writer, opts ...rigAddOption) int {
-	_, code := doRigAddWithResult(fs, cityPath, rigPath, includes, nameOverride, prefixOverride, defaultBranchOverride, startSuspended, adopt, stdout, stderr, opts...)
+func doRigAdd(ctx context.Context, fs fsys.FS, cityPath, rigPath string, includes []string, nameOverride, prefixOverride, defaultBranchOverride string, startSuspended, adopt bool, stdout, stderr io.Writer, opts ...rigAddOption) int {
+	_, code := doRigAddWithResult(ctx, fs, cityPath, rigPath, includes, nameOverride, prefixOverride, defaultBranchOverride, startSuspended, adopt, stdout, stderr, opts...)
 	return code
 }
 
-func doRigAddWithResult(fs fsys.FS, cityPath, rigPath string, includes []string, nameOverride, prefixOverride, defaultBranchOverride string, startSuspended, adopt bool, stdout, stderr io.Writer, opts ...rigAddOption) (config.Rig, int) {
+func doRigAddWithResult(ctx context.Context, fs fsys.FS, cityPath, rigPath string, includes []string, nameOverride, prefixOverride, defaultBranchOverride string, startSuspended, adopt bool, stdout, stderr io.Writer, opts ...rigAddOption) (config.Rig, int) {
 	addOpts := newRigAddOptions(opts...)
 	// Preflight the rig path before loading config so an invalid rig path is
 	// reported ahead of a config-load failure (Provision re-checks it as
@@ -328,6 +329,7 @@ func doRigAddWithResult(fs fsys.FS, cityPath, rigPath string, includes []string,
 		FS:           fs,
 		CityPath:     cityPath,
 		Cfg:          cfg,
+		Ctx:          ctx,
 		InitStore:    initDirIfReady,
 		InitAndHook:  initAndHookDir,
 		ComposePacks: ensureBundledRigImportsInstalled,
@@ -377,7 +379,7 @@ func doRigAddWithResult(fs fsys.FS, cityPath, rigPath string, includes []string,
 			}
 
 			if err := rigReloadControllerConfig(cityPath); err == nil && pc.Deferred && cityUsesBdStoreContract(cityPath) {
-				if waitErr := rigWaitForStoreAccessible(cityPath, rigPath, rigDeferredStoreInitWait); waitErr != nil {
+				if waitErr := rigWaitForStoreAccessible(ctx, cityPath, rigPath, rigDeferredStoreInitWait); waitErr != nil {
 					fmt.Fprintf(stderr, "gc rig add: warning: controller init still pending for rig %q: %v\n", name, waitErr) //nolint:errcheck // best-effort stderr
 				}
 			}
@@ -479,11 +481,14 @@ func boundImportsFromLegacySources(sources []string, packs map[string]config.Pac
 
 var writeAllRigRoutes = writeAllRoutes
 
-func waitForRigStoreAccessible(cityPath, rigPath string, timeout time.Duration) error {
+func waitForRigStoreAccessible(ctx context.Context, cityPath, rigPath string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var lastErr error
 	for {
-		store, err := openStoreAtForCity(rigPath, cityPath)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		store, err := openStoreAtForCity(ctx, rigPath, cityPath)
 		if err == nil {
 			pingErr := store.Ping()
 			if pingErr == nil {
@@ -538,7 +543,7 @@ func findEnclosingRig(dir string, rigs []config.Rig) (name, rigPath string, foun
 }
 
 // cmdRigList lists all registered rigs in the current city.
-func cmdRigList(args []string, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdRigList(ctx context.Context, args []string, jsonOutput bool, stdout, stderr io.Writer) int {
 	_ = args // no arguments used yet
 	cityPath, err := resolveCity()
 	if err != nil {
@@ -549,7 +554,7 @@ func cmdRigList(args []string, jsonOutput bool, stdout, stderr io.Writer) int {
 		return 1
 	}
 	c, reason := rigListAPIClient(cityPath)
-	return routeRigList(cityPath, c, reason, jsonOutput, stdout, stderr)
+	return routeRigList(ctx, cityPath, c, reason, jsonOutput, stdout, stderr)
 }
 
 // rigListAPIClient returns (client, "") when the API path is available, or
@@ -576,7 +581,7 @@ var rigListHQRunning = func(cityPath string) bool {
 // available, falling back to doRigList when the controller is down, the
 // escape hatch is set, or the API returns a fallbackable error. Emits
 // exactly one route=... log line per exit path (gated on GC_DEBUG).
-func routeRigList(cityPath string, c *api.Client, nilReason string, jsonOutput bool, stdout, stderr io.Writer) int {
+func routeRigList(ctx context.Context, cityPath string, c *api.Client, nilReason string, jsonOutput bool, stdout, stderr io.Writer) int {
 	var cr api.CachedRead[[]api.RigView]
 	return routeRead(c, "rig list", nilReason, stderr,
 		func() error {
@@ -585,7 +590,7 @@ func routeRigList(cityPath string, c *api.Client, nilReason string, jsonOutput b
 			return err
 		},
 		func() int { return renderRigListFromAPI(fsys.OSFS{}, cityPath, cr, jsonOutput, stdout, stderr) },
-		func() int { return doRigList(fsys.OSFS{}, cityPath, jsonOutput, stdout, stderr) },
+		func() int { return doRigList(ctx, fsys.OSFS{}, cityPath, jsonOutput, stdout, stderr) },
 	)
 }
 
@@ -777,7 +782,7 @@ type RigListSummary struct {
 // both JSON and text output reflect the on-disk absolute path regardless of
 // how the rig path is declared in city.toml. The cityPath parameter must be
 // absolute.
-func doRigList(fs fsys.FS, cityPath string, jsonOutput bool, stdout, stderr io.Writer) int {
+func doRigList(ctx context.Context, fs fsys.FS, cityPath string, jsonOutput bool, stdout, stderr io.Writer) int {
 	configStderr := stderr
 	if jsonOutput {
 		configStderr = io.Discard
@@ -826,7 +831,7 @@ func doRigList(fs fsys.FS, cityPath string, jsonOutput bool, stdout, stderr io.W
 	// slower than the text path, which skips running-status detection).
 	var sp runtime.Provider
 	if jsonOutput && len(cfg.Rigs) > 0 {
-		sp, err = rigListSessionProvider()
+		sp, err = rigListSessionProvider(ctx)
 		if err != nil {
 			return writeJSONError(stdout, stderr, "session_provider_failed", fmt.Sprintf("gc rig list: %v", err), 1)
 		}

@@ -88,7 +88,7 @@ func TestDoHookClaimPublishesRunMapWithoutSessionBeadMutation(t *testing.T) {
 	}, spy)
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if bdCalls != 0 {
@@ -113,7 +113,7 @@ func TestDoHookClaimRunMapUsesBeadIDWithoutRunChain(t *testing.T) {
 	}, spy)
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if spy.calls != 1 || spy.runID != "hw-standalone" {
@@ -127,7 +127,7 @@ func TestDoHookClaimSkipsRunMapWithoutSessionID(t *testing.T) {
 	opts.Env = []string{"GC_SESSION_NAME=worker-1", "BEADS_ACTOR=actor-1"}
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if spy.calls != 0 {
@@ -143,7 +143,7 @@ func TestDoHookClaimRunMapFailureDoesNotFailClaim(t *testing.T) {
 	}, spy)
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	var result hookClaimJSONResult
@@ -170,7 +170,7 @@ func TestDoHookClaimPublishesRunMapOnExistingAssignment(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if spy.calls != 1 || spy.runID != "root-existing" || spy.beadID != "hw-existing" {

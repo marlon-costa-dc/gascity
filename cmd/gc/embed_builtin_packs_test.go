@@ -373,6 +373,7 @@ func TestBundledOmpHookPublishesProviderSessionID(t *testing.T) {
 		`stdio: ["ignore", "pipe", "inherit"]`,
 		`getSessionId`,
 		`logRunFailure`,
+		`runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`,
 	} {
 		if !strings.Contains(data, want) {
 			t.Errorf("bundled OMP hook missing provider-session marker %q:\n%s", want, data)

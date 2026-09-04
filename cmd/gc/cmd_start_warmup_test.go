@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,7 +14,7 @@ func TestDefaultMailProviderUsesStartedCityPath(t *testing.T) {
 		t.Fatalf("write city.toml: %v", err)
 	}
 
-	provider := defaultMailProvider(cityDir)
+	provider := defaultMailProvider(context.Background(), cityDir)
 	if provider == nil {
 		t.Fatal("defaultMailProvider returned nil")
 	}

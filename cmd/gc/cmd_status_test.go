@@ -34,7 +34,7 @@ func runDoRigStatus(
 ) int {
 	var store beads.Store
 	if cityPath != "" {
-		if opened, err := openCityStoreAt(cityPath); err == nil {
+		if opened, err := openCityStoreAt(context.Background(), cityPath); err == nil {
 			store = opened
 		}
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"regexp"
@@ -88,7 +89,7 @@ a usage error.`,
 				fmt.Fprintf(stderr, "gc beads metadata-cas: %v\n", err) //nolint:errcheck // best-effort stderr
 				return errExit
 			}
-			if cmdBeadsMetadataCAS(request, stdout, stderr) != 0 {
+			if cmdBeadsMetadataCAS(cmd.Context(), request, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -206,25 +207,25 @@ var (
 	closeBeadsMetadataCASStore = closeBeadStoreHandle
 )
 
-func cmdBeadsMetadataCAS(request beadsMetadataCASRequest, stdout, stderr io.Writer) int {
-	ctx, err := resolveContext()
+func cmdBeadsMetadataCAS(ctx context.Context, request beadsMetadataCASRequest, stdout, stderr io.Writer) int {
+	gcCtx, err := resolveContext()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc beads metadata-cas: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	cfg, err := loadCityConfig(ctx.CityPath, configWarnWriter(request.format == "json", stderr))
+	cfg, err := loadCityConfig(gcCtx.CityPath, configWarnWriter(request.format == "json", stderr))
 	if err != nil {
 		fmt.Fprintf(stderr, "gc beads metadata-cas: loading city config: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	scopeRoot, canonicalRef, err := resolveBeadsMetadataCASStore(cfg, ctx.CityPath, request.storeRef)
+	scopeRoot, canonicalRef, err := resolveBeadsMetadataCASStore(cfg, gcCtx.CityPath, request.storeRef)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc beads metadata-cas: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
 	request.storeRef = canonicalRef
 
-	store, err := openBeadsMetadataCASStore(scopeRoot, ctx.CityPath)
+	store, err := openBeadsMetadataCASStore(ctx, scopeRoot, gcCtx.CityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc beads metadata-cas: opening %s: %v\n", canonicalRef, err) //nolint:errcheck // best-effort stderr
 		return 1

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -63,8 +64,8 @@ func newBeadsCityUseManagedCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "use-managed",
 		Short: "Set the city endpoint to GC-managed",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if cmdBeadsCityUseManaged(opts, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmdBeadsCityUseManaged(cmd.Context(), opts, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -81,8 +82,8 @@ func newBeadsCityUseExternalCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "use-external",
 		Short: "Set the city endpoint to an external Dolt server",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if cmdBeadsCityUseExternal(opts, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmdBeadsCityUseExternal(cmd.Context(), opts, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -96,26 +97,26 @@ func newBeadsCityUseExternalCmd(stdout, stderr io.Writer) *cobra.Command {
 	return cmd
 }
 
-func cmdBeadsCityUseManaged(opts cityEndpointOptions, stdout, stderr io.Writer) int {
+func cmdBeadsCityUseManaged(ctx context.Context, opts cityEndpointOptions, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc beads city use-managed: %v\n", err) //nolint:errcheck
 		return 1
 	}
-	return doBeadsCityEndpoint(fsys.OSFS{}, cityPath, opts, stdout, stderr)
+	return doBeadsCityEndpoint(ctx, fsys.OSFS{}, cityPath, opts, stdout, stderr)
 }
 
-func cmdBeadsCityUseExternal(opts cityEndpointOptions, stdout, stderr io.Writer) int {
+func cmdBeadsCityUseExternal(ctx context.Context, opts cityEndpointOptions, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc beads city use-external: %v\n", err) //nolint:errcheck
 		return 1
 	}
-	return doBeadsCityEndpoint(fsys.OSFS{}, cityPath, opts, stdout, stderr)
+	return doBeadsCityEndpoint(ctx, fsys.OSFS{}, cityPath, opts, stdout, stderr)
 }
 
 //nolint:unparam // FS seam is intentional for command tests
-func doBeadsCityEndpoint(fs fsys.FS, cityPath string, opts cityEndpointOptions, stdout, stderr io.Writer) int {
+func doBeadsCityEndpoint(ctx context.Context, fs fsys.FS, cityPath string, opts cityEndpointOptions, stdout, stderr io.Writer) int {
 	name := cityEndpointCommandName(opts)
 	if err := validateCityEndpointOptions(opts); err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", name, err) //nolint:errcheck
@@ -191,7 +192,7 @@ func doBeadsCityEndpoint(fs fsys.FS, cityPath string, opts cityEndpointOptions, 
 				}
 				managedStopScript = gcBeadsBdScriptPath(cityPath)
 			}
-			providerEnv, err := providerLifecycleProcessEnvWithError(cityPath, provider)
+			providerEnv, err := providerLifecycleProcessEnvWithError(ctx, cityPath, provider)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s: building managed provider env: %v\n", name, err) //nolint:errcheck
 				return 1
@@ -236,7 +237,7 @@ func doBeadsCityEndpoint(fs fsys.FS, cityPath string, opts cityEndpointOptions, 
 	}
 
 	if managedStopScript != "" {
-		if err := runProviderOpWithEnv(managedStopScript, managedStopEnv, "stop"); err != nil {
+		if err := runProviderOpWithEnvContext(ctx, managedStopScript, managedStopEnv, "stop"); err != nil {
 			writeCityEndpointRollbackError(fs, stderr, snapshots, name, "stopping managed local provider", err)
 			return 1
 		}

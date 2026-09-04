@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -76,12 +77,13 @@ func TestBuildDoctorChecks_SkipsStoreChecksWhenStoreUnreachable(t *testing.T) {
 			{Name: "sleeping", Path: "sleeping", Prefix: "sl", Suspended: true},
 		},
 	}
-	checks := buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
+	checks := buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    true,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,
 		SkipRigDoltChecks:    true,
 	})
+
 	names := doctorCheckNames(checks)
 
 	var preflight doctor.Check
@@ -165,12 +167,13 @@ func TestBuildDoctorChecks_RegistersStoreChecksWhenStoreReachable(t *testing.T) 
 			{Name: "beta", Path: "beta", Prefix: "be"},
 		},
 	}
-	checks := buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
+	checks := buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    true,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,
 		SkipRigDoltChecks:    true,
 	})
+
 	names := doctorCheckNames(checks)
 
 	if doctorCheckIndex(names, "bead-store-preflight") >= 0 {
@@ -210,7 +213,7 @@ func TestBuildDoctorChecks_NonUnreachableProbeKeepsStoreChecks(t *testing.T) {
 		Workspace: config.Workspace{Name: "demo"},
 		Rigs:      []config.Rig{{Name: "alpha", Path: "alpha", Prefix: "al"}},
 	}
-	names := doctorCheckNames(buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
+	names := doctorCheckNames(buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    true,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,
@@ -258,7 +261,7 @@ func TestBuildDoctorChecks_RigStoreNameSetPreflight(t *testing.T) {
 	t.Cleanup(func() { doctorBeadStorePreflight = old })
 
 	doctorBeadStorePreflight = func(string, func(string) (beads.Store, error)) error { return nil }
-	healthy := doctorCheckNames(buildDoctorChecks(cityDir, cfg, nil, opts))
+	healthy := doctorCheckNames(buildDoctorChecks(context.Background(), cityDir, cfg, nil, opts))
 	mustHave := append(append([]string{}, doctorCityStoreDependentNames...),
 		"rig:alpha:beads", "rig:beta:beads",
 		"custom-types:alpha", "custom-types:beta",
@@ -277,7 +280,7 @@ func TestBuildDoctorChecks_RigStoreNameSetPreflight(t *testing.T) {
 	doctorBeadStorePreflight = func(string, func(string) (beads.Store, error)) error {
 		return fmt.Errorf("connection refused")
 	}
-	outage := doctorCheckNames(buildDoctorChecks(cityDir, cfg, nil, opts))
+	outage := doctorCheckNames(buildDoctorChecks(context.Background(), cityDir, cfg, nil, opts))
 	if doctorCheckIndex(outage, "bead-store-preflight") < 0 {
 		t.Fatalf("outage name-set missing bead-store-preflight; names=%v", outage)
 	}
@@ -363,7 +366,7 @@ func TestBuildDoctorChecks_SkipStorePreflightSkipsProbe(t *testing.T) {
 		Workspace: config.Workspace{Name: "demo"},
 		Rigs:      []config.Rig{{Name: "alpha", Path: "alpha", Prefix: "al"}},
 	}
-	names := doctorCheckNames(buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
+	names := doctorCheckNames(buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    true,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,

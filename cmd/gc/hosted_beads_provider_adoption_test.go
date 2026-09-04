@@ -337,11 +337,11 @@ func TestHostedBeadsProviderCityRigAndExecProjection(t *testing.T) {
 	writeCompleteStorageBinding(t, cityPath)
 	writeCompleteStorageBinding(t, rigPath)
 
-	cityEnv, err := bdRuntimeEnvWithError(cityPath)
+	cityEnv, err := bdRuntimeEnvWithError(context.Background(), cityPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rigEnv, err := bdRuntimeEnvForRigWithError(cityPath, nil, rigPath)
+	rigEnv, err := bdRuntimeEnvForRigWithError(context.Background(), cityPath, nil, rigPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +379,7 @@ func TestHostedBeadsAmbientNamespaceIsWithheldFromSessionsAndCommands(t *testing
 	cityPath := writeHostedBeadsCity(t, "https://beads.example", "gasworks", false)
 	writeCompleteStorageBinding(t, cityPath)
 
-	sessionEnv, err := sessionBackendEnvWithError(cityPath, "", nil)
+	sessionEnv, err := sessionBackendEnvWithError(context.Background(), cityPath, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +395,7 @@ func TestHostedBeadsAmbientNamespaceIsWithheldFromSessionsAndCommands(t *testing
 		}
 	}
 
-	runner, err := beadsCommandRunnerForHostedCity(cityPath, sessionEnv)
+	runner, err := beadsCommandRunnerForHostedCity(context.Background(), cityPath, sessionEnv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +413,7 @@ func TestHostedBeadsAmbientNamespaceIsWithheldFromSessionsAndCommands(t *testing
 		t.Errorf("hosted command env does not contain selected bridge: %q", childEnv)
 	}
 
-	processEnv, err := cityRuntimeProcessEnvWithError(cityPath)
+	processEnv, err := cityRuntimeProcessEnvWithError(context.Background(), cityPath)
 	if err != nil {
 		t.Fatal(err)
 	}

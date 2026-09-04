@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -29,8 +30,8 @@ func newWispAutocloseCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short:  "Auto-close open molecule descendants of a closed bead",
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			doWispAutoclose(args[0], stdout, stderr)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			doWispAutoclose(cmd.Context(), args[0], stdout, stderr)
 			return nil // always succeed — best-effort infrastructure
 		},
 	}
@@ -39,7 +40,7 @@ func newWispAutocloseCmd(stdout, stderr io.Writer) *cobra.Command {
 // doWispAutoclose is the CLI entry point for wisp autoclose.
 // It resolves the current store through the provider-aware resolver using the
 // projected store-root environment and delegates to the testable core.
-func doWispAutoclose(beadID string, stdout, _ io.Writer) {
+func doWispAutoclose(ctx context.Context, beadID string, stdout, _ io.Writer) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return
@@ -54,12 +55,12 @@ func doWispAutoclose(beadID string, stdout, _ io.Writer) {
 	// Attachments are ClassGraph wherever the just-closed bead lives; without
 	// this the hook reads an empty graph on a migrated city and reports success.
 	routeCfg, _ := loadCityConfigWithoutBuiltinPackRefresh(cityPath, io.Discard)
-	if store, _, ok := autocloseOwningStore(beadID, cityPath); ok {
+	if store, _, ok := autocloseOwningStore(ctx, beadID, cityPath); ok {
 		doWispAutocloseWith(store, beadID, stdout, cliGraphStore(store, routeCfg, cityPath))
 		return
 	}
 
-	store, err := openStoreAtForCity(storeRoot, cityPath)
+	store, err := openStoreAtForCity(ctx, storeRoot, cityPath)
 	if err != nil {
 		return
 	}

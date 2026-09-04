@@ -791,7 +791,7 @@ func conformanceClaimRouting(t *testing.T, e splitEnv) {
 	// work query against is a WORK scope, resolved from cfg with no class arm
 	// anywhere in it. Relocating graph does not move it, and after ga-601v2 it
 	// still must not: the class axis is on the ops, not on a leg.
-	hookEnv, err := hookQueryEnv(e.cityPath, e.cfg, &config.Agent{Name: splitEnvPoolAgent})
+	hookEnv, err := hookQueryEnv(context.Background(), e.cityPath, e.cfg, &config.Agent{Name: splitEnvPoolAgent})
 	if err != nil {
 		t.Fatalf("build the hook's work-query env: %v", err)
 	}
@@ -806,7 +806,7 @@ func conformanceClaimRouting(t *testing.T, e splitEnv) {
 	// workspace, and there are exactly as many as the city has work scopes —
 	// relocating graph adds none, in either direction.
 	hookAgent := &config.Agent{Name: splitEnvPoolAgent}
-	fanout := hookWorkQueryStores(e.cityPath, e.cfg, hookAgent,
+	fanout := hookWorkQueryStores(context.Background(), e.cityPath, e.cfg, hookAgent,
 		hookAgent.QualifiedName(),
 		agentCommandDir(e.cityPath, hookAgent, e.cfg.Rigs),
 		mergeRuntimeEnv(nil, hookEnv), hookEnv)
@@ -1424,10 +1424,10 @@ func conformanceWarmTickDemand(t *testing.T, e splitEnv) {
 	e.mintWispWith(t, wispOpts{title: "routed treadmill wisp A", routedTo: e.qualified})
 	e.mintWispWith(t, wispOpts{title: "routed treadmill wisp B", routedTo: e.qualified})
 
-	cold := buildDesiredStateWithSessionBeads(
+	cold := buildDesiredStateWithSessionBeads(context.Background(),
 		"split-topology-city", e.cityPath, time.Now(), e.cfg, &localMockProvider{},
-		e.sessionsStore(), e.rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		e.sessionsStore(), e.rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
+
 	if len(cold.State) != 2 {
 		t.Fatalf("cold tick desired sessions = %d, want 2", len(cold.State))
 	}
@@ -1437,10 +1437,10 @@ func conformanceWarmTickDemand(t *testing.T, e splitEnv) {
 		if err != nil {
 			t.Fatalf("load session snapshot before warm tick %d: %v", tick, err)
 		}
-		warm := buildDesiredStateWithSessionBeads(
+		warm := buildDesiredStateWithSessionBeads(context.Background(),
 			"split-topology-city", e.cityPath, time.Now(), e.cfg, &localMockProvider{},
-			e.sessionsStore(), e.rigStores, snap, nil, os.Stderr,
-		)
+			e.sessionsStore(), e.rigStores, snap, nil, os.Stderr)
+
 		if got := warm.ScaleCheckCounts[e.qualified]; got != 2 {
 			t.Errorf("warm tick %d demand = %d, want 2 (routed leading-store demand went blind while sessions ran — the treadmill)", tick, got)
 		}
@@ -2744,7 +2744,7 @@ func conformanceAssignedTierClaimsTheGraphStep(t *testing.T, e splitEnv, assigne
 		StampWorkMeta: func(context.Context, string, []string, string, string, map[string]string) error {
 			return nil
 		},
-		DrainAck: func(io.Writer) error { return nil },
+		DrainAck: func(context.Context, io.Writer) error { return nil },
 	}, route)
 	opts := hookClaimOptions{
 		Assignee:           e.qualified,
@@ -2754,7 +2754,7 @@ func conformanceAssignedTierClaimsTheGraphStep(t *testing.T, e splitEnv, assigne
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner("gc ready --json", e.cityPath, stores[0].env, stores, opts, ops, run, func(string, error) {}, &stdout, &stderr)
+	code := claimHookWorkWithRunner(context.Background(), "gc ready --json", e.cityPath, stores[0].env, stores, opts, ops, run, func(string, error) {}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("gc hook --claim exited %d with the relocated assigned step %s ranked first (stdout=%q stderr=%q)", code, assignedGraphBeadID, stdout.String(), stderr.String())
 	}
@@ -2825,7 +2825,7 @@ func conformanceUnresolvableCandidateStillDoesNotStrandWork(t *testing.T, e spli
 		StampWorkMeta: func(context.Context, string, []string, string, string, map[string]string) error {
 			return nil
 		},
-		DrainAck: func(io.Writer) error { return nil },
+		DrainAck: func(context.Context, io.Writer) error { return nil },
 	}, route)
 	opts := hookClaimOptions{
 		Assignee:           e.qualified,
@@ -2835,7 +2835,7 @@ func conformanceUnresolvableCandidateStillDoesNotStrandWork(t *testing.T, e spli
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner("gc ready --json", e.cityPath, stores[0].env, stores, opts, ops, run, func(string, error) {}, &stdout, &stderr)
+	code := claimHookWorkWithRunner(context.Background(), "gc ready --json", e.cityPath, stores[0].env, stores, opts, ops, run, func(string, error) {}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("gc hook --claim exited %d with an unresolvable assigned candidate ranked first; one candidate no store holds must not strand the worker's other claimable work (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
 	}

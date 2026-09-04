@@ -37,6 +37,7 @@ func Provision(deps Deps, req ProvisionRequest) (config.Rig, ProvisionResult, er
 
 	fs := deps.FS
 	cfg := deps.Cfg
+	ctx := deps.Ctx
 	cityPath := deps.CityPath
 	rigPath := req.Path
 	tomlPath := filepath.Join(cityPath, "city.toml")
@@ -121,7 +122,7 @@ func Provision(deps Deps, req ProvisionRequest) (config.Rig, ProvisionResult, er
 	if err != nil {
 		return config.Rig{}, result, err
 	}
-	deferred, err := initRigBeadsStore(deps, req, rigPath, plan.prefix, emit)
+	deferred, err := initRigBeadsStore(ctx, deps, req, rigPath, plan.prefix, emit)
 	if err != nil {
 		return config.Rig{}, result, removePartialBeadsStore(fs, rigPath, beadsStorePreexisting, err)
 	}
@@ -395,7 +396,7 @@ func maybeCloneRig(deps Deps, req ProvisionRequest, rigPath string, rigPathExist
 		return rigPathExists, nil
 	}
 	opts := git.CloneOptions{RecurseSubmodules: req.RecurseSubmodules}
-	if err := deps.CloneGitURL(context.Background(), req.GitURL, rigPath, opts); err != nil {
+	if err := deps.CloneGitURL(deps.Ctx, req.GitURL, rigPath, opts); err != nil {
 		return rigPathExists, fmt.Errorf("%w: %w", ErrCloneFailed, err)
 	}
 	return true, nil
@@ -577,7 +578,7 @@ func emitRigBannerAndWarnings(deps Deps, req ProvisionRequest, plan rigMutationP
 // deferred "init deferred to controller" path when InitStore punts (and the
 // store is GC_DOLT=skip or the deeper InitAndHook fails). It returns whether
 // init was deferred.
-func initRigBeadsStore(deps Deps, req ProvisionRequest, rigPath, prefix string, emit func(ProvisionStep)) (bool, error) {
+func initRigBeadsStore(ctx context.Context, deps Deps, req ProvisionRequest, rigPath, prefix string, emit func(ProvisionStep)) (bool, error) {
 	cityPath := deps.CityPath
 	storeContract := func() bool { return deps.StoreContract != nil && deps.StoreContract(cityPath) }
 	doltSkip := func() bool { return deps.DoltSkip != nil && deps.DoltSkip() }
@@ -591,7 +592,7 @@ func initRigBeadsStore(deps Deps, req ProvisionRequest, rigPath, prefix string, 
 			}
 		}
 		if storeContract() {
-			deferred, err = deps.InitStore(cityPath, rigPath, prefix)
+			deferred, err = deps.InitStore(ctx, cityPath, rigPath, prefix)
 			if err != nil {
 				return false, err
 			}
@@ -600,14 +601,14 @@ func initRigBeadsStore(deps Deps, req ProvisionRequest, rigPath, prefix string, 
 		return deferred, nil
 	}
 
-	deferred, err = deps.InitStore(cityPath, rigPath, prefix)
+	deferred, err = deps.InitStore(ctx, cityPath, rigPath, prefix)
 	if err != nil {
 		return false, err
 	}
 	if deferred {
 		if storeContract() && doltSkip() {
 			emit(ProvisionStep{Name: "beads-init", Detail: "  Beads init deferred to controller"})
-		} else if err := deps.InitAndHook(cityPath, rigPath, prefix); err != nil {
+		} else if err := deps.InitAndHook(ctx, cityPath, rigPath, prefix); err != nil {
 			emit(ProvisionStep{Name: "beads-init", Detail: "  Beads init deferred to controller"})
 		} else {
 			emit(ProvisionStep{Name: "beads-init", Detail: "  Initialized beads database"})

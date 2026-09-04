@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"path/filepath"
 	"testing"
@@ -45,7 +46,7 @@ func TestCityInitExactOutput_CommandProviderSkipReadiness(t *testing.T) {
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitWithOptions([]string{filepath.Join(t.TempDir(), "bright-lights")}, "codex", "", &stdout, &stderr, true)
+	code := cmdInitWithOptions(context.Background(), []string{filepath.Join(t.TempDir(), "bright-lights")}, "codex", "", &stdout, &stderr, true)
 
 	if code != 0 {
 		t.Fatalf("cmdInitWithOptions code = %d, want 0", code)

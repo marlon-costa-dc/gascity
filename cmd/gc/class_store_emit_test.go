@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"go/ast"
@@ -944,7 +945,7 @@ func TestOneShotCLIWritesEmitBeadEventsOnAMigratedCity(t *testing.T) {
 		cityPath, _ := migratedOneShotCLICity(t)
 		captureCLIStorageStderr(t)
 
-		sender, code := openCityMailProvider(io.Discard, "gc mail send")
+		sender, code := openCityMailProvider(context.Background(), io.Discard, "gc mail send")
 		if sender == nil {
 			t.Fatalf("openCityMailProvider returned no provider (code=%d)", code)
 		}

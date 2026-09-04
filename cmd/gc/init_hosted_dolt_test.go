@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -315,7 +316,7 @@ func TestDoInitWritesCanonicalHostedDoltConfig(t *testing.T) {
 	if owned {
 		t.Fatal("managedDoltLifecycleOwned = true, want false (external endpoint)")
 	}
-	if !isExternalDolt(cityPath) {
+	if !isExternalDolt(context.Background(), cityPath) {
 		t.Fatal("isExternalDolt = false, want true")
 	}
 }
@@ -329,9 +330,9 @@ func TestInitDirIfReadyDefersUnverifiedExternalDolt(t *testing.T) {
 	orig := initDirIfReadyInitAndHookDir
 	t.Cleanup(func() { initDirIfReadyInitAndHookDir = orig })
 	called := false
-	initDirIfReadyInitAndHookDir = func(_, _, _ string) error { called = true; return nil }
+	initDirIfReadyInitAndHookDir = func(context.Context, string, string, string) error { called = true; return nil }
 
-	deferred, err := initDirIfReady(cityPath, cityPath, prefix)
+	deferred, err := initDirIfReady(context.Background(), cityPath, cityPath, prefix)
 	if err != nil {
 		t.Fatalf("initDirIfReady: %v", err)
 	}
@@ -362,9 +363,9 @@ func TestInitDirIfReadyInitsVerifiedExternalDolt(t *testing.T) {
 	orig := initDirIfReadyInitAndHookDir
 	t.Cleanup(func() { initDirIfReadyInitAndHookDir = orig })
 	called := false
-	initDirIfReadyInitAndHookDir = func(_, _, _ string) error { called = true; return nil }
+	initDirIfReadyInitAndHookDir = func(context.Context, string, string, string) error { called = true; return nil }
 
-	deferred, err := initDirIfReady(cityPath, cityPath, prefix)
+	deferred, err := initDirIfReady(context.Background(), cityPath, cityPath, prefix)
 	if err != nil {
 		t.Fatalf("initDirIfReady: %v", err)
 	}
@@ -415,7 +416,7 @@ func TestGcInitCommandHostedDoltEnvOnlyEndpoint(t *testing.T) {
 		t.Fatalf("gc init env-only hosted dolt = %v, want success; stderr=%s", err, stderr.String())
 	}
 
-	if !isExternalDolt(cityPath) {
+	if !isExternalDolt(context.Background(), cityPath) {
 		t.Fatal("isExternalDolt = false after env-only hosted init")
 	}
 	metaRaw, err := os.ReadFile(filepath.Join(cityPath, ".beads", "metadata.json"))

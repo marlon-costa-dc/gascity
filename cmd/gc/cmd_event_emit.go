@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -56,12 +57,12 @@ attaching arbitrary JSON payloads. JSON summaries report whether submission to
 the configured provider was attempted; the event bus does not acknowledge
 durable persistence.`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			effectiveActor := actor
 			if effectiveActor == "" {
 				effectiveActor = eventActor()
 			}
-			finalPayload := eventPayloadForEmit(payload, beadPayload, stderr)
+			finalPayload := eventPayloadForEmit(cmd.Context(), payload, beadPayload, stderr)
 			submitted := false
 			if jsonOut {
 				submitted = cmdEventEmitSubmitted(args[0], subject, message, effectiveActor, finalPayload, stderr)
@@ -91,13 +92,13 @@ durable persistence.`,
 	return cmd
 }
 
-func eventPayloadForEmit(payload, beadID string, stderr io.Writer) string {
+func eventPayloadForEmit(ctx context.Context, payload, beadID string, stderr io.Writer) string {
 	if payload == "" || !json.Valid([]byte(payload)) {
 		beadID = strings.TrimSpace(beadID)
 		if beadID == "" {
 			return payload
 		}
-		beadPayload, err := loadEventBeadPayload(beadID)
+		beadPayload, err := loadEventBeadPayload(ctx, beadID)
 		if err != nil {
 			fmt.Fprintf(stderr, "gc event emit: bead payload %s: %v\n", beadID, err) //nolint:errcheck // best-effort stderr
 			if payload != "" && !json.Valid([]byte(payload)) {
@@ -110,7 +111,7 @@ func eventPayloadForEmit(payload, beadID string, stderr io.Writer) string {
 	return payload
 }
 
-func loadEventBeadPayload(beadID string) (json.RawMessage, error) {
+func loadEventBeadPayload(ctx context.Context, beadID string) (json.RawMessage, error) {
 	cityPath, err := resolveCity()
 	if err != nil {
 		return nil, err
@@ -119,7 +120,7 @@ func loadEventBeadPayload(beadID string) (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolving current scope: %w", err)
 	}
-	store, err := openStoreAtForCity(scopeRoot, cityPath)
+	store, err := openStoreAtForCity(ctx, scopeRoot, cityPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening bead store: %w", err)
 	}

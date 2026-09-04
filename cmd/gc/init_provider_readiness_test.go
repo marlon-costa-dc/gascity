@@ -188,9 +188,10 @@ func TestFinalizeInitBlocksProviderReadinessBeforeSupervisorRegistration(t *test
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code = finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{
+	code = finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{
 		commandName: "gc init",
 	})
+
 	if code != 1 {
 		t.Fatalf("finalizeInit = %d, want 1", code)
 	}
@@ -254,9 +255,10 @@ func TestFinalizeInitWarnsForUnprobeableCustomProviderAndContinues(t *testing.T)
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code := finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{
+	code := finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{
 		commandName: "gc init",
 	})
+
 	if code != 0 {
 		t.Fatalf("finalizeInit = %d, want 0: %s", code, stderr.String())
 	}
@@ -324,9 +326,10 @@ func TestFinalizeInitFetchesRemotePacksBeforeProviderReadiness(t *testing.T) {
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code := finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{
+	code := finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{
 		commandName: "gc init",
 	})
+
 	if code != 0 {
 		t.Fatalf("finalizeInit = %d, want 0: %s", code, stderr.String())
 	}
@@ -414,9 +417,10 @@ name = "bright-lights"
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code := finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{
+	code := finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{
 		commandName: "gc init",
 	})
+
 	if code != 1 {
 		t.Fatalf("finalizeInit = %d, want 1; stderr=%s", code, stderr.String())
 	}
@@ -451,10 +455,11 @@ func TestFinalizeInitDoesNotWriteImplicitImportState(t *testing.T) {
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code = finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{
+	code = finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{
 		commandName:           "gc init",
 		skipProviderReadiness: true,
 	})
+
 	if code != 0 {
 		t.Fatalf("finalizeInit = %d, want 0: %s", code, stderr.String())
 	}
@@ -576,10 +581,11 @@ func TestFinalizeInitReportsRemoteImportInstallFailure(t *testing.T) {
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code = finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{
+	code = finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{
 		commandName:           "gc init",
 		skipProviderReadiness: true,
 	})
+
 	if code != 1 {
 		t.Fatalf("finalizeInit = %d, want 1", code)
 	}
@@ -606,9 +612,10 @@ func TestFinalizeInitReportsConfigLoadErrorDuringProviderPreflight(t *testing.T)
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{
+	code := finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{
 		commandName: "gc init",
 	})
+
 	if code != 1 {
 		t.Fatalf("finalizeInit = %d, want 1", code)
 	}
@@ -665,10 +672,11 @@ func TestFinalizeInitWithoutProgressSkipsStepCounter(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	code = finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{
+	code = finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{
 		commandName:  "gc init",
 		showProgress: false,
 	})
+
 	if code != 0 {
 		t.Fatalf("finalizeInit = %d, want 0: %s", code, stderr.String())
 	}
@@ -724,7 +732,7 @@ func TestCmdInitResumesFinalizeForExistingCity(t *testing.T) {
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code = cmdInit([]string{cityPath}, "", "", &stdout, &stderr)
+	code = cmdInit(context.Background(), []string{cityPath}, "", "", &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("cmdInit = %d, want 1", code)
 	}
@@ -807,7 +815,7 @@ func TestCmdInitSkipProviderReadinessBypassesBlockedProvider(t *testing.T) {
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code = cmdInitWithOptions([]string{cityPath}, "", "", &stdout, &stderr, true)
+	code = cmdInitWithOptions(context.Background(), []string{cityPath}, "", "", &stdout, &stderr, true)
 	if code != 0 {
 		t.Fatalf("cmdInitWithOptions = %d, want 0: %s", code, stderr.String())
 	}
@@ -1322,7 +1330,7 @@ func TestFinalizeInitCanonicalizesBdStoreBeforeProviderReadinessBlock(t *testing
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code = finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{commandName: "gc init"})
+	code = finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{commandName: "gc init"})
 	if code != 1 {
 		t.Fatalf("finalizeInit = %d, want 1", code)
 	}
@@ -1363,7 +1371,7 @@ func TestFinalizeInitBlocksManagedBdWhenDoltIdentityMissing(t *testing.T) {
 	t.Cleanup(func() { initProbeProvidersReadiness = oldProbe })
 
 	var stdout, stderr bytes.Buffer
-	code = finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{commandName: "gc init"})
+	code = finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{commandName: "gc init"})
 	if code != 1 {
 		t.Fatalf("finalizeInit = %d, want 1", code)
 	}
@@ -1400,7 +1408,7 @@ func TestDoStartBlocksManagedBdWhenDoltIdentityMissingBeforeSupervisorRegistrati
 	t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 	var stdout, stderr bytes.Buffer
-	code := doStart([]string{cityPath}, false, &stdout, &stderr)
+	code := doStart(context.Background(), []string{cityPath}, false, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doStart code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -1432,7 +1440,7 @@ func TestDoStartForegroundBlocksManagedBdWhenDoltIdentityMissingBeforeLifecycle(
 	cityPath := writeBootstrappedManagedBdCity(t)
 
 	var stdout, stderr bytes.Buffer
-	code := doStart([]string{cityPath}, true, &stdout, &stderr)
+	code := doStart(context.Background(), []string{cityPath}, true, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doStart --foreground code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -1489,7 +1497,7 @@ func TestDoStartForegroundReportsHardDependenciesBeforeDoltIdentity(t *testing.T
 	cityPath := writeBootstrappedManagedBdCity(t)
 
 	var stdout, stderr bytes.Buffer
-	code := doStart([]string{cityPath}, true, &stdout, &stderr)
+	code := doStart(context.Background(), []string{cityPath}, true, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doStart --foreground code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -1521,7 +1529,7 @@ func TestCheckDoltAuthorIdentitySkipsWhenGCDoltSkip(t *testing.T) {
 	}
 	t.Cleanup(func() { initRunDoltConfigGet = old })
 
-	if status := checkDoltAuthorIdentity(t.TempDir()); status.blocked() {
+	if status := checkDoltAuthorIdentity(context.Background(), t.TempDir()); status.blocked() {
 		t.Fatalf("checkDoltAuthorIdentity blocked with GC_DOLT=skip: %#v", status)
 	}
 }
@@ -1540,7 +1548,7 @@ func TestCheckDoltAuthorIdentityReportsPartialMissingKey(t *testing.T) {
 	stubInitDependencyChecks(t)
 	stubInitDoltAuthorIdentity(t, map[string]string{"user.name": "Test User"})
 
-	status := checkDoltAuthorIdentity(t.TempDir())
+	status := checkDoltAuthorIdentity(context.Background(), t.TempDir())
 	if len(status.probeErrors) != 0 {
 		t.Fatalf("probe errors = %#v, want none", status.probeErrors)
 	}
@@ -1569,7 +1577,7 @@ func TestCheckDoltAuthorIdentitySkipsWhenDoltMissing(t *testing.T) {
 	}
 	t.Cleanup(func() { initRunDoltConfigGet = old })
 
-	if status := checkDoltAuthorIdentity(t.TempDir()); status.blocked() {
+	if status := checkDoltAuthorIdentity(context.Background(), t.TempDir()); status.blocked() {
 		t.Fatalf("checkDoltAuthorIdentity blocked without dolt on PATH: %#v", status)
 	}
 }
@@ -1610,7 +1618,7 @@ dolt_port = "3307"
 	}
 	t.Cleanup(func() { initRunDoltConfigGet = old })
 
-	if status := checkDoltAuthorIdentity(cityDir); status.blocked() {
+	if status := checkDoltAuthorIdentity(context.Background(), cityDir); status.blocked() {
 		t.Fatalf("checkDoltAuthorIdentity blocked for rig external Dolt: %#v", status)
 	}
 }
@@ -1640,7 +1648,7 @@ port = 3307
 	}
 	t.Cleanup(func() { initRunDoltConfigGet = old })
 
-	if status := checkDoltAuthorIdentity(cityDir); status.blocked() {
+	if status := checkDoltAuthorIdentity(context.Background(), cityDir); status.blocked() {
 		t.Fatalf("checkDoltAuthorIdentity blocked for city external Dolt: %#v", status)
 	}
 }
@@ -1677,7 +1685,7 @@ dolt.auto-start: false
 	}
 	t.Cleanup(func() { initRunDoltConfigGet = old })
 
-	if status := checkDoltAuthorIdentity(cityDir); status.blocked() {
+	if status := checkDoltAuthorIdentity(context.Background(), cityDir); status.blocked() {
 		t.Fatalf("checkDoltAuthorIdentity blocked for a city gc does not serve: %#v", status)
 	}
 }
@@ -1711,7 +1719,7 @@ dolt.auto-start: false
 	}
 	stubInitDoltAuthorIdentity(t, map[string]string{})
 
-	status := checkDoltAuthorIdentity(cityDir)
+	status := checkDoltAuthorIdentity(context.Background(), cityDir)
 	if got, want := strings.Join(status.missingKeys, ","), "user.name,user.email"; got != want {
 		t.Fatalf("missing keys = %q, want %q", got, want)
 	}
@@ -1734,7 +1742,7 @@ func TestCheckDoltAuthorIdentityReportsProbeErrorsSeparately(t *testing.T) {
 	}
 	t.Cleanup(func() { initRunDoltConfigGet = old })
 
-	status := checkDoltAuthorIdentity(t.TempDir())
+	status := checkDoltAuthorIdentity(context.Background(), t.TempDir())
 	if len(status.missingKeys) != 0 {
 		t.Fatalf("missing keys = %#v, want none", status.missingKeys)
 	}
@@ -1840,7 +1848,7 @@ func TestFinalizeInitCanonicalizesBdStoreBeforeProviderReadinessBlockWithoutSkip
 	t.Cleanup(func() { initProbeProvidersReadiness = oldProbe })
 
 	var stdout, stderr bytes.Buffer
-	code = finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{commandName: "gc init"})
+	code = finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{commandName: "gc init"})
 	if code != 1 {
 		t.Fatalf("finalizeInit = %d, want 1", code)
 	}
@@ -1906,7 +1914,7 @@ func TestFinalizeInitDoesNotRunBdProviderBeforeProviderReadinessBlock(t *testing
 	t.Cleanup(func() { initProbeProvidersReadiness = oldProbe })
 
 	var stdout, stderr bytes.Buffer
-	code = finalizeInit(cityPath, &stdout, &stderr, initFinalizeOptions{commandName: "gc init"})
+	code = finalizeInit(context.Background(), cityPath, &stdout, &stderr, initFinalizeOptions{commandName: "gc init"})
 	if code != 1 {
 		t.Fatalf("finalizeInit = %d, want 1", code)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -236,7 +237,7 @@ trigger = "manual"
 	}
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, cityPath, cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, cityPath, cfg, events.Discard, &stderr)
 	if ad != nil {
 		t.Error("expected nil dispatcher — manual-trigger orders must be excluded from auto-dispatch")
 	}

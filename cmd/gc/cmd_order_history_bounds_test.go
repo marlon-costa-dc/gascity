@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -248,7 +249,7 @@ func TestOrderHistoryUnlimitedAvoidsAPIRoute(t *testing.T) {
 	c := api.NewCityScopedClient("http://127.0.0.1:1", "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if got := routeOrderHistory(cityPath, cfg, "digest", "", aa, c, "", orderHistoryBounds{}, false, &stdout, &stderr); got != 0 {
+	if got := routeOrderHistory(context.Background(), cityPath, cfg, "digest", "", aa, c, "", orderHistoryBounds{}, false, &stdout, &stderr); got != 0 {
 		t.Fatalf("exit = %d, want 0; stderr=%q", got, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "route=fallback reason=unlimited") {

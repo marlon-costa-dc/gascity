@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -61,12 +62,11 @@ func TestPrepareStartCandidateTwinNeverConsumedStale(t *testing.T) {
 		},
 	}
 
-	prepared, err := prepareStartCandidate(
+	prepared, err := prepareStartCandidate(context.Background(),
 		candidate,
 		&config.City{Agents: []config.Agent{{Name: "worker"}}},
 		store,
-		&clock.Fake{Time: time.Now()},
-	)
+		&clock.Fake{Time: time.Now()})
 	if err != nil {
 		t.Fatalf("prepareStartCandidate: %v", err)
 	}

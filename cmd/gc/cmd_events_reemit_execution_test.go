@@ -364,7 +364,7 @@ func setupExecutionReemitCity(t *testing.T) (string, beads.Bead) {
 	if err := ensurePersistedScopeLocalFileStore(cityPath); err != nil {
 		t.Fatalf("ensure file store: %v", err)
 	}
-	store, err := openStoreAtForCity(cityPath, cityPath)
+	store, err := openStoreAtForCity(context.Background(), cityPath, cityPath)
 	if err != nil {
 		t.Fatalf("open city store: %v", err)
 	}

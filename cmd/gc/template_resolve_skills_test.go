@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -61,6 +62,7 @@ func TestResolveTemplateSkillsIntegration(t *testing.T) {
 
 	makeParams := func(sessionProvider string) *agentBuildParams {
 		return &agentBuildParams{
+			ctx:       context.Background(),
 			cityName:  "city",
 			cityPath:  cityPath,
 			workspace: &config.Workspace{Provider: "claude"},
@@ -178,6 +180,7 @@ func TestResolveTemplateSharedCatalogSnapshotFlowsThroughFile(t *testing.T) {
 		OwnedRoots: []string{filepath.Join(cityPath, "skills")},
 	}
 	params := &agentBuildParams{
+		ctx:                   context.Background(),
 		cityName:              "city",
 		cityPath:              cityPath,
 		workspace:             &config.Workspace{Provider: "claude"},
@@ -254,6 +257,7 @@ func TestResolveTemplateSharedCatalogSnapshotKeepsConfigHashStableAcrossCacheTra
 	}
 	makeParams := func(fromCache bool) *agentBuildParams {
 		return &agentBuildParams{
+			ctx:                   context.Background(),
 			cityName:              "city",
 			cityPath:              cityPath,
 			workspace:             &config.Workspace{Provider: "claude"},
@@ -307,6 +311,7 @@ func TestResolveTemplateSharedCatalogSnapshotEnvIsAbsent(t *testing.T) {
 		OwnedRoots: []string{filepath.Join(cityPath, "skills")},
 	}
 	params := &agentBuildParams{
+		ctx:             context.Background(),
 		cityName:        "city",
 		cityPath:        cityPath,
 		workspace:       &config.Workspace{Provider: "claude"},
@@ -364,6 +369,7 @@ func TestResolveTemplateRemovesStaleSharedCatalogSnapshotFileWhenCatalogUnavaila
 	}
 	makeParams := func(cat *materialize.CityCatalog) *agentBuildParams {
 		return &agentBuildParams{
+			ctx:             context.Background(),
 			cityName:        "city",
 			cityPath:        cityPath,
 			workspace:       &config.Workspace{Provider: "claude"},
@@ -441,6 +447,7 @@ func TestResolveTemplateAppendsAssignedSkillsPrompt(t *testing.T) {
 
 	buildParams := func() *agentBuildParams {
 		return &agentBuildParams{
+			ctx:       context.Background(),
 			cityName:  "city",
 			cityPath:  cityPath,
 			workspace: &config.Workspace{Provider: "claude"},
@@ -615,6 +622,7 @@ func TestResolveTemplatePoolInstanceMaterializeUsesTemplateName(t *testing.T) {
 	}
 
 	params := &agentBuildParams{
+		ctx:       context.Background(),
 		cityName:  "city",
 		cityPath:  cityPath,
 		workspace: &config.Workspace{Provider: "claude"},
@@ -725,6 +733,7 @@ func TestResolveTemplateNamedSessionMaterializeUsesTemplateName(t *testing.T) {
 	}
 
 	params := &agentBuildParams{
+		ctx:       context.Background(),
 		cityName:  "city",
 		cityPath:  cityPath,
 		workspace: &config.Workspace{Provider: "claude"},

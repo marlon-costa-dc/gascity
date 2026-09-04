@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -24,8 +25,8 @@ mode this unregisters the city, then re-registers it and triggers an
 immediate reconcile.`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: completeCityNames,
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdRestartJSON(args, stdout, stderr, jsonOut) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdRestartJSON(cmd.Context(), args, stdout, stderr, jsonOut) != 0 {
 				return errExit
 			}
 			return nil
@@ -35,7 +36,7 @@ immediate reconcile.`,
 	return cmd
 }
 
-func cmdRestartJSON(args []string, stdout, stderr io.Writer, jsonOut bool) int {
+func cmdRestartJSON(ctx context.Context, args []string, stdout, stderr io.Writer, jsonOut bool) int {
 	// Resolve the city reference ONCE up front (accepting a path or a
 	// registered name) and thread the resolved PATH into both the stop and
 	// start legs, so a bare name can never re-resolve to different targets
@@ -50,10 +51,10 @@ func cmdRestartJSON(args []string, stdout, stderr io.Writer, jsonOut bool) int {
 	if jsonOut {
 		restartStdout = io.Discard
 	}
-	if code := cmdStop(resolvedArgs, restartStdout, stderr, 0, false); code != 0 {
+	if code := cmdStop(ctx, resolvedArgs, restartStdout, stderr, 0, false); code != 0 {
 		return code
 	}
-	code := doStartWithNameOverride(resolvedArgs, false /*controllerMode*/, restartStdout, stderr, nameOverride)
+	code := doStartWithNameOverride(ctx, resolvedArgs, false /*controllerMode*/, restartStdout, stderr, nameOverride)
 	if code != 0 || !jsonOut {
 		return code
 	}
@@ -98,8 +99,8 @@ func newRigRestartCmd(stdout, stderr io.Writer) *cobra.Command {
 The reconciler will restart the agents on its next tick. This is a
 quick way to force-refresh all agents working on a particular project.`,
 		Args: cobra.ArbitraryArgs,
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdRigRestart(args, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdRigRestart(cmd.Context(), args, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -110,13 +111,13 @@ quick way to force-refresh all agents working on a particular project.`,
 
 // cmdRigRestart kills all agent sessions in a rig. The reconciler restarts
 // them on its next tick.
-func cmdRigRestart(args []string, stdout, stderr io.Writer) int {
-	ctx, err := resolveContext()
+func cmdRigRestart(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	gcCtx, err := resolveContext()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc rig restart: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	rigName := ctx.RigName
+	rigName := gcCtx.RigName
 	if len(args) > 0 {
 		rigName = args[0]
 	}
@@ -124,7 +125,7 @@ func cmdRigRestart(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "gc rig restart: missing rig name") //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	cityPath := ctx.CityPath
+	cityPath := gcCtx.CityPath
 	cfg, err := loadCityConfig(cityPath, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc rig restart: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -153,13 +154,13 @@ func cmdRigRestart(args []string, stdout, stderr io.Writer) int {
 	}
 
 	cityName := loadedCityName(cfg, cityPath)
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc rig restart: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
 	rec := openCityRecorder(stderr)
-	store, _ := openCityStoreAt(cityPath)
+	store, _ := openCityStoreAt(ctx, cityPath)
 	// Every store consumer in doRigRestart is session-class (session-name
 	// lookups, pool session-ref resolution, runtime running-observation, and the
 	// session-runtime stop/kill in stopTargetsBounded), so route the whole flow

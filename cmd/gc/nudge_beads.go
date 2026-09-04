@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -26,8 +27,8 @@ type nudgeReference = nudgequeue.Reference
 // strongly-typed beads.NudgesStore so the nudges class is statically visible to
 // every leaf nudge-bead helper; the wrapper carries the same underlying store
 // value (identity to the work store until the nudges class relocates).
-var openNudgeBeadStore = func(cityPath string) beads.NudgesStore {
-	store, _ := openNudgeBeadStoreErr(cityPath)
+var openNudgeBeadStore = func(ctx context.Context, cityPath string) beads.NudgesStore {
+	store, _ := openNudgeBeadStoreErr(ctx, cityPath)
 	return store
 }
 
@@ -40,8 +41,8 @@ var openNudgeBeadStore = func(cityPath string) beads.NudgesStore {
 // database from a storage refusal. Call sites that surface a failure to a human
 // use this form and print the reason; the seam above stays for the poll/drain
 // helpers whose contract is already "a nil store means do nothing".
-func openNudgeBeadStoreErr(cityPath string) (beads.NudgesStore, error) {
-	store, err := openStoreAtForCity(cityPath, cityPath)
+func openNudgeBeadStoreErr(ctx context.Context, cityPath string) (beads.NudgesStore, error) {
+	store, err := openStoreAtForCity(ctx, cityPath, cityPath)
 	if err != nil {
 		return beads.NudgesStore{}, fmt.Errorf("opening the city store at %q: %w", cityPath, err)
 	}

@@ -859,7 +859,7 @@ func TestComputeWorkSet_RunsWorkQuery(t *testing.T) {
 		return "", nil // empty = no work for idle's custom query
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
 	if !work["worker"] {
 		t.Error("expected worker to have work")
 	}
@@ -889,7 +889,7 @@ func TestComputeWorkSet_ResolvesRigDir(t *testing.T) {
 		return "", fmt.Errorf("unexpected dir %q, want %q", dir, rigDir)
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", cityDir, nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", cityDir, nil, nil, nil)
 	if !work["myrig/polecat"] {
 		t.Error("expected myrig/polecat to have work when dir is resolved")
 	}
@@ -913,7 +913,7 @@ func TestComputeWorkSet_UsesConfiguredRigRoot(t *testing.T) {
 		return "", fmt.Errorf("unexpected dir %q, want %q", dir, rigDir)
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", cityDir, nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", cityDir, nil, nil, nil)
 	if !work["myrig/polecat"] {
 		t.Error("expected myrig/polecat to have work when rig root is configured externally")
 	}
@@ -958,7 +958,7 @@ func TestComputeWorkSet_RuntimeOnlySuspendUnderForeignCwd(t *testing.T) {
 	// suspension resolution.
 	t.Chdir(t.TempDir())
 
-	work := computeWorkSet(cfg, runner, "test-city", cityDir, nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", cityDir, nil, nil, nil)
 	if work["myrig/polecat"] {
 		t.Error("runtime-only suspended rig's agent must stay out of the work set even under a foreign cwd")
 	}
@@ -1005,7 +1005,7 @@ func TestComputeWorkSet_ExplicitRigWorkQueryUsesRigPassword(t *testing.T) {
 		}},
 	}
 
-	work := computeWorkSet(cfg, shellScaleCheck, "test-city", cityDir, nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, shellScaleCheck, "test-city", cityDir, nil, nil, nil)
 	if !work["demo/worker"] {
 		t.Fatal("expected explicit rig work query to see rig-scoped password and report work")
 	}
@@ -1015,7 +1015,7 @@ func TestComputeWorkSet_NilRunner(t *testing.T) {
 	cfg := &config.City{
 		Agents: []config.Agent{{Name: "worker"}},
 	}
-	work := computeWorkSet(cfg, nil, "test-city", t.TempDir(), nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, nil, "test-city", t.TempDir(), nil, nil, nil)
 	if work != nil {
 		t.Errorf("expected nil, got %v", work)
 	}
@@ -1030,7 +1030,7 @@ func TestComputeWorkSet_CommandError(t *testing.T) {
 		return "", fmt.Errorf("connection refused")
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
 	if work["worker"] {
 		t.Error("command error should not produce work")
 	}
@@ -1045,7 +1045,7 @@ func TestComputeWorkSet_IgnoresNoReadyMessage(t *testing.T) {
 		return "✨ No ready work found (all issues have blocking dependencies)\n", nil
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
 	if work["worker"] {
 		t.Error("no-ready message should not produce work")
 	}
@@ -1071,7 +1071,7 @@ func TestComputeWorkSet_SkipsSuspendedAgent(t *testing.T) {
 		return `[{"id":"BL-1"}]`, nil
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
 	if !work["live"] {
 		t.Error("expected live agent to be probed")
 	}
@@ -1112,7 +1112,7 @@ func TestComputeWorkSet_SkipsAgentsOnSuspendedRig(t *testing.T) {
 		return `[{"id":"BL-1"}]`, nil
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
 	if !work["live-rig/alpha"] {
 		t.Error("agent on live rig should be probed")
 	}
@@ -1151,7 +1151,7 @@ dolt.auto-start: false
 
 	// Prove the fixture still errors — otherwise this test silently stops
 	// exercising the guarded branch.
-	if _, err := controllerQueryRuntimeEnv(cityPath, cfg, &cfg.Agents[0]); err == nil {
+	if _, err := controllerQueryRuntimeEnv(context.Background(), cityPath, cfg, &cfg.Agents[0]); err == nil {
 		t.Fatal("fixture did not produce a probe-env error; the guarded branch is no longer reachable from this test")
 	}
 
@@ -1159,7 +1159,7 @@ dolt.auto-start: false
 		return `[{"id":"BL-1"}]`, nil
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", cityPath, nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", cityPath, nil, nil, nil)
 	if len(work) != 0 {
 		t.Errorf("work = %v, want empty when the probe env cannot be built", work)
 	}
@@ -1181,7 +1181,7 @@ func TestComputeWorkSet_SkipsAllWhenCitySuspended(t *testing.T) {
 		return `[{"id":"BL-1"}]`, nil
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", t.TempDir(), nil, nil, nil)
 	if probed {
 		t.Error("no agent should be probed when city is suspended")
 	}
@@ -3366,7 +3366,7 @@ func TestComputeWorkSet_RigScopedWorkQueryExpandsRigTemplate(t *testing.T) {
 		return "", fmt.Errorf("unexpected command %q in dir %q", command, dir)
 	}
 
-	work := computeWorkSet(cfg, runner, "test-city", cityDir, nil, nil, nil)
+	work := computeWorkSet(context.Background(), cfg, runner, "test-city", cityDir, nil, nil, nil)
 
 	if !work["alpha/worker"] {
 		t.Errorf("expected alpha/worker to have work; seen commands = %v", seenCommands)

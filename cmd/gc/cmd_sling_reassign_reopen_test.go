@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -33,7 +34,7 @@ func TestOnFormulaReassignReopensOrderClaimedBead(t *testing.T) {
 	opts.NoConvoy = true
 	opts.Reassign = true
 
-	code := doSling(opts, deps, deps.Store, stdout, stderr)
+	code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}

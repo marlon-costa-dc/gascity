@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -73,7 +74,7 @@ func TestPhase0WorkflowRouting_TemplateAssigneeRejected(t *testing.T) {
 		},
 	}
 
-	err = graphroute.DecorateGraphWorkflowRecipe(recipe, graphroute.GraphWorkflowRouteVars(recipe, nil), "", "", "", "", "frontend/claude", claudeBead.Metadata["session_name"], store, cfg.Workspace.Name, cfg, cliGraphrouteDeps(""))
+	err = graphroute.DecorateGraphWorkflowRecipe(context.Background(), recipe, graphroute.GraphWorkflowRouteVars(recipe, nil), "", "", "", "", "frontend/claude", claudeBead.Metadata["session_name"], store, cfg.Workspace.Name, cfg, cliGraphrouteDeps(""))
 	if err == nil {
 		t.Fatal("graphroute.DecorateGraphWorkflowRecipe unexpectedly succeeded for template assignee")
 	}
@@ -125,7 +126,7 @@ func TestPhase0WorkflowRouting_DirectNamedSessionAssigneeMaterializesToConcreteB
 		},
 	}
 
-	if err := graphroute.DecorateGraphWorkflowRecipe(recipe, graphroute.GraphWorkflowRouteVars(recipe, nil), "", "", "", "", "frontend/worker", "s-test-city-frontend-worker", store, cfg.Workspace.Name, cfg, cliGraphrouteDeps(cityPath)); err != nil {
+	if err := graphroute.DecorateGraphWorkflowRecipe(context.Background(), recipe, graphroute.GraphWorkflowRouteVars(recipe, nil), "", "", "", "", "frontend/worker", "s-test-city-frontend-worker", store, cfg.Workspace.Name, cfg, cliGraphrouteDeps(cityPath)); err != nil {
 		t.Fatalf("graphroute.DecorateGraphWorkflowRecipe: %v", err)
 	}
 
@@ -224,7 +225,7 @@ func TestPhase0WorkflowRouting_ControlStepPreservesExecutionConfigLane(t *testin
 		},
 	}
 
-	if err := graphroute.DecorateGraphWorkflowRecipe(recipe, graphroute.GraphWorkflowRouteVars(recipe, nil), "", "", "", "", "frontend/claude", claudeBead.Metadata["session_name"], store, cfg.Workspace.Name, cfg, cliGraphrouteDeps("")); err != nil {
+	if err := graphroute.DecorateGraphWorkflowRecipe(context.Background(), recipe, graphroute.GraphWorkflowRouteVars(recipe, nil), "", "", "", "", "frontend/claude", claudeBead.Metadata["session_name"], store, cfg.Workspace.Name, cfg, cliGraphrouteDeps("")); err != nil {
 		t.Fatalf("graphroute.DecorateGraphWorkflowRecipe: %v", err)
 	}
 

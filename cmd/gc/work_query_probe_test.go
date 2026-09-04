@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,7 @@ func TestPrefixedWorkQueryForProbe_UsesNamedSessionRuntimeName(t *testing.T) {
 		}},
 	}
 
-	command := prefixedWorkQueryForProbe(cfg, cityPath, "test-city", nil, nil, &cfg.Agents[0], nil)
+	command := prefixedWorkQueryForProbe(context.Background(), cfg, cityPath, "test-city", nil, nil, &cfg.Agents[0], nil)
 	if !strings.Contains(command, `bd ready --metadata-field "gc.routed_to=$target"`) || !strings.Contains(command, "-- demo/witness") {
 		t.Fatalf("prefixedWorkQueryForProbe() = %q, want demo/witness route argument", command)
 	}
@@ -56,7 +57,7 @@ func TestControllerQueryRuntimeEnvInheritedRigUsesCityStorePassword(t *testing.T
 	})
 	writeScopePassword(t, rigDir, "rig-secret")
 
-	env, err := controllerQueryRuntimeEnv(cityPath, cfg, &cfg.Agents[0])
+	env, err := controllerQueryRuntimeEnv(context.Background(), cityPath, cfg, &cfg.Agents[0])
 	if err != nil {
 		t.Fatalf("controllerQueryRuntimeEnv() error = %v, want nil", err)
 	}
@@ -85,7 +86,7 @@ dolt.auto-start: false
 	}
 	cfg := &config.City{Agents: []config.Agent{{Name: "agent"}}}
 
-	_, err := controllerQueryRuntimeEnv(cityPath, cfg, &cfg.Agents[0])
+	_, err := controllerQueryRuntimeEnv(context.Background(), cityPath, cfg, &cfg.Agents[0])
 	assertRefusesUnregisteredBackend(t, err)
 }
 
@@ -109,7 +110,7 @@ func TestControllerQueryRuntimeEnvExplicitRigUsesRigStorePassword(t *testing.T) 
 	}
 	writeScopePassword(t, rigDir, "rig-secret")
 
-	env, err := controllerQueryRuntimeEnv(cityPath, cfg, &cfg.Agents[0])
+	env, err := controllerQueryRuntimeEnv(context.Background(), cityPath, cfg, &cfg.Agents[0])
 	if err != nil {
 		t.Fatalf("controllerQueryRuntimeEnv() error = %v, want nil", err)
 	}
@@ -143,7 +144,7 @@ func TestControllerQueryRuntimeEnvSupportsExecGcBeadsBd(t *testing.T) {
 	})
 	writeScopePassword(t, rigDir, "rig-secret")
 
-	env, err := controllerQueryRuntimeEnv(cityPath, cfg, &cfg.Agents[0])
+	env, err := controllerQueryRuntimeEnv(context.Background(), cityPath, cfg, &cfg.Agents[0])
 	if err != nil {
 		t.Fatalf("controllerQueryRuntimeEnv() error = %v, want nil", err)
 	}
@@ -173,7 +174,7 @@ func TestControllerQueryEnvOmitsCredentialsFromPrefix(t *testing.T) {
 	})
 	writeScopePassword(t, rigDir, "rig-secret")
 
-	env, err := controllerQueryEnv(cityPath, cfg, &cfg.Agents[0])
+	env, err := controllerQueryEnv(context.Background(), cityPath, cfg, &cfg.Agents[0])
 	if err != nil {
 		t.Fatalf("controllerQueryEnv() error = %v, want nil", err)
 	}
@@ -212,7 +213,7 @@ func TestControllerQueryRuntimeEnvReturnsNilForNonBD(t *testing.T) {
 		Workspace: config.Workspace{Name: "test-city"},
 		Agents:    []config.Agent{{Name: "worker"}},
 	}
-	if env, err := controllerQueryRuntimeEnv(cityPath, cfg, &cfg.Agents[0]); err != nil || env != nil {
+	if env, err := controllerQueryRuntimeEnv(context.Background(), cityPath, cfg, &cfg.Agents[0]); err != nil || env != nil {
 		if err != nil {
 			t.Fatalf("controllerQueryRuntimeEnv() error = %v, want nil", err)
 		}
@@ -268,7 +269,7 @@ provider = "file"
 		}},
 	}
 
-	env, err := controllerQueryRuntimeEnv(cityPath, cfg, &cfg.Agents[0])
+	env, err := controllerQueryRuntimeEnv(context.Background(), cityPath, cfg, &cfg.Agents[0])
 	if err != nil {
 		t.Fatalf("controllerQueryRuntimeEnv() error = %v, want nil", err)
 	}

@@ -15,6 +15,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -76,7 +77,7 @@ func TestStorageGateRefusesWorkspaceBindingWhenWorkStoreHoldsInfraBeads(t *testi
 	strayed := mustCreateInfraBead(t, source, beads.Bead{Title: "landed in work", Type: "session", Labels: []string{"gc:session"}})
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, workspaceSplitConfig("infra"), "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, workspaceSplitConfig("infra"), "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a workspace-backed city with an infrastructure bead in the work store served")
@@ -107,7 +108,7 @@ func TestStorageGateRefusesAWorkspaceThatIsNotThere(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(cityPath, workspaceSplitConfig("infra"), "gc start", nil, &stderr)
+	routes, err := storageBootGate(context.Background(), cityPath, workspaceSplitConfig("infra"), "gc start", nil, &stderr)
 	if err == nil {
 		_ = routes.close()
 		t.Fatal("a city whose workspace does not exist served")
@@ -160,7 +161,7 @@ func TestStorageGateResolvesTheWorkspaceFromTheCityNotTheProcess(t *testing.T) {
 		root string
 	}{{first, firstRoot}, {second, secondRoot}} {
 		var stderr bytes.Buffer
-		routes, err := storageBootGate(city.path, workspaceSplitConfig("infra"), "gc start", nil, &stderr)
+		routes, err := storageBootGate(context.Background(), city.path, workspaceSplitConfig("infra"), "gc start", nil, &stderr)
 		if err == nil {
 			_ = routes.close()
 			t.Fatalf("city %s served from a workspace that does not exist", city.path)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -44,8 +45,8 @@ cleanup pass. Use --force to skip the interrupt grace period and go
 straight to kill.`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: completeCityNames,
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdStopJSON(args, stdout, stderr, wallClockTimeout, force, jsonOut) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdStopJSON(cmd.Context(), args, stdout, stderr, wallClockTimeout, force, jsonOut) != 0 {
 				return errExit
 			}
 			return nil
@@ -66,8 +67,8 @@ var sessionProviderForStopCity = newSessionProviderForCity
 // sequence; if 0, a default derived from cfg.Daemon.ShutdownTimeoutDuration
 // is used. force=true skips the interrupt grace period (gracefulStopAll
 // runs with timeout=0, going straight to kill).
-func cmdStop(args []string, stdout, stderr io.Writer, wallClockTimeout time.Duration, force bool) int {
-	return cmdStopJSON(args, stdout, stderr, wallClockTimeout, force, false)
+func cmdStop(ctx context.Context, args []string, stdout, stderr io.Writer, wallClockTimeout time.Duration, force bool) int {
+	return cmdStopJSON(ctx, args, stdout, stderr, wallClockTimeout, force, false)
 }
 
 type stopCommandOutcome struct {
@@ -76,12 +77,12 @@ type stopCommandOutcome struct {
 	unregistered bool
 }
 
-func cmdStopJSON(args []string, stdout, stderr io.Writer, wallClockTimeout time.Duration, force bool, jsonOut bool) int {
+func cmdStopJSON(ctx context.Context, args []string, stdout, stderr io.Writer, wallClockTimeout time.Duration, force bool, jsonOut bool) int {
 	var outcome stopCommandOutcome
 	if wallClockTimeout > 0 {
 		unregisterTx := newSupervisorUnregisterTransaction()
 		outcome = runStopWithWallClockCap(wallClockTimeout, stderr, unregisterTx, func() stopCommandOutcome {
-			return cmdStopJSONSequence(args, stdout, stderr, force, jsonOut, true, unregisterTx)
+			return cmdStopJSONSequence(ctx, args, stdout, stderr, force, jsonOut, true, unregisterTx)
 		})
 	} else {
 		// The uncapped path holds the same pending-unregister transaction as
@@ -91,7 +92,7 @@ func cmdStopJSON(args []string, stdout, stderr io.Writer, wallClockTimeout time.
 		// live city unregistered. This mirrors the capped arm's accept/rollback
 		// exactly; the deferred success message is part of the same contract.
 		unregisterTx := newSupervisorUnregisterTransaction()
-		outcome = cmdStopJSONSequence(args, stdout, stderr, force, jsonOut, false, unregisterTx)
+		outcome = cmdStopJSONSequence(ctx, args, stdout, stderr, force, jsonOut, false, unregisterTx)
 		if outcome.code == 0 {
 			unregisterTx.commit()
 		} else {
@@ -108,7 +109,7 @@ func cmdStopJSON(args []string, stdout, stderr io.Writer, wallClockTimeout time.
 	return 0
 }
 
-func cmdStopJSONSequence(args []string, stdout, stderr io.Writer, force bool, jsonOut bool, wallClockCapApplied bool, unregisterTx *supervisorUnregisterTransaction) stopCommandOutcome {
+func cmdStopJSONSequence(ctx context.Context, args []string, stdout, stderr io.Writer, force bool, jsonOut bool, wallClockCapApplied bool, unregisterTx *supervisorUnregisterTransaction) stopCommandOutcome {
 	cityPath, err := resolveStopCityPath(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc stop: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -127,7 +128,7 @@ func cmdStopJSONSequence(args []string, stdout, stderr io.Writer, force bool, js
 		}
 		unregisteredFromSupervisor = true
 		if supervisorAliveHook() != 0 {
-			if !stopCityManagedBeadsProviderAfterSuccessfulStop(cityPath, stderr) {
+			if !stopCityManagedBeadsProviderAfterSuccessfulStop(ctx, cityPath, stderr) {
 				return stopCommandOutcome{code: 1, cityPath: cityPath}
 			}
 			warnInvalidConfigAfterSuccessfulStop(cityPath, stderr)
@@ -137,7 +138,7 @@ func cmdStopJSONSequence(args []string, stdout, stderr io.Writer, force bool, js
 
 	cfg, err := loadCityConfig(cityPath, stderr)
 	if err != nil {
-		if handled, code := stopManagedRuntimeWithoutConfig(cityPath, err, stopStdout, stderr, force); handled {
+		if handled, code := stopManagedRuntimeWithoutConfig(ctx, cityPath, err, stopStdout, stderr, force); handled {
 			return stopCommandOutcome{code: code, cityPath: cityPath, unregistered: unregisteredFromSupervisor}
 		}
 		fmt.Fprintf(stderr, "gc stop: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -146,7 +147,7 @@ func cmdStopJSONSequence(args []string, stdout, stderr io.Writer, force bool, js
 
 	stopLoadedCity := func() stopCommandOutcome {
 		return stopCommandOutcome{
-			code:         cmdStopBodyWithoutSuccess(cityPath, cfg, force, stopStdout, stderr),
+			code:         cmdStopBodyWithoutSuccess(ctx, cityPath, cfg, force, stopStdout, stderr),
 			cityPath:     cityPath,
 			unregistered: unregisteredFromSupervisor,
 		}
@@ -320,8 +321,8 @@ func ceilDiv(n, d int) int {
 	return (n + d - 1) / d
 }
 
-func cmdStopBody(cityPath string, cfg *config.City, force bool, stdout, stderr io.Writer) int { //nolint:unparam // compatibility wrapper preserves the production-shaped force seam for direct tests
-	code := cmdStopBodyWithoutSuccess(cityPath, cfg, force, stdout, stderr)
+func cmdStopBody(ctx context.Context, cityPath string, cfg *config.City, force bool, stdout, stderr io.Writer) int { //nolint:unparam // compatibility wrapper preserves the production-shaped force seam for direct tests
+	code := cmdStopBodyWithoutSuccess(ctx, cityPath, cfg, force, stdout, stderr)
 	if code == 0 {
 		fmt.Fprintln(stdout, "City stopped.") //nolint:errcheck // best-effort stdout
 	}
@@ -331,7 +332,7 @@ func cmdStopBody(cityPath string, cfg *config.City, force bool, stdout, stderr i
 // cmdStopBodyWithoutSuccess performs the stop flow without emitting the final
 // success record. The command writes that record only after the bounded worker
 // returns, so a timed-out worker cannot report a late success.
-func cmdStopBodyWithoutSuccess(cityPath string, cfg *config.City, force bool, stdout, stderr io.Writer) int {
+func cmdStopBodyWithoutSuccess(ctx context.Context, cityPath string, cfg *config.City, force bool, stdout, stderr io.Writer) int {
 	cityName := loadedCityName(cfg, cityPath)
 
 	// If a controller is running, ask it to shut down (it stops agents).
@@ -343,7 +344,7 @@ func cmdStopBodyWithoutSuccess(cityPath string, cfg *config.City, force bool, st
 			return 1
 		}
 		// Controller handled the shutdown — still stop bead store below.
-		if err := shutdownBeadsProviderForStop(cityPath); err != nil {
+		if err := shutdownBeadsProviderForStop(ctx, cityPath); err != nil {
 			fmt.Fprintf(stderr, "gc stop: bead store: %v\n", err) //nolint:errcheck // best-effort stderr
 		}
 		return 0
@@ -357,14 +358,14 @@ func cmdStopBodyWithoutSuccess(cityPath string, cfg *config.City, force bool, st
 		return 1
 	}
 
-	store, _ := openCityStoreAt(cityPath)
+	store, _ := openCityStoreAt(ctx, cityPath)
 	// Every store consumer in this stop flow is session-class (sleep-reason marks,
 	// session-name lookups, session-runtime stop, orphan cleanup), so route the
 	// whole flow through the session coordination-class store for relocation-safety.
 	sessStore := cliSessionStore(store, cfg, cityPath)
 	markCityStopSessionSleepReason(sessionFrontDoor(sessStore), stderr)
 
-	sp, err := sessionProviderForStopCity(cfg, cityPath)
+	sp, err := sessionProviderForStopCity(ctx, cfg, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc stop: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -409,7 +410,7 @@ func cmdStopBodyWithoutSuccess(cityPath string, cfg *config.City, force bool, st
 	teardownServerForStop(sp, stderr, "gc stop")
 
 	// Stop bead store's backing service after agents.
-	if err := shutdownBeadsProviderForStop(cityPath); err != nil {
+	if err := shutdownBeadsProviderForStop(ctx, cityPath); err != nil {
 		fmt.Fprintf(stderr, "gc stop: bead store: %v\n", err) //nolint:errcheck // best-effort stderr
 		// Non-fatal warning.
 	}
@@ -459,8 +460,8 @@ func markCityStopSessionSleepReason(sessFront *session.Store, stderr io.Writer) 
 	}
 }
 
-func stopCityManagedBeadsProviderAfterSuccessfulStop(cityPath string, stderr io.Writer) bool {
-	_, err := stopCityManagedBeadsProvider(cityPath)
+func stopCityManagedBeadsProviderAfterSuccessfulStop(ctx context.Context, cityPath string, stderr io.Writer) bool {
+	_, err := stopCityManagedBeadsProvider(ctx, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc stop: bead store: %v\n", err) //nolint:errcheck // best-effort stderr
 		return false
@@ -468,25 +469,25 @@ func stopCityManagedBeadsProviderAfterSuccessfulStop(cityPath string, stderr io.
 	return true
 }
 
-func stopCityManagedBeadsProvider(cityPath string) (bool, error) {
+func stopCityManagedBeadsProvider(ctx context.Context, cityPath string) (bool, error) {
 	if rawBeadsProvider(cityPath) != "bd" {
 		return false, nil
 	}
 	if currentResolvableManagedDoltPort(cityPath) == "" {
 		return false, nil
 	}
-	return true, shutdownBeadsProviderForStop(cityPath)
+	return true, shutdownBeadsProviderForStop(ctx, cityPath)
 }
 
 var shutdownBeadsProviderForStop = shutdownBeadsProvider
 
-func stopManagedRuntimeWithoutConfig(cityPath string, cfgErr error, stdout, stderr io.Writer, force bool) (bool, int) {
+func stopManagedRuntimeWithoutConfig(ctx context.Context, cityPath string, cfgErr error, stdout, stderr io.Writer, force bool) (bool, int) {
 	controllerStopped, controllerErr := stopStandaloneControllerWithoutConfig(cityPath, stdout, force)
 	if controllerErr != nil {
 		fmt.Fprintf(stderr, "gc stop: %v\n", controllerErr) //nolint:errcheck // best-effort stderr
 		return true, 1
 	}
-	stopped, stopErr := stopCityManagedBeadsProvider(cityPath)
+	stopped, stopErr := stopCityManagedBeadsProvider(ctx, cityPath)
 	if stopErr != nil {
 		fmt.Fprintf(stderr, "gc stop: bead store: %v\n", stopErr) //nolint:errcheck // best-effort stderr
 		return true, 1

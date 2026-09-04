@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -51,8 +52,8 @@ func newMoleculeAutocloseCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short:  "Auto-close molecule root when all step children are terminal",
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			doMoleculeAutoclose(args[0], stdout, stderr)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			doMoleculeAutoclose(cmd.Context(), args[0], stdout, stderr)
 			return nil // always succeed — best-effort infrastructure
 		},
 	}
@@ -62,7 +63,7 @@ func newMoleculeAutocloseCmd(stdout, stderr io.Writer) *cobra.Command {
 // store through the provider-aware resolver and delegates to the
 // testable core. Mirrors doConvoyAutoclose so the on_close hook chain
 // has consistent failure semantics across the three auto-closers.
-func doMoleculeAutoclose(beadID string, stdout, stderr io.Writer) {
+func doMoleculeAutoclose(ctx context.Context, beadID string, stdout, stderr io.Writer) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return
@@ -79,12 +80,12 @@ func doMoleculeAutoclose(beadID string, stdout, stderr io.Writer) {
 	// The root is ClassGraph wherever the just-closed bead lives, so the graph
 	// leg routes off the owning store rather than following it.
 	routeCfg, _ := loadCityConfigWithoutBuiltinPackRefresh(cityPath, io.Discard)
-	if store, dir, ok := autocloseOwningStore(beadID, cityPath); ok {
+	if store, dir, ok := autocloseOwningStore(ctx, beadID, cityPath); ok {
 		doMoleculeAutocloseWith(store, autocloseStoreRef(dir, cityPath), rec, beadID, stdout, cliGraphStore(store, routeCfg, cityPath))
 		return
 	}
 
-	store, err := openStoreAtForCity(storeRoot, cityPath)
+	store, err := openStoreAtForCity(ctx, storeRoot, cityPath)
 	if err != nil {
 		return
 	}

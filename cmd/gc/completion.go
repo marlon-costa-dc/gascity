@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"log"
 	"os"
@@ -24,11 +25,15 @@ import (
 
 // completeSessionIDs completes session IDs and aliases for commands whose
 // first positional argument is a session ID-or-alias.
-func completeSessionIDs(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func completeSessionIDs(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	sessions := loadSessionsForCompletion()
+	ctx := context.Background()
+	if cmd != nil {
+		ctx = cmd.Context()
+	}
+	sessions := loadSessionsForCompletion(ctx)
 	candidates := make([]string, 0, len(sessions)*2)
 	for _, s := range sessions {
 		desc := sessionCompletionDescription(s)
@@ -242,14 +247,14 @@ func loadOrdersForCompletion() []orders.Order {
 // loadSessionsForCompletion returns session info without triggering the
 // slow live-state and attachment checks performed by the non-JSON path of
 // `gc session list`. This mirrors the JSON-path of cmdSessionList.
-func loadSessionsForCompletion() []session.Info {
+func loadSessionsForCompletion(ctx context.Context) []session.Info {
 	var sessions []session.Info
 	quietDefaultLogger(func() {
 		cityPath, err := resolveCityForCompletion()
 		if err != nil {
 			return
 		}
-		store, err := openCityStoreAt(cityPath)
+		store, err := openCityStoreAt(ctx, cityPath)
 		if err != nil {
 			return
 		}

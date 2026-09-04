@@ -1,6 +1,7 @@
 package rig
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -18,7 +19,7 @@ import (
 // provisionWithFailingStoreInit wires a fresh add whose InitStore writes a
 // partial store into the rig directory and then fails, the way a real init
 // does when it writes metadata.json before the backing server rejects it.
-func provisionWithFailingStoreInit(t *testing.T, initStore func(cityPath, dir, prefix string) (bool, error)) (Deps, ProvisionRequest) {
+func provisionWithFailingStoreInit(t *testing.T, initStore func(ctx context.Context, cityPath, dir, prefix string) (bool, error)) (Deps, ProvisionRequest) {
 	t.Helper()
 	cityPath := t.TempDir()
 	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"), []byte(originalCityTOML), 0o644); err != nil {
@@ -47,7 +48,7 @@ func writePartialStore(t *testing.T, dir string) {
 func TestProvisionRemovesPartialBeadsStoreWhenInitFails(t *testing.T) {
 	initErr := errors.New("managed Dolt server unreachable while inspecting existing store")
 	var rigPath string
-	deps, req := provisionWithFailingStoreInit(t, func(_, dir, _ string) (bool, error) {
+	deps, req := provisionWithFailingStoreInit(t, func(_ context.Context, _, dir, _ string) (bool, error) {
 		writePartialStore(t, dir)
 		return false, initErr
 	})
@@ -74,7 +75,7 @@ func TestProvisionRemovesPartialBeadsStoreWhenInitFails(t *testing.T) {
 
 func TestProvisionKeepsPreExistingBeadsStoreWhenInitFails(t *testing.T) {
 	initErr := errors.New("boom")
-	deps, req := provisionWithFailingStoreInit(t, func(_, _, _ string) (bool, error) {
+	deps, req := provisionWithFailingStoreInit(t, func(_ context.Context, _, _, _ string) (bool, error) {
 		return false, initErr
 	})
 	// A store that was already on disk before the add is not ours to delete,
@@ -93,7 +94,7 @@ func TestProvisionKeepsPreExistingBeadsStoreWhenInitFails(t *testing.T) {
 
 func TestProvisionKeepsAdoptedBeadsStoreWhenInitFails(t *testing.T) {
 	initErr := errors.New("boom")
-	deps, req := provisionWithFailingStoreInit(t, func(_, _, _ string) (bool, error) {
+	deps, req := provisionWithFailingStoreInit(t, func(_ context.Context, _, _, _ string) (bool, error) {
 		return false, initErr
 	})
 	req.Adopt = true

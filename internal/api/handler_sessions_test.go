@@ -3119,12 +3119,15 @@ func TestMaterializeNamedSessionSeedsCityRuntimeEnv(t *testing.T) {
 		t.Errorf("Env[PROVIDER_TOKEN] = %q, want ok", got)
 	}
 	for key, want := range map[string]string{
-		"ANTHROPIC_AUTH_TOKEN": "named-anthropic-token",
-		"ANTHROPIC_BASE_URL":   "https://resolved.example.test",
-		"OLLAMA_API_KEY":       "named-ollama-token",
+		"ANTHROPIC_BASE_URL": "https://resolved.example.test",
 	} {
 		if got := cfg.Env[key]; got != want {
 			t.Errorf("Env[%s] = %q, want %q", key, got, want)
+		}
+	}
+	for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "OLLAMA_API_KEY"} {
+		if got, present := cfg.Env[key]; present {
+			t.Errorf("Env[%s] = %q present, want absent ambient provider credential", key, got)
 		}
 	}
 	if got, present := cfg.Env["GC_RIG"]; present {

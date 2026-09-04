@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1100,7 +1101,7 @@ func migrationSeed(store beads.Store, b beads.Bead) (beads.Bead, error) {
 // is pointed at — so a test can assert what a routed write did NOT do there.
 func workStoreFor(t *testing.T, cityPath string) beads.Store {
 	t.Helper()
-	store, err := openStoreAtForCity(cityPath, cityPath)
+	store, err := openStoreAtForCity(context.Background(), cityPath, cityPath)
 	if err != nil {
 		t.Fatalf("opening the work store at %s: %v", cityPath, err)
 	}

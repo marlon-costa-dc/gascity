@@ -683,7 +683,7 @@ func TestRunReconciliationPromotesPartialCacheToLive(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	cs := NewCachingStoreForTest(mem, nil)
-	if err := cs.PrimeActive(); err != nil {
+	if err := cs.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	if cs.IsLive() {
@@ -749,7 +749,7 @@ func TestRunReconciliationDoesNotPromoteOnFailure(t *testing.T) {
 	}
 	backing := &failingScanStore{Store: mem}
 	cs := NewCachingStoreForTest(backing, nil)
-	if err := cs.PrimeActive(); err != nil {
+	if err := cs.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	backing.setFailScan(true)
@@ -773,7 +773,7 @@ func TestPrimeFailureThenReconcileConverges(t *testing.T) {
 	backing := &failingScanStore{Store: mem, failScan: true}
 	cs := NewCachingStoreForTest(backing, nil)
 	cs.primeRetryDelay = func(int) time.Duration { return 0 }
-	if err := cs.PrimeActive(); err != nil {
+	if err := cs.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	if err := cs.Prime(context.Background()); err == nil {

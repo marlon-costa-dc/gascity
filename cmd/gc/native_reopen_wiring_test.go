@@ -29,8 +29,8 @@ func TestNativeReopenHookWiredAtBothStoreOpenSites(t *testing.T) {
 		if !strings.Contains(src, "beads.WithNativeReopen(") {
 			t.Fatalf("%s (%s): native reopen hook wiring beads.WithNativeReopen(...) is missing — the #4197 managed-Dolt rebind reconnect must stay armed", tc.file, tc.site)
 		}
-		if !strings.Contains(src, "nativeDoltOpenEnvForScopeContext(ctx") {
-			t.Fatalf("%s (%s): the reopen hook must re-resolve the managed Dolt env under the wall context via nativeDoltOpenEnvForScopeContext(ctx, ...)", tc.file, tc.site)
+		if !strings.Contains(src, "nativeDoltOpenEnvForScope(ctx") {
+			t.Fatalf("%s (%s): the reopen hook must re-resolve the managed Dolt env under the wall context via nativeDoltOpenEnvForScope(ctx, ...)", tc.file, tc.site)
 		}
 	}
 }

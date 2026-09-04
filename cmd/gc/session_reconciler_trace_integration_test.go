@@ -521,7 +521,7 @@ func TestSessionReconcilerTraceGH1654WorkRequestedStartCandidates(t *testing.T) 
 				}); err != nil {
 					t.Fatalf("Create named session: %v", err)
 				}
-				dsResult := buildDesiredState("trace-town", cityDir, now, cfg, sp, store, io.Discard)
+				dsResult := buildDesiredState(context.Background(), "trace-town", cityDir, now, cfg, sp, store, io.Discard)
 				if dsResult.NamedSessionDemand["dispatcher"] {
 					t.Fatal("NamedSessionDemand[dispatcher] = true for routed_to=dispatcher, want false because routed_to targets pools")
 				}
@@ -553,7 +553,7 @@ func TestSessionReconcilerTraceGH1654WorkRequestedStartCandidates(t *testing.T) 
 					}},
 				}
 				createRoutedReadyWork(t, store, "repo/worker", 1)
-				dsResult := buildDesiredState("trace-town", cityDir, now, cfg, sp, store, io.Discard)
+				dsResult := buildDesiredState(context.Background(), "trace-town", cityDir, now, cfg, sp, store, io.Discard)
 				if got := dsResult.ScaleCheckCounts["repo/worker"]; got != 1 {
 					t.Fatalf("ScaleCheckCounts[repo/worker] = %d, want 1", got)
 				}
@@ -597,7 +597,7 @@ func TestSessionReconcilerTraceGH1654WorkRequestedStartCandidates(t *testing.T) 
 						t.Fatalf("seed active runtime session: %v", err)
 					}
 				}
-				dsResult := buildDesiredState("trace-town", cityDir, now, cfg, sp, store, io.Discard)
+				dsResult := buildDesiredState(context.Background(), "trace-town", cityDir, now, cfg, sp, store, io.Discard)
 				if got := dsResult.ScaleCheckCounts["repo/worker"]; got != 6 {
 					t.Fatalf("ScaleCheckCounts[repo/worker] = %d, want 6", got)
 				}

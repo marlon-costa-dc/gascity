@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"slices"
 	"syscall"
@@ -32,7 +33,7 @@ func TestCmdNudgeStatusDoesNotBlockOnHeldQueueLock(t *testing.T) {
 	// Seed the queue so nudgeQueueHasWork() is true (an empty queue would skip
 	// the maintenance path and could mask the block).
 	now := time.Now().Add(-time.Minute)
-	if err := enqueueQueuedNudge(cityDir, newQueuedNudge("mayor", "review queued work", now)); err != nil {
+	if err := enqueueQueuedNudge(context.Background(), cityDir, newQueuedNudge("mayor", "review queued work", now)); err != nil {
 		t.Fatalf("enqueueQueuedNudge: %v", err)
 	}
 
@@ -57,7 +58,7 @@ func TestCmdNudgeStatusDoesNotBlockOnHeldQueueLock(t *testing.T) {
 	done := make(chan result, 1)
 	go func() {
 		var stdout, stderr bytes.Buffer
-		code := cmdNudgeStatus([]string{"mayor"}, true, &stdout, &stderr)
+		code := cmdNudgeStatus(context.Background(), []string{"mayor"}, true, &stdout, &stderr)
 		done <- result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 	}()
 
@@ -144,7 +145,7 @@ func TestListQueuedNudgesForTargetSnapshotMatchesMaintainedBuckets(t *testing.T)
 	if err != nil {
 		t.Fatalf("listQueuedNudgesForTargetSnapshot: %v", err)
 	}
-	wantPending, wantInFlight, wantDead, err := listQueuedNudgesForTarget(dir, target, now)
+	wantPending, wantInFlight, wantDead, err := listQueuedNudgesForTarget(context.Background(), dir, target, now)
 	if err != nil {
 		t.Fatalf("listQueuedNudgesForTarget: %v", err)
 	}

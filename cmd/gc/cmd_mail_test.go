@@ -96,7 +96,7 @@ func TestMailSendSuccess(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	var stdout, stderr bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "human", []string{"mayor", "hey, are you still there?"}, nil, &stdout, &stderr)
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "human", []string{"mayor", "hey, are you still there?"}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -136,7 +136,7 @@ func TestMailSendJSON(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	var stdout, stderr bytes.Buffer
-	code := doMailSendJSON(mp, events.Discard, recipients, "human", []string{"mayor", "build is green"}, nil, true, &stdout, &stderr)
+	code := doMailSendJSON(context.Background(), mp, events.Discard, recipients, "human", []string{"mayor", "build is green"}, nil, true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailSendJSON = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -173,7 +173,7 @@ func TestMailSendMissingArgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stderr bytes.Buffer
-			code := doMailSend(mp, events.Discard, recipients, "human", tt.args, nil, &bytes.Buffer{}, &stderr)
+			code := doMailSend(context.Background(), mp, events.Discard, recipients, "human", tt.args, nil, &bytes.Buffer{}, &stderr)
 			if code != 1 {
 				t.Errorf("doMailSend = %d, want 1", code)
 			}
@@ -190,7 +190,7 @@ func TestMailSendInvalidRecipient(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	var stderr bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "human", []string{"nobody", "hello"}, nil, &bytes.Buffer{}, &stderr)
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "human", []string{"nobody", "hello"}, nil, &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("doMailSend = %d, want 1", code)
 	}
@@ -205,7 +205,7 @@ func TestMailSendToHuman(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	var stdout bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "mayor", []string{"human", "task complete"}, nil, &stdout, &bytes.Buffer{})
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "mayor", []string{"human", "task complete"}, nil, &stdout, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0", code)
 	}
@@ -228,7 +228,7 @@ func TestMailSendAgentToAgent(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true, "worker": true}
 
 	var stdout bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "worker", []string{"mayor", "found a bug"}, nil, &stdout, &bytes.Buffer{})
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "worker", []string{"mayor", "found a bug"}, nil, &stdout, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0", code)
 	}
@@ -315,7 +315,7 @@ func TestResolveDefaultMailTargetsForCommand_UsesGCSessionIDBeforeAlias(t *testi
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestResolveDefaultMailTargetsForCommand_UsesGCSessionIDBeforeAlias(t *testi
 	t.Setenv("GC_AGENT", "codeprobe-worker")
 
 	var stderr bytes.Buffer
-	target, ok := resolveDefaultMailTargetsForCommand(&stderr, "gc mail inbox")
+	target, ok := resolveDefaultMailTargetsForCommand(context.Background(), &stderr, "gc mail inbox")
 	if !ok {
 		t.Fatalf("resolveDefaultMailTargetsForCommand() = not ok; stderr=%q", stderr.String())
 	}
@@ -379,7 +379,7 @@ func TestResolveDefaultMailTargetsForCommand_FallsBackToGCAliasWhenSessionIDMiss
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestResolveDefaultMailTargetsForCommand_FallsBackToGCAliasWhenSessionIDMiss
 	_ = os.Unsetenv("GC_AGENT")
 
 	var stderr bytes.Buffer
-	target, ok := resolveDefaultMailTargetsForCommand(&stderr, "gc mail inbox")
+	target, ok := resolveDefaultMailTargetsForCommand(context.Background(), &stderr, "gc mail inbox")
 	if !ok {
 		t.Fatalf("resolveDefaultMailTargetsForCommand() = not ok; stderr=%q", stderr.String())
 	}
@@ -418,7 +418,7 @@ func TestResolveDefaultMailSenderForCommand_UsesDisplayAliasBeforeSessionName(t 
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -459,7 +459,7 @@ func TestResolveMailIdentityWithConfig_ExplicitAliasUsesDisplayAlias(t *testing.
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestResolveDefaultMailSenderForCommand_FallsBackToGCAliasWhenSessionIDMissi
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -538,7 +538,7 @@ func TestCmdMailSendDefaultSenderFallsBackToGCAliasWhenSessionIDMissing(t *testi
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -569,11 +569,11 @@ func TestCmdMailSendDefaultSenderFallsBackToGCAliasWhenSessionIDMissing(t *testi
 	_ = os.Unsetenv("GC_AGENT")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{"recipient", "hello"}, false, false, "", "", "", "", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{"recipient", "hello"}, false, false, "", "", "", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailSend() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
-	storeAfter, err := openCityStoreAt(cityPath)
+	storeAfter, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt after send: %v", err)
 	}
@@ -624,7 +624,7 @@ func TestCmdMailSendFromControllerCreatesMessage(t *testing.T) {
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -641,11 +641,11 @@ func TestCmdMailSendFromControllerCreatesMessage(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{"mayor/"}, false, false, "controller", "", "Dolt health advisory [MEDIUM]", "Latency warning", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{"mayor/"}, false, false, "controller", "", "Dolt health advisory [MEDIUM]", "Latency warning", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailSend() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
-	storeAfter, err := openCityStoreAt(cityPath)
+	storeAfter, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt after send: %v", err)
 	}
@@ -696,7 +696,7 @@ func TestCmdMailSendToControllerRecipientIsRejected(t *testing.T) {
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -713,14 +713,14 @@ func TestCmdMailSendToControllerRecipientIsRejected(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{"controller/"}, false, false, "human", "", "Subject", "Body", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{"controller/"}, false, false, "human", "", "Subject", "Body", &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("cmdMailSend() = 0, want failure; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stderr.String(), `unknown recipient "controller/"`) {
 		t.Fatalf("stderr = %q, want unknown controller recipient", stderr.String())
 	}
-	storeAfter, err := openCityStoreAt(cityPath)
+	storeAfter, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt after send: %v", err)
 	}
@@ -762,12 +762,12 @@ func TestCmdMailSendTrailingSlashHumanRecipientResolvesToHuman(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{"human/"}, false, false, "controller", "", "ESCALATION: test", "escalation body", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{"human/"}, false, false, "controller", "", "ESCALATION: test", "escalation body", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailSend(human/) = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -801,7 +801,7 @@ func TestResolveDefaultMailTargetsForCommand_HumanDefaultWhenNoEnv(t *testing.T)
 	_ = os.Unsetenv("GC_AGENT")
 
 	var stderr bytes.Buffer
-	target, ok := resolveDefaultMailTargetsForCommand(&stderr, "gc mail inbox")
+	target, ok := resolveDefaultMailTargetsForCommand(context.Background(), &stderr, "gc mail inbox")
 	if !ok {
 		t.Fatalf("resolveDefaultMailTargetsForCommand() = not ok; stderr=%q", stderr.String())
 	}
@@ -819,13 +819,13 @@ func TestResolveDefaultMailTargetsForCommand_StorelessProviderUsesFirstCandidate
 	t.Setenv("GC_SESSION_ID", "codeprobe-worker-gc-1941")
 	t.Setenv("GC_AGENT", "codeprobe-worker")
 	prev := openMailTargetStore
-	openMailTargetStore = func() (beads.Store, error) {
+	openMailTargetStore = func(context.Context) (beads.Store, error) {
 		return nil, fmt.Errorf("not in a city directory")
 	}
 	t.Cleanup(func() { openMailTargetStore = prev })
 
 	var stderr bytes.Buffer
-	target, ok := resolveDefaultMailTargetsForCommand(&stderr, "gc mail inbox")
+	target, ok := resolveDefaultMailTargetsForCommand(context.Background(), &stderr, "gc mail inbox")
 	if !ok {
 		t.Fatalf("resolveDefaultMailTargetsForCommand() = not ok; stderr=%q", stderr.String())
 	}
@@ -852,7 +852,7 @@ func TestResolveDefaultMailTargetsForCommand_SurfacesAmbiguousError_AndStops(t *
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -871,7 +871,7 @@ func TestResolveDefaultMailTargetsForCommand_SurfacesAmbiguousError_AndStops(t *
 	_ = os.Unsetenv("GC_AGENT")
 
 	var stderr bytes.Buffer
-	_, ok := resolveDefaultMailTargetsForCommand(&stderr, "gc mail inbox")
+	_, ok := resolveDefaultMailTargetsForCommand(context.Background(), &stderr, "gc mail inbox")
 	if ok {
 		t.Fatalf("resolveDefaultMailTargetsForCommand() ok = true, want false")
 	}
@@ -903,13 +903,13 @@ func TestDefaultMailIdentityFallsBackToHumanWithoutAliasSessionOrAgent(t *testin
 func TestResolveMailAddressForCommand_AllowsStorelessMailProvider(t *testing.T) {
 	t.Setenv("GC_MAIL", "fake")
 	prev := openMailTargetStore
-	openMailTargetStore = func() (beads.Store, error) {
+	openMailTargetStore = func(context.Context) (beads.Store, error) {
 		return nil, fmt.Errorf("not in a city directory")
 	}
 	t.Cleanup(func() { openMailTargetStore = prev })
 
 	var stderr bytes.Buffer
-	address, ok := resolveMailAddressForCommand("robot", &stderr, "gc mail inbox")
+	address, ok := resolveMailAddressForCommand(context.Background(), "robot", &stderr, "gc mail inbox")
 	if !ok {
 		t.Fatal("resolveMailAddressForCommand() = not ok, want ok")
 	}
@@ -1035,7 +1035,7 @@ func TestResolveMailTargetsForCommand_FakeProviderDoesNotResolveHistoricalAlias(
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1051,7 +1051,7 @@ func TestResolveMailTargetsForCommand_FakeProviderDoesNotResolveHistoricalAlias(
 	}
 
 	var stderr bytes.Buffer
-	target, ok := resolveMailTargetsForCommand("mayor", &stderr, "gc mail inbox")
+	target, ok := resolveMailTargetsForCommand(context.Background(), "mayor", &stderr, "gc mail inbox")
 	if !ok {
 		t.Fatal("resolveMailTargetsForCommand() = not ok, want ok")
 	}
@@ -1092,7 +1092,7 @@ mode = "always"
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1113,7 +1113,7 @@ mode = "always"
 	}
 
 	var stderr bytes.Buffer
-	target, ok := resolveMailTargetsForCommand(runtimeName, &stderr, "gc mail inbox")
+	target, ok := resolveMailTargetsForCommand(context.Background(), runtimeName, &stderr, "gc mail inbox")
 	if !ok {
 		t.Fatal("resolveMailTargetsForCommand() = not ok, want ok")
 	}
@@ -1133,7 +1133,7 @@ func TestResolveMailTargetsForCommand_FailsWhenStoreBackedResolutionErrors(t *te
 	t.Setenv("GC_MAIL", "fake")
 
 	prev := openMailTargetStore
-	openMailTargetStore = func() (beads.Store, error) {
+	openMailTargetStore = func(context.Context) (beads.Store, error) {
 		return failingListByLabelStore{Store: beads.NewMemStore(), err: fmt.Errorf("boom")}, nil
 	}
 	t.Cleanup(func() {
@@ -1141,7 +1141,7 @@ func TestResolveMailTargetsForCommand_FailsWhenStoreBackedResolutionErrors(t *te
 	})
 
 	var stderr bytes.Buffer
-	target, ok := resolveMailTargetsForCommand("sky", &stderr, "gc mail inbox")
+	target, ok := resolveMailTargetsForCommand(context.Background(), "sky", &stderr, "gc mail inbox")
 	if ok {
 		t.Fatalf("resolveMailTargetsForCommand() ok = true, want false; target=%#v", target)
 	}
@@ -1154,7 +1154,7 @@ func TestResolveMailTargetsForCommand_FailsWhenStoreOpenErrors(t *testing.T) {
 	t.Setenv("GC_MAIL", "fake")
 
 	prev := openMailTargetStore
-	openMailTargetStore = func() (beads.Store, error) {
+	openMailTargetStore = func(context.Context) (beads.Store, error) {
 		return nil, fmt.Errorf("boom")
 	}
 	t.Cleanup(func() {
@@ -1162,7 +1162,7 @@ func TestResolveMailTargetsForCommand_FailsWhenStoreOpenErrors(t *testing.T) {
 	})
 
 	var stderr bytes.Buffer
-	target, ok := resolveMailTargetsForCommand("sky", &stderr, "gc mail inbox")
+	target, ok := resolveMailTargetsForCommand(context.Background(), "sky", &stderr, "gc mail inbox")
 	if ok {
 		t.Fatalf("resolveMailTargetsForCommand() ok = true, want false; target=%#v", target)
 	}
@@ -1273,7 +1273,7 @@ func TestCmdMailSendExactSessionIDStaysPinned(t *testing.T) {
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1290,7 +1290,7 @@ func TestCmdMailSendExactSessionIDStaysPinned(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{sessionBead.ID, "body"}, false, false, "human", "", "", "", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{sessionBead.ID, "body"}, false, false, "human", "", "", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailSend() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -1509,7 +1509,7 @@ func TestCmdMailInbox_NormalizesCanonicalManagedProviderEnvAndReadsInbox(t *test
 	}); err != nil {
 		t.Fatalf("ensureCanonicalScopeConfigState(): %v", err)
 	}
-	nativeEnv, err := nativeDoltOpenEnvForScope(cityDir, nil, cityDir)
+	nativeEnv, err := nativeDoltOpenEnvForScope(context.Background(), cityDir, nil, cityDir)
 	if err != nil {
 		t.Fatalf("nativeDoltOpenEnvForScope(): %v", err)
 	}
@@ -1531,7 +1531,7 @@ func TestCmdMailInbox_NormalizesCanonicalManagedProviderEnvAndReadsInbox(t *test
 	// cross-check when the real database identity matches. Keep that edge strict
 	// and fast so this test does not inherit or migrate with an ambient bd binary.
 	originalRunner := beadsExecCommandRunnerWithEnv
-	beadsExecCommandRunnerWithEnv = func(map[string]string) beads.CommandRunner {
+	beadsExecCommandRunnerWithEnv = func(_ context.Context, _ map[string]string) beads.CommandRunner {
 		return func(string, string, ...string) ([]byte, error) {
 			return nil, errors.New("bd context unavailable in direct-Dolt fixture")
 		}
@@ -1546,7 +1546,7 @@ func TestCmdMailInbox_NormalizesCanonicalManagedProviderEnvAndReadsInbox(t *test
 		t.Fatalf("rawBeadsProvider() with canonical GC_BEADS=%q = %q, want bd", canonicalProvider, got)
 	}
 
-	result, err := openStoreResultAtForCity(cityDir, cityDir)
+	result, err := openStoreResultAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreResultAtForCity(%q) with canonical GC_BEADS=%q: %v", cityDir, canonicalProvider, err)
 	}
@@ -1562,7 +1562,7 @@ func TestCmdMailInbox_NormalizesCanonicalManagedProviderEnvAndReadsInbox(t *test
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdMailInbox([]string{"human"}, &stdout, &stderr); code != 0 {
+	if code := cmdMailInbox(context.Background(), []string{"human"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdMailInbox() = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if out := stdout.String(); !strings.Contains(out, "hello from canonical provider") {
@@ -1911,7 +1911,7 @@ func TestMailReplySuccess(t *testing.T) {
 	mp.Send("alice", "bob", "Hello", "first") //nolint:errcheck
 
 	var stdout, stderr bytes.Buffer
-	code := doMailReply(mp, events.Discard, "gc-1", "bob", "RE: Hello", "reply body", nil, &stdout, &stderr)
+	code := doMailReply(context.Background(), mp, events.Discard, "gc-1", "bob", "RE: Hello", "reply body", nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailReply = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -1929,13 +1929,13 @@ func TestMailReplyNotifySuccess(t *testing.T) {
 	mp.Send("alice", "bob", "Hello", "first") //nolint:errcheck
 
 	var nudged string
-	nf := func(recipient string) error {
+	nf := func(_ context.Context, recipient string) error {
 		nudged = recipient
 		return nil
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doMailReply(mp, events.Discard, "gc-1", "bob", "RE: Hello", "reply body", nf, &stdout, &stderr)
+	code := doMailReply(context.Background(), mp, events.Discard, "gc-1", "bob", "RE: Hello", "reply body", nf, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailReply = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -1952,12 +1952,12 @@ func TestMailReplyNotifyNudgeError(t *testing.T) {
 	mp := beadmail.New(store)
 	mp.Send("alice", "bob", "Hello", "first") //nolint:errcheck
 
-	nf := func(_ string) error {
+	nf := func(context.Context, string) error {
 		return fmt.Errorf("session not found")
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doMailReply(mp, events.Discard, "gc-1", "bob", "RE: Hello", "reply body", nf, &stdout, &stderr)
+	code := doMailReply(context.Background(), mp, events.Discard, "gc-1", "bob", "RE: Hello", "reply body", nf, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailReply = %d, want 0 (nudge failure is non-fatal); stderr: %s", code, stderr.String())
 	}
@@ -1979,7 +1979,7 @@ func TestCmdMailReply_FallsBackToGCSessionIDWhenAliasMissing(t *testing.T) {
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -2005,7 +2005,7 @@ func TestCmdMailReply_FallsBackToGCSessionIDWhenAliasMissing(t *testing.T) {
 	t.Setenv("GC_AGENT", "codeprobe-worker")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailReply([]string{"gc-2", "reply body"}, "", "", false, &stdout, &stderr)
+	code := cmdMailReply(context.Background(), []string{"gc-2", "reply body"}, "", "", false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailReply() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2031,7 +2031,7 @@ func TestCmdMailReplyHumanNotifyQueuesNudge(t *testing.T) {
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -2055,7 +2055,7 @@ func TestCmdMailReplyHumanNotifyQueuesNudge(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailReply([]string{original.ID, "reply body"}, "", "", true, &stdout, &stderr)
+	code := cmdMailReply(context.Background(), []string{original.ID, "reply body"}, "", "", true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailReply() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2090,7 +2090,7 @@ func TestCmdMailReplyExecProviderNotifyQueuesNudge(t *testing.T) {
 	t.Setenv("GC_MAIL", "exec:"+script)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailReply([]string{"gc-1", "reply body"}, "", "", true, &stdout, &stderr)
+	code := cmdMailReply(context.Background(), []string{"gc-1", "reply body"}, "", "", true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailReply() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2127,7 +2127,7 @@ func TestCmdMailReplyExecProviderNotifyWithoutCityWarnsAndSendsReply(t *testing.
 	t.Chdir(t.TempDir())
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailReply([]string{"gc-1", "reply body"}, "", "", true, &stdout, &stderr)
+	code := cmdMailReply(context.Background(), []string{"gc-1", "reply body"}, "", "", true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailReply() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2144,7 +2144,7 @@ func TestCmdMailReplyExecProviderNotifyResolvesNonHumanSender(t *testing.T) {
 	t.Setenv("GC_MAIL", "exec:"+script)
 	t.Setenv("GC_SESSION_ID", "bob-session")
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -2161,7 +2161,7 @@ func TestCmdMailReplyExecProviderNotifyResolvesNonHumanSender(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailReply([]string{"gc-1", "reply body"}, "", "", true, &stdout, &stderr)
+	code := cmdMailReply(context.Background(), []string{"gc-1", "reply body"}, "", "", true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailReply() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2184,7 +2184,7 @@ func setupExecMailReplyNudgeTest(t *testing.T) (string, string, string) {
 	t.Setenv("GC_CITY", cityPath)
 	t.Setenv("GC_CITY_PATH", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -2266,7 +2266,7 @@ func TestMailCommandsRejectMissingIDBeforeProviderCall(t *testing.T) {
 		{
 			name: "reply",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdMailReply(nil, "", "", false, stdout, stderr)
+				return cmdMailReply(context.Background(), nil, "", "", false, stdout, stderr)
 			},
 			wantStderr: "gc mail reply: missing message ID\n",
 		},
@@ -3181,13 +3181,13 @@ func TestMailSendNotifySuccess(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	var nudged string
-	nf := func(recipient string) error {
+	nf := func(_ context.Context, recipient string) error {
 		nudged = recipient
 		return nil
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "human", []string{"mayor", "wake up"}, nf, &stdout, &stderr)
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "human", []string{"mayor", "wake up"}, nf, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -3204,12 +3204,12 @@ func TestMailSendNotifyNudgeError(t *testing.T) {
 	mp := beadmail.New(store)
 	recipients := map[string]bool{"human": true, "mayor": true}
 
-	nf := func(_ string) error {
+	nf := func(context.Context, string) error {
 		return fmt.Errorf("session not found")
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "human", []string{"mayor", "wake up"}, nf, &stdout, &stderr)
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "human", []string{"mayor", "wake up"}, nf, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0 (nudge failure is non-fatal); stderr: %s", code, stderr.String())
 	}
@@ -3229,13 +3229,13 @@ func TestMailSendNotifyToHuman(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	nudgeCalled := false
-	nf := func(_ string) error {
+	nf := func(context.Context, string) error {
 		nudgeCalled = true
 		return nil
 	}
 
 	var stdout bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "mayor", []string{"human", "done"}, nf, &stdout, &bytes.Buffer{})
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "mayor", []string{"human", "done"}, nf, &stdout, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0", code)
 	}
@@ -3250,7 +3250,7 @@ func TestMailSendWithoutNotify(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	var stdout, stderr bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "human", []string{"mayor", "no nudge"}, nil, &stdout, &stderr)
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "human", []string{"mayor", "no nudge"}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -3271,7 +3271,7 @@ func TestMailSendSubjectFlag(t *testing.T) {
 
 	// Simulate -s flag: args = [to, subject, body].
 	var stdout bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "human", []string{"mayor", "Build is green", ""}, nil, &stdout, &bytes.Buffer{})
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "human", []string{"mayor", "Build is green", ""}, nil, &stdout, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0", code)
 	}
@@ -3292,7 +3292,7 @@ func TestMailSendSubjectAndMessage(t *testing.T) {
 
 	// args = [to, subject, body] from -s/-m flags.
 	var stdout bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "witness", []string{"mayor", "ESCALATION: Auth broken", "Token refresh fails after 30min"}, nil, &stdout, &bytes.Buffer{})
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "witness", []string{"mayor", "ESCALATION: Auth broken", "Token refresh fails after 30min"}, nil, &stdout, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0", code)
 	}
@@ -3320,7 +3320,7 @@ func TestMailSendSubjectOnlyKeepsBody(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	var stdout bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "human", []string{"mayor", "Build is green", ""}, nil, &stdout, &bytes.Buffer{})
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "human", []string{"mayor", "Build is green", ""}, nil, &stdout, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0", code)
 	}
@@ -3346,7 +3346,7 @@ func TestMailSendAllSubjectOnlyKeepsBody(t *testing.T) {
 	recipients := map[string]bool{"mayor": true}
 
 	var stdout bytes.Buffer
-	code := doMailSendAllJSON(mp, events.Discard, recipients, "human", []string{"Fleet is green", ""}, nil, false, &stdout, &bytes.Buffer{})
+	code := doMailSendAllJSON(context.Background(), mp, events.Discard, recipients, "human", []string{"Fleet is green", ""}, nil, false, &stdout, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("doMailSendAllJSON = %d, want 0", code)
 	}
@@ -3369,7 +3369,7 @@ func TestMailSendFromFlag(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	var stdout bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "deacon", []string{"mayor", "patrol complete"}, nil, &stdout, &bytes.Buffer{})
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "deacon", []string{"mayor", "patrol complete"}, nil, &stdout, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0", code)
 	}
@@ -3391,7 +3391,7 @@ func TestMailSendToFlag(t *testing.T) {
 	recipients := map[string]bool{"human": true, "mayor": true}
 
 	var stdout, stderr bytes.Buffer
-	code := doMailSend(mp, events.Discard, recipients, "human", []string{"mayor", "hello from --to"}, nil, &stdout, &stderr)
+	code := doMailSend(context.Background(), mp, events.Discard, recipients, "human", []string{"mayor", "hello from --to"}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailSend = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -3424,7 +3424,7 @@ func TestMailSendAll(t *testing.T) {
 	recipients := map[string]bool{"human": true, "coder": true, "committer": true, "tester": true}
 
 	var stdout, stderr bytes.Buffer
-	code := doMailSendAll(mp, events.Discard, recipients, "coder", []string{"status update: tests passing"}, &stdout, &stderr)
+	code := doMailSendAll(context.Background(), mp, events.Discard, recipients, "coder", []string{"status update: tests passing"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doMailSendAll = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -3454,7 +3454,7 @@ func TestMailSendAllMissingBody(t *testing.T) {
 	recipients := map[string]bool{"human": true, "coder": true}
 
 	var stderr bytes.Buffer
-	code := doMailSendAll(mp, events.Discard, recipients, "human", nil, &bytes.Buffer{}, &stderr)
+	code := doMailSendAll(context.Background(), mp, events.Discard, recipients, "human", nil, &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("doMailSendAll = %d, want 1", code)
 	}
@@ -3470,7 +3470,7 @@ func TestMailSendAllNoRecipients(t *testing.T) {
 	recipients := map[string]bool{"human": true, "coder": true}
 
 	var stderr bytes.Buffer
-	code := doMailSendAll(mp, events.Discard, recipients, "coder", []string{"hello?"}, &bytes.Buffer{}, &stderr)
+	code := doMailSendAll(context.Background(), mp, events.Discard, recipients, "coder", []string{"hello?"}, &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("doMailSendAll = %d, want 1", code)
 	}
@@ -3485,7 +3485,7 @@ func TestMailSendAllExcludesSender(t *testing.T) {
 	recipients := map[string]bool{"human": true, "alice": true, "bob": true}
 
 	var stdout bytes.Buffer
-	code := doMailSendAll(mp, events.Discard, recipients, "alice", []string{"broadcast"}, &stdout, &bytes.Buffer{})
+	code := doMailSendAll(context.Background(), mp, events.Discard, recipients, "alice", []string{"broadcast"}, &stdout, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("doMailSendAll = %d, want 0", code)
 	}
@@ -4356,7 +4356,7 @@ func TestRouteMailCheck_SixRowMatrix(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := routeMailCheck(cityPath, []string{"mayor"}, false, "", c, tc.nilReason, &stdout, &stderr)
+			code := routeMailCheck(context.Background(), cityPath, []string{"mayor"}, false, "", c, tc.nilReason, &stdout, &stderr)
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
 			}
@@ -4379,7 +4379,7 @@ func TestRouteMailCountPartialStoreSlowHumanReturnsError(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	code := routeMailCount(cityPath, []string{"mayor"}, c, "", false, &stdout, &stderr)
+	code := routeMailCount(context.Background(), cityPath, []string{"mayor"}, c, "", false, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
@@ -4400,7 +4400,7 @@ func TestRouteMailCountPartialStoreSlowJSONReturnsError(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	code := routeMailCount(cityPath, []string{"mayor"}, c, "", true, &stdout, &stderr)
+	code := routeMailCount(context.Background(), cityPath, []string{"mayor"}, c, "", true, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
@@ -4421,7 +4421,7 @@ func TestRouteMailCheckInjectStoreSlowEmitsDegradedNotice(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	code := routeMailCheck(cityPath, []string{"mayor"}, true, "", c, "", &stdout, &stderr)
+	code := routeMailCheck(context.Background(), cityPath, []string{"mayor"}, true, "", c, "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
@@ -4442,7 +4442,7 @@ func TestRouteMailCheckPartialStoreSlowInjectEmitsDegradedNotice(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	code := routeMailCheck(cityPath, []string{"mayor"}, true, "", c, "", &stdout, &stderr)
+	code := routeMailCheck(context.Background(), cityPath, []string{"mayor"}, true, "", c, "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
@@ -4460,7 +4460,7 @@ func TestRouteMailCheckPartialStoreSlowNonInjectReturnsError(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	code := routeMailCheck(cityPath, []string{"mayor"}, false, "", c, "", &stdout, &stderr)
+	code := routeMailCheck(context.Background(), cityPath, []string{"mayor"}, false, "", c, "", &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
@@ -4481,7 +4481,7 @@ func TestRouteMailCheckPartialProviderErrorInjectEmitsDegradedNotice(t *testing.
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	code := routeMailCheck(cityPath, []string{"mayor"}, true, "", c, "", &stdout, &stderr)
+	code := routeMailCheck(context.Background(), cityPath, []string{"mayor"}, true, "", c, "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
@@ -4502,7 +4502,7 @@ func TestRouteMailCheckPartialProviderErrorNonInjectReturnsError(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	code := routeMailCheck(cityPath, []string{"mayor"}, false, "", c, "", &stdout, &stderr)
+	code := routeMailCheck(context.Background(), cityPath, []string{"mayor"}, false, "", c, "", &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
@@ -4523,7 +4523,7 @@ func TestRouteMailCheckStoreSlowNonInjectReturnsError(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	code := routeMailCheck(cityPath, []string{"mayor"}, false, "", c, "", &stdout, &stderr)
+	code := routeMailCheck(context.Background(), cityPath, []string{"mayor"}, false, "", c, "", &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
@@ -4727,7 +4727,7 @@ func TestRouteMailCount_SixRowMatrix(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := routeMailCount(cityPath, []string{"mayor"}, c, tc.nilReason, false, &stdout, &stderr)
+			code := routeMailCount(context.Background(), cityPath, []string{"mayor"}, c, tc.nilReason, false, &stdout, &stderr)
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
 			}
@@ -4760,7 +4760,7 @@ func TestRouteMailCheck_StaleBannerOver30s(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeMailCheck(cityPath, []string{"mayor"}, false, "", c, "", &stdout, &stderr); code != 0 {
+	if code := routeMailCheck(context.Background(), cityPath, []string{"mayor"}, false, "", c, "", &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "cache age:") {
@@ -4785,7 +4785,7 @@ name = "mayor"
 `), 0o644); err != nil {
 		t.Fatalf("write city.toml: %v", err)
 	}
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -4814,7 +4814,7 @@ name = "mayor"
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeMailCheck(cityPath, nil, true, "", c, "", &stdout, &stderr); code != 0 {
+	if code := routeMailCheck(context.Background(), cityPath, nil, true, "", c, "", &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	assertMailRouteLog(t, stderr.String(), "fallback", "inject-local-side-effects")
@@ -4899,7 +4899,7 @@ func TestRouteMailCount_StaleBannerOver30s(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeMailCount(cityPath, []string{"mayor"}, c, "", false, &stdout, &stderr); code != 0 {
+	if code := routeMailCount(context.Background(), cityPath, []string{"mayor"}, c, "", false, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "cache age:") {
@@ -4925,7 +4925,7 @@ func mailSendTestCity(t *testing.T, alias string) string {
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -4947,7 +4947,7 @@ func mailSendTestCity(t *testing.T, alias string) string {
 // first one found, failing if none exist.
 func mailSendTestFindMessage(t *testing.T, cityPath string) beads.Bead {
 	t.Helper()
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt after send: %v", err)
 	}
@@ -4968,7 +4968,7 @@ func TestCmdMailSendPositionalBodyHonouredWhenSubjectFlagSet(t *testing.T) {
 	cityPath := mailSendTestCity(t, "mayor")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{"mayor/", "positional body"}, false, false, "controller", "", "subject", "", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{"mayor/", "positional body"}, false, false, "controller", "", "subject", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailSend() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -4987,7 +4987,7 @@ func TestCmdMailSendFlagBodyWinsOverPositional(t *testing.T) {
 	cityPath := mailSendTestCity(t, "mayor")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{"mayor/", "positional body"}, false, false, "controller", "", "subject", "flag body", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{"mayor/", "positional body"}, false, false, "controller", "", "subject", "flag body", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailSend() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -5007,7 +5007,7 @@ func TestCmdMailSendNoBodyStillWorks(t *testing.T) {
 	cityPath := mailSendTestCity(t, "mayor")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{"mayor/"}, false, false, "controller", "", "subject", "", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{"mayor/"}, false, false, "controller", "", "subject", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailSend() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -5026,7 +5026,7 @@ func TestCmdMailSendAllPositionalBodyHonouredWhenSubjectFlagSet(t *testing.T) {
 	cityPath := mailSendTestCity(t, "worker")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{"positional body"}, false, true, "controller", "", "subject", "", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{"positional body"}, false, true, "controller", "", "subject", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailSend --all = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -5045,7 +5045,7 @@ func TestCmdMailSendAllFlagBodyWinsOverPositional(t *testing.T) {
 	cityPath := mailSendTestCity(t, "worker")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailSend([]string{"positional body"}, false, true, "controller", "", "subject", "flag body", &stdout, &stderr)
+	code := cmdMailSend(context.Background(), []string{"positional body"}, false, true, "controller", "", "subject", "flag body", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailSend --all = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}

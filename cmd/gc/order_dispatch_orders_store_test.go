@@ -378,7 +378,7 @@ func TestBootOrphanSweepReachesTheOrdersBinding(t *testing.T) {
 	binding.IDPrefix = "gcg"
 
 	prev := newCityRuntimeOpenSweepStore
-	newCityRuntimeOpenSweepStore = func(string, string) (beads.Store, error) { return workStore, nil }
+	newCityRuntimeOpenSweepStore = func(context.Context, string, string) (beads.Store, error) { return workStore, nil }
 	t.Cleanup(func() { newCityRuntimeOpenSweepStore = prev })
 
 	orphans := map[string]beads.Store{"binding": binding, "work store": workStore}
@@ -394,7 +394,7 @@ func TestBootOrphanSweepReachesTheOrdersBinding(t *testing.T) {
 		seeded[name] = bead.ID
 	}
 
-	sweepOrphanedOrderTrackingAtBoot(messagingSplitRoutes(binding), cityPath, &config.City{Workspace: config.Workspace{Name: "test-city"}}, events.Discard, io.Discard)
+	sweepOrphanedOrderTrackingAtBoot(context.Background(), messagingSplitRoutes(binding), cityPath, &config.City{Workspace: config.Workspace{Name: "test-city"}}, events.Discard, io.Discard)
 
 	for name, store := range orphans {
 		got, err := store.Get(seeded[name])
@@ -499,8 +499,8 @@ func TestOneShotOrderReadsReachTheOrdersBinding(t *testing.T) {
 	}
 
 	for name, resolve := range map[string]orderStoresResolver{
-		"gc order check":   cachedOrderStoresResolver(cityPath, cfg),
-		"gc order history": cachedOrderHistoryStoresResolver(cityPath, cfg, io.Discard),
+		"gc order check":   cachedOrderStoresResolver(context.Background(), cityPath, cfg),
+		"gc order history": cachedOrderHistoryStoresResolver(context.Background(), cityPath, cfg, io.Discard),
 	} {
 		stores, err := resolve(a)
 		if err != nil {
@@ -539,7 +539,7 @@ func TestOrderSweepTrackingReachesTheOrdersBinding(t *testing.T) {
 		t.Fatalf("seeding the stale tracking bead: %v", err)
 	}
 
-	stores, _, err := orderTrackingSweepStoresForConfigTargets(cityPath, cfg, nil)
+	stores, _, err := orderTrackingSweepStoresForConfigTargets(context.Background(), cityPath, cfg, nil)
 	if err != nil {
 		t.Fatalf("resolving sweep stores: %v", err)
 	}

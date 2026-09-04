@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1048,7 +1049,7 @@ title = "Do work"
 		t.Fatalf("stderr missing formula_v2 diagnostic:\n%s", stderr.String())
 	}
 
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -1120,7 +1121,7 @@ title = "Do work for {{convoy_id}}"
 	}
 	t.Chdir(cityDir)
 	t.Setenv("GC_CITY_PATH", cityDir)
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -1260,7 +1261,7 @@ title = "Do work"
 		t.Fatalf("parse cook json %q: %v", stdout.String(), err)
 	}
 
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -1345,7 +1346,7 @@ title = "Do work"
 
 	// The rig-rooted run root lives in the rig store; its store-ref must resolve
 	// to rig:myrig, not city:*.
-	store, err := openStoreAtForCity(rigDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("open rig store: %v", err)
 	}
@@ -1399,7 +1400,7 @@ title = "Do work for {{convoy_id}}"
 	}
 	t.Chdir(cityDir)
 	t.Setenv("GC_CITY_PATH", cityDir)
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -1467,7 +1468,7 @@ title = "Do work for {{convoy_id}}"
 	}
 	t.Chdir(cityDir)
 	t.Setenv("GC_CITY_PATH", cityDir)
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -1543,7 +1544,7 @@ title = "Do work for {{convoy_id}}"
 	}
 	t.Chdir(cityDir)
 	t.Setenv("GC_CITY_PATH", cityDir)
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

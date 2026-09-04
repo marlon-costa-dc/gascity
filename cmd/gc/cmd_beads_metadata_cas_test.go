@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -197,7 +198,7 @@ func TestBeadsMetadataCASCanonicalJSONOutcomes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	installMetadataCASStoreSeams(t, func(_, _ string) (beads.Store, error) {
+	installMetadataCASStoreSeams(t, func(_ context.Context, _, _ string) (beads.Store, error) {
 		return store, nil
 	}, func(beads.Store) error {
 		return nil
@@ -315,7 +316,7 @@ func TestBeadsMetadataCASCanonicalJSONFailuresUseSharedContract(t *testing.T) {
 			if closeStore == nil {
 				closeStore = func(beads.Store) error { return nil }
 			}
-			installMetadataCASStoreSeams(t, func(_, _ string) (beads.Store, error) {
+			installMetadataCASStoreSeams(t, func(_ context.Context, _, _ string) (beads.Store, error) {
 				return store, nil
 			}, closeStore)
 
@@ -350,7 +351,7 @@ func TestBeadsMetadataCASFormatCompatibilityAndConflict(t *testing.T) {
 
 	cityPath := writeMetadataCASTestCity(t)
 	store, id := newMetadataCASTestMemStore(t)
-	installMetadataCASStoreSeams(t, func(_, _ string) (beads.Store, error) {
+	installMetadataCASStoreSeams(t, func(_ context.Context, _, _ string) (beads.Store, error) {
 		return store, nil
 	}, func(beads.Store) error {
 		return nil
@@ -692,7 +693,7 @@ func TestBeadsMetadataCASManifestAndRuntimePayloadsAreCoherent(t *testing.T) {
 
 	cityPath := writeMetadataCASTestCity(t)
 	store, id := newMetadataCASTestMemStore(t)
-	installMetadataCASStoreSeams(t, func(_, _ string) (beads.Store, error) {
+	installMetadataCASStoreSeams(t, func(_ context.Context, _, _ string) (beads.Store, error) {
 		return store, nil
 	}, func(beads.Store) error {
 		return nil
@@ -779,7 +780,7 @@ func newMetadataCASTestMemStore(t *testing.T) (*beads.MemStore, string) {
 
 func installMetadataCASStoreSeams(
 	t *testing.T,
-	open func(storePath, cityPath string) (beads.Store, error),
+	open func(context.Context, string, string) (beads.Store, error),
 	closeStore func(beads.Store) error,
 ) {
 	t.Helper()

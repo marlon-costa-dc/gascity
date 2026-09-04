@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -20,8 +21,8 @@ Pinning does not clear suspend holds or other hard blockers. If the target is
 a configured named session that has not been materialized yet, pin creates its
 canonical bead so the reconciler can start it when unblocked.`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionPin(args, stdout, stderr, jsonOutput) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionPin(cmd.Context(), args, stdout, stderr, jsonOutput) != 0 {
 				return errExit
 			}
 			return nil
@@ -42,8 +43,8 @@ func newSessionUnpinCmd(stdout, stderr io.Writer) *cobra.Command {
 Unpinning does not force an immediate stop. The reconciler will apply the
 normal wake/sleep rules on its next pass.`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdSessionUnpin(args, stdout, stderr, jsonOutput) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdSessionUnpin(cmd.Context(), args, stdout, stderr, jsonOutput) != 0 {
 				return errExit
 			}
 			return nil
@@ -54,21 +55,21 @@ normal wake/sleep rules on its next pass.`,
 	return cmd
 }
 
-func cmdSessionPin(args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
-	return cmdSessionSetPin(args, true, stdout, stderr, jsonOutput...)
+func cmdSessionPin(ctx context.Context, args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
+	return cmdSessionSetPin(ctx, args, true, stdout, stderr, jsonOutput...)
 }
 
-func cmdSessionUnpin(args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
-	return cmdSessionSetPin(args, false, stdout, stderr, jsonOutput...)
+func cmdSessionUnpin(ctx context.Context, args []string, stdout, stderr io.Writer, jsonOutput ...bool) int {
+	return cmdSessionSetPin(ctx, args, false, stdout, stderr, jsonOutput...)
 }
 
-func cmdSessionSetPin(args []string, pinned bool, stdout, stderr io.Writer, jsonOutput ...bool) int {
+func cmdSessionSetPin(ctx context.Context, args []string, pinned bool, stdout, stderr io.Writer, jsonOutput ...bool) int {
 	asJSON := sessionJSONRequested(jsonOutput)
 	action := "unpin"
 	if pinned {
 		action = "pin"
 	}
-	store, code := openCityStore(stderr, "gc session "+action)
+	store, code := openCityStore(ctx, stderr, "gc session "+action)
 	if store == nil {
 		return code
 	}
@@ -88,7 +89,7 @@ func cmdSessionSetPin(args []string, pinned bool, stdout, stderr io.Writer, json
 	if pinned {
 		id, err = resolveSessionIDWithConfig(cityPath, cfg, sessStore, args[0])
 		if err != nil {
-			id, err = resolveSessionIDMaterializingNamedWithMetadata(cityPath, cfg, sessStore, args[0], map[string]string{
+			id, err = resolveSessionIDMaterializingNamedWithMetadata(ctx, cityPath, cfg, sessStore, args[0], map[string]string{
 				"pin_awake":                 "true",
 				"pending_create_claim":      "",
 				"pending_create_started_at": "",

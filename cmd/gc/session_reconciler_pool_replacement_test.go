@@ -98,7 +98,7 @@ func TestReconcileSessionBeads_DrainAckNoWorkFreesSlotAndReallocates(t *testing.
 			t.Fatalf("setDrainAck(loser): %v", err)
 		}
 
-		ds := buildDesiredState("trace-town", cityDir, now, cfg, sp, store, io.Discard)
+		ds := buildDesiredState(context.Background(), "trace-town", cityDir, now, cfg, sp, store, io.Discard)
 		dt := newDrainTracker()
 		clk := &clock.Fake{Time: now}
 
@@ -233,10 +233,10 @@ func TestReconcileSessionBeads_DrainAckNoWorkFreesSlotAndReallocates(t *testing.
 					t.Fatalf("create still-ready routed bead: %v", err)
 				}
 
-				result := buildDesiredStateWithSessionBeads(
+				result := buildDesiredStateWithSessionBeads(context.Background(),
 					"test-city", tmpDir, time.Now(), cfg, &localMockProvider{},
-					cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
-				)
+					cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
+
 				if demand := result.ScaleCheckCounts[qualifiedName]; demand != tc.wantDemand {
 					t.Fatalf("ScaleCheckCounts[%s] = %d, want %d (drained/asleep phantom must not over-count supply; #2520)",
 						qualifiedName, demand, tc.wantDemand)

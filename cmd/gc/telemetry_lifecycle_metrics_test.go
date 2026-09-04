@@ -527,7 +527,7 @@ func TestCmdSessionKill_RecordsAgentStopMetric(t *testing.T) {
 	}
 	t.Cleanup(func() { buildSessionProviderByName = oldBuild })
 
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -578,7 +578,7 @@ func TestCmdSessionKill_RecordsAgentStopMetric(t *testing.T) {
 	reader := installManualMetricReader(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionKill([]string{identity}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionKill(context.Background(), []string{identity}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionKill = %d, want 0; stderr=%s", code, stderr.String())
 	}
 

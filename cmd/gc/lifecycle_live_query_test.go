@@ -90,7 +90,7 @@ func TestCollectAssignedWorkBeads_UsesExplicitDepEventsForCachedReady(t *testing
 			t.Fatalf("Create(handoff): %v", err)
 		}
 		cache := beads.NewCachingStoreForTest(backing, nil)
-		if err := cache.PrimeActive(); err != nil {
+		if err := cache.PrimeActive(context.Background()); err != nil {
 			t.Fatalf("PrimeActive: %v", err)
 		}
 
@@ -130,7 +130,7 @@ func TestCollectAssignedWorkBeads_UsesExplicitDepEventsForCachedReady(t *testing
 			t.Fatalf("backing DepAdd(%s <- %s): %v", handoff.ID, blocker.ID, err)
 		}
 		cache := beads.NewCachingStoreForTest(backing, nil)
-		if err := cache.PrimeActive(); err != nil {
+		if err := cache.PrimeActive(context.Background()); err != nil {
 			t.Fatalf("PrimeActive: %v", err)
 		}
 
@@ -217,7 +217,7 @@ func TestSessionHasOpenAssignedWorkInStore_UsesCachedWispOwnership(t *testing.T)
 	}
 
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	backing.setFail(true)
@@ -237,7 +237,7 @@ func TestSessionHasOpenAssignedWorkInStore_FallsBackToLiveForCachedWispMiss(t *t
 
 	backing := beads.NewMemStore()
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	wisp, err := backing.Create(beads.Bead{

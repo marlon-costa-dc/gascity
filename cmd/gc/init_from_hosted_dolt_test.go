@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,7 +42,7 @@ func TestInitFromPinsHostedDoltEndpoint(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptionsInternal(src, cityPath, "", &stdout, &stderr, true, true, hosted)
+	code := doInitFromDirWithOptionsInternal(context.Background(), src, cityPath, "", &stdout, &stderr, true, true, hosted)
 	if code != 0 {
 		t.Fatalf("doInitFromDirWithOptionsInternal = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -79,7 +80,7 @@ func TestInitFromWithoutHostedPreservesTemplate(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	// disabled hosted options => template preserved
-	code := doInitFromDirWithOptionsInternal(src, cityPath, "", &stdout, &stderr, true, true, hostedDoltInitOptions{})
+	code := doInitFromDirWithOptionsInternal(context.Background(), src, cityPath, "", &stdout, &stderr, true, true, hostedDoltInitOptions{})
 	// The return code is not asserted: finalizeInit's hard-dependency checks
 	// depend on what the host box has provisioned. What must hold is that no
 	// endpoint validation ran at all.
@@ -120,7 +121,7 @@ func TestInitFromRejectsIncompleteHostedEndpoint(t *testing.T) {
 	hosted := hostedDoltInitOptions{Host: "dolt.example.com"}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptionsInternal(src, cityPath, "", &stdout, &stderr, true, true, hosted)
+	code := doInitFromDirWithOptionsInternal(context.Background(), src, cityPath, "", &stdout, &stderr, true, true, hosted)
 	if code == 0 {
 		t.Fatalf("expected failure for incomplete endpoint, got success")
 	}
@@ -147,7 +148,7 @@ func TestInitFromRejectsDoltFlagsWithoutHost(t *testing.T) {
 	cityPath := filepath.Join(t.TempDir(), "city")
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptionsInternal(src, cityPath, "", &stdout, &stderr, true, true, hostedDoltInitOptions{Port: "3307"})
+	code := doInitFromDirWithOptionsInternal(context.Background(), src, cityPath, "", &stdout, &stderr, true, true, hostedDoltInitOptions{Port: "3307"})
 	if code == 0 {
 		t.Fatalf("expected failure for --dolt-port without a host, got success")
 	}
@@ -195,7 +196,7 @@ schema = 2
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptionsInternal(src, cityPath, "", &stdout, &stderr, true, true, hosted)
+	code := doInitFromDirWithOptionsInternal(context.Background(), src, cityPath, "", &stdout, &stderr, true, true, hosted)
 	if code != 0 {
 		t.Fatalf("doInitFromDirWithOptionsInternal = %d, want 0; stderr: %s", code, stderr.String())
 	}

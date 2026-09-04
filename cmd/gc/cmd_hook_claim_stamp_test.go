@@ -54,7 +54,7 @@ type sessionClaimSpy struct {
 	err     error
 }
 
-func (s *sessionClaimSpy) fn(sessionID, beadID string) error {
+func (s *sessionClaimSpy) fn(_ context.Context, sessionID, beadID string) error {
 	s.calls++
 	s.sessionID, s.beadID = sessionID, beadID
 	s.beadIDs = append(s.beadIDs, beadID)
@@ -72,7 +72,7 @@ func noopStampWorkMeta(context.Context, string, []string, string, string, map[st
 // noopStampSessionClaim suppresses the session-bead claim back-channel stamp so
 // claim tests that don't assert on it stay hermetic — the default seam resolves
 // the city and opens the session store, which a test binary deliberately refuses.
-func noopStampSessionClaim(string, string) error { return nil }
+func noopStampSessionClaim(context.Context, string, string) error { return nil }
 
 // popClaimedAt extracts and validates the write-once gc.claimed_at entry from
 // a fresh-claim patch, returning the remaining keys so the caller can assert
@@ -153,7 +153,7 @@ func TestDoHookClaimStampsSessionIdentity(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if spy.calls != 1 {
@@ -194,7 +194,7 @@ func TestDoHookClaimStampsSessionIdentityOnAdoption(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	want := map[string]string{
@@ -224,7 +224,7 @@ func TestDoHookClaimStampsSessionIdentityWithoutWorktree(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	want := map[string]string{
@@ -264,7 +264,7 @@ func TestDoHookClaimSkipsStampWhenIdentityUnchanged(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if spy.calls != 0 {
@@ -293,7 +293,7 @@ func TestDoHookClaimStampsOnlyChangedIdentityKeys(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	want := map[string]string{beadmeta.WorkBranchMetadataKey: "bd-new"}
@@ -321,7 +321,7 @@ func TestDoHookClaimSkipsSessionIdentityForControlBead(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	want := map[string]string{beadmeta.WorkBranchMetadataKey: "bd-hc-check"}
@@ -350,7 +350,7 @@ func TestDoHookClaimSkipsSessionIdentityWhenNoSessionID(t *testing.T) {
 	opts.Env = []string{"GC_SESSION_NAME=gc__role-mc-sess1"} // GC_SESSION_ID absent
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	want := map[string]string{beadmeta.WorkBranchMetadataKey: "bd-hw-nosess"}
@@ -376,7 +376,7 @@ func TestDoHookClaimIdentityStampFailureDoesNotFailClaim(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0 (stamp error must not fail the claim); stderr=%s", code, stderr.String())
 	}
 	var result hookClaimJSONResult
@@ -398,7 +398,7 @@ func TestDoHookClaimEmitsStartedOnlyAfterDurableSessionReadback(t *testing.T) {
 	var emitted []beads.Bead
 	ops.EmitExecutionStepStarted = func(b beads.Bead, _ string, _ []string, _ string) { emitted = append(emitted, b) }
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d; stderr=%s", code, stderr.String())
 	}
 	if len(emitted) != 1 || emitted[0].ID != "gcg-attempt" || emitted[0].Metadata[beadmeta.SessionIDMetadataKey] != "mc-sess1" || emitted[0].Status != "in_progress" {
@@ -407,7 +407,7 @@ func TestDoHookClaimEmitsStartedOnlyAfterDurableSessionReadback(t *testing.T) {
 
 	spy.err = errors.New("stamp failed")
 	emitted = nil
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("failed-stamp claim = %d; stderr=%s", code, stderr.String())
 	}
 	if len(emitted) != 0 {
@@ -444,7 +444,7 @@ func TestDoHookClaimAdoptionReconcilesDurableStartedFact(t *testing.T) {
 	ops.EmitExecutionStepStarted = func(b beads.Bead, _ string, _ []string, _ string) { emitted = append(emitted, b) }
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d; stderr=%s", code, stderr.String())
 	}
 	if spy.calls != 0 {
@@ -470,7 +470,7 @@ func TestDoHookClaimStampsCurrentClaimOnSession(t *testing.T) {
 	ops.StampSessionClaim = sessSpy.fn
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if sessSpy.calls != 1 || sessSpy.sessionID != "mc-sess1" || sessSpy.beadID != "hw-pool" {
@@ -515,7 +515,7 @@ func TestDoHookClaimStampsCurrentClaimOnAdoption(t *testing.T) {
 				StampSessionClaim: sessSpy.fn,
 			}
 			var stdout, stderr bytes.Buffer
-			if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+			if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 				t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 			}
 			if sessSpy.calls != 1 || sessSpy.beadID != tc.wantBead {
@@ -542,7 +542,7 @@ func TestDoHookClaimStampsCurrentClaimForControlBead(t *testing.T) {
 	ops.StampSessionClaim = sessSpy.fn
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if _, ok := metaSpy.patch[beadmeta.SessionIDMetadataKey]; ok {
@@ -569,7 +569,7 @@ func TestDoHookClaimSkipsCurrentClaimWhenNoSessionID(t *testing.T) {
 	opts.Env = []string{"GC_SESSION_NAME=gc__role-mc-sess1"} // GC_SESSION_ID absent
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if sessSpy.calls != 0 {
@@ -592,7 +592,7 @@ func TestDoHookClaimCurrentClaimStampFailureDoesNotFailClaim(t *testing.T) {
 	ops.StampSessionClaim = sessSpy.fn
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", poolClaimOpts(), ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0 (stamp error must not fail the claim); stderr=%s", code, stderr.String())
 	}
 	var result hookClaimJSONResult

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -147,7 +148,7 @@ func TestCLIMailWritesAndReadsTheBindingOnAMigratedCity(t *testing.T) {
 	cityPath, cfg := migratedOneShotCLICity(t)
 	captureCLIStorageStderr(t)
 
-	sender, code := openCityMailProvider(io.Discard, "gc mail send")
+	sender, code := openCityMailProvider(context.Background(), io.Discard, "gc mail send")
 	if sender == nil {
 		t.Fatalf("openCityMailProvider returned no provider (code=%d)", code)
 	}
@@ -159,7 +160,7 @@ func TestCLIMailWritesAndReadsTheBindingOnAMigratedCity(t *testing.T) {
 	// A second one-shot command, with its own provider over the same memoized
 	// routes: read and write have to agree, or mail lands somewhere `gc mail
 	// check` never looks.
-	reader, code := openCityMailProvider(io.Discard, "gc mail check")
+	reader, code := openCityMailProvider(context.Background(), io.Discard, "gc mail check")
 	if reader == nil {
 		t.Fatalf("the reading openCityMailProvider returned no provider (code=%d)", code)
 	}
@@ -186,7 +187,7 @@ func TestCLIMailWritesAndReadsTheBindingOnAMigratedCity(t *testing.T) {
 	if _, err := binding.Get(sent.ID); err != nil {
 		t.Errorf("the one-shot mail write did not land in the binding: %v", err)
 	}
-	work, err := openCityStoreAt(cityPath)
+	work, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("opening the retained work store: %v", err)
 	}
@@ -255,7 +256,7 @@ func TestStorageStatusStaysOffTheOneShotFunnel(t *testing.T) {
 	captureCLIStorageStderr(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := doStorageStatus(request, &stdout, &stderr); code == 0 {
+	if code := doStorageStatus(context.Background(), request, &stdout, &stderr); code == 0 {
 		t.Errorf("status exited 0 on an unconverged city; stdout=%q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), storageMigrationCommand) {

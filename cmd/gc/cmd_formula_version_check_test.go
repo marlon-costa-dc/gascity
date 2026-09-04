@@ -82,7 +82,7 @@ func writeVersionCheckCity(t *testing.T) (cityDir, diskHash string) {
 func createVersionCheckBead(t *testing.T, cityDir, formulaName, hash string) string {
 	t.Helper()
 
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestFormulaVersionCheck_MissingFormulaHashErrors(t *testing.T) {
 // instead of the targeted "no Ref (formula name)" diagnostic.
 func TestFormulaVersionCheck_MissingRefErrors(t *testing.T) {
 	cityDir, _ := writeVersionCheckCity(t)
-	store, err := openStoreAtForCity(cityDir, cityDir)
+	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}

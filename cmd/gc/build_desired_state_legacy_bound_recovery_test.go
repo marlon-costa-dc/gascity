@@ -312,7 +312,7 @@ func TestCanonicalizeLegacyBoundAssignedWorkWokenSessionClaimsRehomedWork(t *tes
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("work-query", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "work-query", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	var result hookClaimJSONResult
@@ -514,7 +514,7 @@ func TestCanonicalizeLegacyBoundUnassignedRoutedWorkCanonicalWorkerClaims(t *tes
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("work-query", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "work-query", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if !claimInvoked {

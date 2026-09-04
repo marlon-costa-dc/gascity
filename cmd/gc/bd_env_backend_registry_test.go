@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -140,12 +141,12 @@ dolt.auto-start: false
 	}
 	rigs := []config.Rig{{Name: "fe", Path: rigDir, Prefix: "fe"}}
 
-	_, cityErr := sessionBackendEnvWithError(cityPath, "", rigs)
+	_, cityErr := sessionBackendEnvWithError(context.Background(), cityPath, "", rigs)
 	if cityErr == nil {
 		t.Fatal("city session env accepted an unregistered backend")
 	}
 
-	env, err := sessionBackendEnvWithError(cityPath, rigDir, rigs)
+	env, err := sessionBackendEnvWithError(context.Background(), cityPath, rigDir, rigs)
 	if err == nil {
 		t.Fatalf("inherited rig session env = %v, want the refusal the city session gets: %v", env, cityErr)
 	}

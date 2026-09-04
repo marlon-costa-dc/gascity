@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -776,7 +777,7 @@ func cleanupManagedDoltTestCity(t *testing.T, cityPath string) {
 				t.Logf("stopManagedDoltProcess(%s, %s): %v", cityPath, port, err)
 			}
 		}
-		if err := shutdownBeadsProvider(cityPath); err != nil {
+		if err := shutdownBeadsProvider(context.Background(), cityPath); err != nil {
 			t.Logf("shutdownBeadsProvider(%s): %v", cityPath, err)
 		}
 		stopManagedDoltProcessesUnderTestCity(t, cityPath)

@@ -832,15 +832,17 @@ func candidateWaveOrder(
 }
 
 func prepareStartCandidate(
+	ctx context.Context,
 	candidate startCandidate,
 	cfg *config.City,
 	store beads.Store,
 	clk clock.Clock,
 ) (*preparedStart, error) {
-	return prepareStartCandidateForCity(candidate, "", "", cfg, nil, store, clk, io.Discard, nil)
+	return prepareStartCandidateForCity(ctx, candidate, "", "", cfg, nil, store, clk, io.Discard, nil)
 }
 
 func prepareStartCandidateForCity(
+	ctx context.Context,
 	candidate startCandidate,
 	cityPath string,
 	cityName string,
@@ -886,7 +888,7 @@ func prepareStartCandidateForCity(
 	} else {
 		candidate.info = candidate.info.ApplyPatch(fold)
 	}
-	candidate = refreshConfiguredNamedStartCandidate(candidate, cityPath, cityName, cfg, sp, store, clk, stderr)
+	candidate = refreshConfiguredNamedStartCandidate(ctx, candidate, cityPath, cityName, cfg, sp, store, clk, stderr)
 	// buildPreparedStart folds its own post-append mutations (stale-resume clears,
 	// session_key / instance_token mints) onto candidate.info at their write sites, so
 	// the returned prepared.candidate.info stays coherent with the store WITHOUT a
@@ -899,6 +901,7 @@ func prepareStartCandidateForCity(
 }
 
 func refreshConfiguredNamedStartCandidate(
+	ctx context.Context,
 	candidate startCandidate,
 	cityPath string,
 	cityName string,
@@ -921,7 +924,7 @@ func refreshConfiguredNamedStartCandidate(
 		}
 		return candidate
 	}
-	refreshed, refreshedInfo, err := resolvePreservedConfiguredNamedSessionTemplate(cityPath, cityName, cfg, sp, store, snapshot.OpenInfos(), candidate.info, clk, stderr)
+	refreshed, refreshedInfo, err := resolvePreservedConfiguredNamedSessionTemplate(ctx, cityPath, cityName, cfg, sp, store, snapshot.OpenInfos(), candidate.info, clk, stderr)
 	if err != nil {
 		if stderr != nil {
 			fmt.Fprintf(stderr, "session reconciler: refreshing named session start %s: %v\n", candidate.name(), err) //nolint:errcheck
@@ -2883,7 +2886,7 @@ func executePlannedStartsTraced(
 						}
 					}
 				}
-				item, err := prepareStartCandidateForCity(candidate, cityPath, cityName, cfg, sp, store, clk, stderr, startOpts.workDirResolver)
+				item, err := prepareStartCandidateForCity(ctx, candidate, cityPath, cityName, cfg, sp, store, clk, stderr, startOpts.workDirResolver)
 				if err != nil {
 					clearPendingStartInFlightLease(candidate.info.ID, sessFront, stderr)
 					if release != nil {

@@ -1370,7 +1370,7 @@ func TestCachingStoreCachedReadyUsesPrimedDependencies(t *testing.T) {
 	}
 
 	cache := beads.NewCachingStoreForTest(mem, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	got, ok := cache.CachedReady()
@@ -1410,7 +1410,7 @@ func TestCachingStoreCachedReadyExcludesFutureDeferredBead(t *testing.T) {
 	}
 
 	cache := beads.NewCachingStoreForTest(mem, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	got, ok := cache.CachedReady()
@@ -1460,7 +1460,7 @@ func TestCachingStoreApplyEventUpdatesCachedReadyFields(t *testing.T) {
 	}
 
 	cache := beads.NewCachingStoreForTest(mem, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	assertCachedReadyHas(t, cache, deferredByEvent.ID, true)
@@ -1501,7 +1501,7 @@ func TestCachingStoreCachedReadyUsesWriteThroughDependencies(t *testing.T) {
 	}
 
 	cache := beads.NewCachingStoreForTest(mem, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	if err := cache.DepAdd(blocked.ID, blocker.ID, "blocks"); err != nil {
@@ -1636,7 +1636,7 @@ func TestCachingStoreCachedReadyIgnoresStaleDependencyEventsAfterLocalMutation(t
 			t.Fatalf("Create(target): %v", err)
 		}
 		cache := beads.NewCachingStoreForTest(mem, nil)
-		if err := cache.PrimeActive(); err != nil {
+		if err := cache.PrimeActive(context.Background()); err != nil {
 			t.Fatalf("PrimeActive: %v", err)
 		}
 		if err := cache.DepAdd(target.ID, blocker.ID, "blocks"); err != nil {
@@ -1669,7 +1669,7 @@ func TestCachingStoreCachedReadyIgnoresStaleDependencyEventsAfterLocalMutation(t
 			t.Fatalf("Create(target): %v", err)
 		}
 		cache := beads.NewCachingStoreForTest(mem, nil)
-		if err := cache.PrimeActive(); err != nil {
+		if err := cache.PrimeActive(context.Background()); err != nil {
 			t.Fatalf("PrimeActive: %v", err)
 		}
 		if err := cache.DepRemove(target.ID, blocker.ID); err != nil {
@@ -1713,7 +1713,7 @@ func TestCachingStoreCachedReadyIgnoresStaleDependencyEventsAfterEventMutation(t
 		t.Fatalf("Create(target): %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(mem, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1736,7 +1736,7 @@ func TestCachingStoreCachedReadyIgnoresStaleDependencyEventsAfterEventMutation(t
 func TestCachingStoreCachedReadyUsesCompleteCreatedEventDependencies(t *testing.T) {
 	t.Parallel()
 	cache := beads.NewCachingStoreForTest(beads.NewMemStore(), nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1763,7 +1763,7 @@ func TestCachingStoreCachedReadyUsesCompleteUpdatedEventDependencies(t *testing.
 		t.Fatalf("Create(target): %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(mem, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1789,7 +1789,7 @@ func TestCachingStoreCachedReadyUsesCompleteUpdatedEventDependencies(t *testing.
 func TestCachingStoreCachedReadyUnavailableForPartialEventDependencies(t *testing.T) {
 	t.Parallel()
 	cache := beads.NewCachingStoreForTest(beads.NewMemStore(), nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1812,7 +1812,7 @@ func TestCachingStoreCachedReadyRefreshesEventNeedsDependencies(t *testing.T) {
 		t.Fatalf("Create(target): %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(mem, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1847,7 +1847,7 @@ func TestCachingStoreCachedReadyClearsExplicitEventNeeds(t *testing.T) {
 		t.Fatalf("Create(target): %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(mem, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1881,7 +1881,7 @@ func TestCachingStoreUpdateClearsCachedDependenciesFromFreshBead(t *testing.T) {
 		fresh: make(map[string]beads.Bead),
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1928,7 +1928,7 @@ func TestCachingStoreListPartialAllowScanReturnsCompleteActiveSnapshot(t *testin
 	}
 
 	cs := beads.NewCachingStoreForTest(mem, nil)
-	if err := cs.PrimeActive(); err != nil {
+	if err := cs.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	if cs.IsLive() {
@@ -1976,7 +1976,7 @@ func TestCachingStoreListPartialMetadataMatchesActiveBeads(t *testing.T) {
 	}
 
 	cs := beads.NewCachingStoreForTest(mem, nil)
-	if err := cs.PrimeActive(); err != nil {
+	if err := cs.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -2086,7 +2086,7 @@ func TestCachingStoreListByLabelSeesCreatedBeadAfterMetadataWrite(t *testing.T) 
 	}{
 		{
 			name:  "partial",
-			prime: func(cs *beads.CachingStore) error { return cs.PrimeActive() },
+			prime: func(cs *beads.CachingStore) error { return cs.PrimeActive(context.Background()) },
 		},
 		{
 			name:  "live",
@@ -3062,7 +3062,7 @@ func TestCachingStoreCachedReadyReflectsRoutedWorkReleaseAfterSessionClose(t *te
 	}
 
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 

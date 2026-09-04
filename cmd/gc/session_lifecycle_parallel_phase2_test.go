@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -191,7 +192,7 @@ func preparePhase2Start(t *testing.T, tc phase2ProviderCase, startedConfigHash s
 		t.Fatalf("Create session bead: %v", err)
 	}
 
-	prepared, err := prepareStartCandidate(startCandidate{
+	prepared, err := prepareStartCandidate(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp:   phase2TemplateParams(t, tc, "Base worker prompt"),
 	}, &config.City{}, store, &clock.Fake{Time: time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC)})
@@ -243,7 +244,7 @@ func preparePhase2ResumeRestartStart(t *testing.T, tc phase2ProviderCase, overri
 
 	tp := phase2TemplateParams(t, tc, "Base worker prompt")
 	tp.Hints.Nudge = ""
-	prepared, err := prepareStartCandidate(startCandidate{
+	prepared, err := prepareStartCandidate(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp:   tp,
 	}, &config.City{}, store, &clock.Fake{Time: time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC)})

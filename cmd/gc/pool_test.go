@@ -1007,7 +1007,7 @@ func TestRunPoolOnBoot(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	runPoolOnBoot(cfg, t.TempDir(), runner, &stderr)
+	runPoolOnBoot(context.Background(), cfg, t.TempDir(), runner, &stderr)
 
 	if len(ran) != 2 {
 		t.Fatalf("ran %d commands, want 2 (one per pool agent)", len(ran))
@@ -1032,7 +1032,7 @@ func TestRunPoolOnBootError(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	runPoolOnBoot(cfg, t.TempDir(), runner, &stderr)
+	runPoolOnBoot(context.Background(), cfg, t.TempDir(), runner, &stderr)
 
 	// Error should be logged, not fatal.
 	if !strings.Contains(stderr.String(), "on_boot dog") {
@@ -1053,7 +1053,7 @@ func TestRunPoolOnBootLogsRecoveryOutput(t *testing.T) {
 		},
 	}
 	var stderr bytes.Buffer
-	runPoolOnBoot(cfg, t.TempDir(), runner, &stderr)
+	runPoolOnBoot(context.Background(), cfg, t.TempDir(), runner, &stderr)
 	if !strings.Contains(stderr.String(), "on_boot dog: gc-recovery: on_boot reopen failed for gc-1: boom") {
 		t.Errorf("stderr = %q, want the recovery diagnostic surfaced", stderr.String())
 	}
@@ -1069,7 +1069,7 @@ func TestRunPoolOnBootSilentOnEmptyOutput(t *testing.T) {
 		},
 	}
 	var stderr bytes.Buffer
-	runPoolOnBoot(cfg, t.TempDir(), runner, &stderr)
+	runPoolOnBoot(context.Background(), cfg, t.TempDir(), runner, &stderr)
 	if strings.Contains(stderr.String(), "gc-recovery") {
 		t.Errorf("clean hook produced a recovery line: %q", stderr.String())
 	}
@@ -1088,7 +1088,7 @@ func TestRunPoolOnBootIgnoresCustomHookStdout(t *testing.T) {
 		},
 	}
 	var stderr bytes.Buffer
-	runPoolOnBoot(cfg, t.TempDir(), runner, &stderr)
+	runPoolOnBoot(context.Background(), cfg, t.TempDir(), runner, &stderr)
 	if strings.Contains(stderr.String(), "booting up the custom hook") {
 		t.Errorf("custom on_boot stdout was surfaced into the recovery log: %q", stderr.String())
 	}
@@ -1111,7 +1111,7 @@ func TestRunPoolOnBootUsesRigRootForRigScopedPools(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	runPoolOnBoot(cfg, cityPath, runner, &stderr)
+	runPoolOnBoot(context.Background(), cfg, cityPath, runner, &stderr)
 
 	if len(dirs) != 1 {
 		t.Fatalf("runner calls = %d, want 1", len(dirs))
@@ -1139,7 +1139,7 @@ func TestRunPoolOnBootUsesCanonicalRigEnv(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	runPoolOnBoot(cfg, cityPath, runner, &stderr)
+	runPoolOnBoot(context.Background(), cfg, cityPath, runner, &stderr)
 
 	if gotDir != rigDir {
 		t.Fatalf("on_boot dir = %q, want %q", gotDir, rigDir)
@@ -1178,7 +1178,7 @@ func TestRunPoolOnBootExpandsTemplateCommands(t *testing.T) {
 		},
 	}
 
-	runPoolOnBoot(cfg, cityPath, runner, io.Discard)
+	runPoolOnBoot(context.Background(), cfg, cityPath, runner, io.Discard)
 
 	if len(ran) != 1 {
 		t.Fatalf("ran %d commands, want 1", len(ran))
@@ -1198,7 +1198,7 @@ func TestComputePoolDeathHandlers(t *testing.T) {
 		},
 	}
 
-	handlers := computePoolDeathHandlers(cfg, "test", t.TempDir(), runtime.NewFake(), nil)
+	handlers := computePoolDeathHandlers(context.Background(), cfg, "test", t.TempDir(), runtime.NewFake(), nil)
 
 	// dog has max=3, so 3 handlers (dog-1, dog-2, dog-3).
 	// cat is a max=1 canonical singleton pool agent, so the handler uses cat.
@@ -1237,7 +1237,7 @@ func TestComputePoolDeathHandlersUsesRigRootForRigScopedPools(t *testing.T) {
 		},
 	}
 
-	handlers := computePoolDeathHandlers(cfg, "test", t.TempDir(), runtime.NewFake(), nil)
+	handlers := computePoolDeathHandlers(context.Background(), cfg, "test", t.TempDir(), runtime.NewFake(), nil)
 	if len(handlers) != 2 {
 		t.Fatalf("len(handlers) = %d, want 2", len(handlers))
 	}
@@ -1267,7 +1267,7 @@ func TestComputePoolDeathHandlersExpandsTemplateCommands(t *testing.T) {
 		},
 	}
 
-	handlers := computePoolDeathHandlers(cfg, "demo-city", cityPath, runtime.NewFake(), nil)
+	handlers := computePoolDeathHandlers(context.Background(), cfg, "demo-city", cityPath, runtime.NewFake(), nil)
 	if len(handlers) != 2 {
 		t.Fatalf("len(handlers) = %d, want 2", len(handlers))
 	}
@@ -1292,7 +1292,7 @@ func TestComputePoolDeathHandlersLogsTemplateExpansionWarning(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	handlers := computePoolDeathHandlers(cfg, "demo-city", t.TempDir(), runtime.NewFake(), &stderr)
+	handlers := computePoolDeathHandlers(context.Background(), cfg, "demo-city", t.TempDir(), runtime.NewFake(), &stderr)
 	if len(handlers) != 2 {
 		t.Fatalf("len(handlers) = %d, want 2", len(handlers))
 	}
@@ -1325,7 +1325,7 @@ func TestComputePoolDeathHandlersUsesCanonicalRigEnv(t *testing.T) {
 	cfg.Agents[0].MinActiveSessions = intPtr(0)
 	cfg.Agents[0].MaxActiveSessions = intPtr(2)
 
-	handlers := computePoolDeathHandlers(cfg, "test", cityPath, runtime.NewFake(), nil)
+	handlers := computePoolDeathHandlers(context.Background(), cfg, "test", cityPath, runtime.NewFake(), nil)
 	if len(handlers) != 2 {
 		t.Fatalf("len(handlers) = %d, want 2", len(handlers))
 	}

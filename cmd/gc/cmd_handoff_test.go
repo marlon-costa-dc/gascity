@@ -274,7 +274,7 @@ func TestCmdHandoffAutoSendsMailWithoutBlocking(t *testing.T) {
 		t.Fatalf("gc handoff --auto failed: %v; stderr=%s", err, stderr.String())
 	}
 
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestCmdHandoffAutoHookFormatCodex(t *testing.T) {
 	if !strings.Contains(payload.SystemMessage, "Handoff: sent auto mail") {
 		t.Fatalf("systemMessage = %q, want handoff confirmation", payload.SystemMessage)
 	}
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestCmdHandoffAutoUsesDefaultSubject(t *testing.T) {
 		t.Fatalf("gc handoff --auto failed: %v; stderr=%s", err, stderr.String())
 	}
 
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -404,7 +404,7 @@ func (errWriter) Write([]byte) (int, error) {
 
 func TestCmdHandoffAutoRejectsTarget(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := cmdHandoff([]string{"context cycle"}, "mayor", true, "", &stdout, &stderr); code == 0 {
+	if code := cmdHandoff(context.Background(), []string{"context cycle"}, "mayor", true, "", &stdout, &stderr); code == 0 {
 		t.Fatal("cmdHandoff returned 0 for --auto with --target")
 	}
 	if !strings.Contains(stderr.String(), "--auto cannot be used with --target") {
@@ -683,7 +683,7 @@ func TestCmdHandoff_Regression744_NamedSessionReturnsWithoutBlocking(t *testing.
 	t.Setenv("GC_ALIAS", "mayor")
 	t.Setenv("GC_SESSION_NAME", "mayor")
 
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -707,7 +707,7 @@ func TestCmdHandoff_Regression744_NamedSessionReturnsWithoutBlocking(t *testing.
 	var stdout, stderr bytes.Buffer
 	done := make(chan int, 1)
 	go func() {
-		done <- cmdHandoff([]string{"HANDOFF: context full"}, "", false, "", &stdout, &stderr)
+		done <- cmdHandoff(context.Background(), []string{"HANDOFF: context full"}, "", false, "", &stdout, &stderr)
 	}()
 
 	select {
@@ -932,7 +932,7 @@ func TestCmdHandoffRemoteDefaultSenderFallsBackToGCAliasWhenSessionIDMissing(t *
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -963,12 +963,12 @@ func TestCmdHandoffRemoteDefaultSenderFallsBackToGCAliasWhenSessionIDMissing(t *
 	_ = os.Unsetenv("GC_AGENT")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHandoffRemote([]string{"Context refresh", "Check current state"}, "recipient", &stdout, &stderr)
+	code := cmdHandoffRemote(context.Background(), []string{"Context refresh", "Check current state"}, "recipient", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdHandoffRemote() = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
-	storeAfter, err := openCityStoreAt(cityPath)
+	storeAfter, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt after handoff: %v", err)
 	}
@@ -1014,7 +1014,7 @@ func TestHandoffMailWritesTheBindingOnAMigratedCity(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	// --auto: the send without the restart request, so the assertion is about
 	// the message bead and nothing else.
-	if code := cmdHandoff([]string{"context cycle"}, "", true, "", &stdout, &stderr); code != 0 {
+	if code := cmdHandoff(context.Background(), []string{"context cycle"}, "", true, "", &stdout, &stderr); code != 0 {
 		t.Fatalf("gc handoff --auto exited %d: %s", code, stderr.String())
 	}
 	match := handoffMailIDPattern.FindStringSubmatch(stdout.String())
@@ -1031,7 +1031,7 @@ func TestHandoffMailWritesTheBindingOnAMigratedCity(t *testing.T) {
 	if _, err := binding.Get(msgID); err != nil {
 		t.Errorf("the handoff message did not land in the binding: %v", err)
 	}
-	work, err := openCityStoreAt(cityPath)
+	work, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("opening the retained work store: %v", err)
 	}

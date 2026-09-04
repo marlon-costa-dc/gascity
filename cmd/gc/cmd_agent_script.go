@@ -39,8 +39,8 @@ until a stable SDK boundary exists.
 For k8s-backed agent-script agents, set lifecycle = "one_shot" in the agent
 config so the runtime treats a clean script exit as expected work completion
 instead of startup death.`,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			code := runAgentScript(scriptPath, stdout, stderr)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			code := runAgentScript(cmd.Context(), scriptPath, stdout, stderr)
 			return exitForCode(code)
 		},
 	}
@@ -126,27 +126,30 @@ func (e agentScriptExecutor) runBDForBead(beadID string, args ...string) error {
 	return e.runCommand("bd", args...)
 }
 
-func runAgentScript(scriptPath string, stdout, stderr io.Writer) int {
+func runAgentScript(runCtx context.Context, scriptPath string, stdout, stderr io.Writer) int {
 	executor := agentScriptExecutor{
 		stdout: stdout,
 		stderr: stderr,
 		runCommand: func(name string, args ...string) error {
-			return runAgentScriptCommand(stdout, stderr, name, args...)
+			return runAgentScriptCommand(runCtx, stdout, stderr, name, args...)
 		},
 		runCommandInStore: func(dir string, env []string, name string, args ...string) error {
-			return runAgentScriptCommandInStore(stdout, stderr, dir, env, name, args...)
+			return runAgentScriptCommandInStore(runCtx, stdout, stderr, dir, env, name, args...)
 		},
-		resolveBeadStore: agentScriptCrossStoreBeadEnv,
+		resolveBeadStore: func(beadID string) (string, []string, bool) {
+			return agentScriptCrossStoreBeadEnv(runCtx, beadID)
+		},
 	}
 	executor.runShell = executor.runShellCommand
-	return runAgentScriptWithRuntime(scriptPath, stdout, stderr, executor, agentScriptHookBead)
+	return runAgentScriptWithRuntime(runCtx, scriptPath, stdout, stderr, executor, agentScriptHookBead)
 }
 
 func runAgentScriptWithRuntime(
+	runCtx context.Context,
 	scriptPath string,
 	stdout, stderr io.Writer,
 	executor agentScriptExecutor,
-	hookBead func(io.Writer) (agentScriptBead, bool, error),
+	hookBead func(context.Context, io.Writer) (agentScriptBead, bool, error),
 ) int {
 	script, err := loadAgentScriptDocument(scriptPath)
 	if err != nil {
@@ -165,19 +168,19 @@ func runAgentScriptWithRuntime(
 	}
 	if executor.runCommand == nil {
 		executor.runCommand = func(name string, args ...string) error {
-			return runAgentScriptCommand(stdout, stderr, name, args...)
+			return runAgentScriptCommand(runCtx, stdout, stderr, name, args...)
 		}
 	}
 	if executor.runShell == nil {
 		executor.runShell = executor.runShellCommand
 	}
 
-	ctx := agentScriptContext{
+	scriptCtx := agentScriptContext{
 		rig:   agentScriptRig(),
 		alias: agentScriptAlias(),
 	}
 	for _, action := range script.Setup {
-		if exitCode, err := executor.runAction(action, ctx); err != nil {
+		if exitCode, err := executor.runAction(action, scriptCtx); err != nil {
 			fmt.Fprintf(stderr, "gc agent-script: setup: %v\n", err) //nolint:errcheck
 			return 1
 		} else if exitCode != nil {
@@ -185,7 +188,7 @@ func runAgentScriptWithRuntime(
 		}
 	}
 
-	bead, hasWork, err := hookBead(stderr)
+	bead, hasWork, err := hookBead(runCtx, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc agent-script: hook: %v\n", err) //nolint:errcheck
 		return 1
@@ -197,7 +200,7 @@ func runAgentScriptWithRuntime(
 			return 1
 		}
 		hookState = "has_work"
-		ctx.bead = bead
+		scriptCtx.bead = bead
 	}
 	turn, ok := findAgentScriptTurn(script, hookState)
 	if !ok {
@@ -205,7 +208,7 @@ func runAgentScriptWithRuntime(
 		return 1
 	}
 	for _, action := range turn.Do {
-		exitCode, err := executor.runAction(action, ctx)
+		exitCode, err := executor.runAction(action, scriptCtx)
 		if err != nil {
 			fmt.Fprintf(stderr, "gc agent-script: %v\n", err) //nolint:errcheck
 			return 1
@@ -728,16 +731,16 @@ func (e agentScriptExecutor) runShellCommand(command string, env []string) error
 	return nil
 }
 
-func runAgentScriptCommand(stdout, stderr io.Writer, name string, args ...string) error {
-	return runAgentScriptCommandInStore(stdout, stderr, "", nil, name, args...)
+func runAgentScriptCommand(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) error {
+	return runAgentScriptCommandInStore(ctx, stdout, stderr, "", nil, name, args...)
 }
 
 // runAgentScriptCommandInStore runs a command like runAgentScriptCommand but, when
 // dir/env are supplied, points the subprocess at a specific store so a
 // cross-store claim/update lands in the bead's own store (vp-kvp stage iii). An
 // empty dir / nil env preserves the inherited working dir and environment.
-func runAgentScriptCommandInStore(stdout, stderr io.Writer, dir string, env []string, name string, args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), agentScriptActionTimeout)
+func runAgentScriptCommandInStore(parent context.Context, stdout, stderr io.Writer, dir string, env []string, name string, args ...string) error {
+	ctx, cancel := context.WithTimeout(parent, agentScriptActionTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = 2 * time.Second
@@ -762,15 +765,15 @@ func runAgentScriptCommandInStore(stdout, stderr io.Writer, dir string, env []st
 	return nil
 }
 
-type agentScriptHookRunner func(args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int
+type agentScriptHookRunner func(ctx context.Context, args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int
 
-func agentScriptHookBead(stderr io.Writer) (agentScriptBead, bool, error) {
-	return agentScriptHookBeadWithRunner(stderr, cmdHookWithFormat)
+func agentScriptHookBead(ctx context.Context, stderr io.Writer) (agentScriptBead, bool, error) {
+	return agentScriptHookBeadWithRunner(ctx, stderr, cmdHookWithFormat)
 }
 
-func agentScriptHookBeadWithRunner(stderr io.Writer, runHook agentScriptHookRunner) (agentScriptBead, bool, error) {
+func agentScriptHookBeadWithRunner(ctx context.Context, stderr io.Writer, runHook agentScriptHookRunner) (agentScriptBead, bool, error) {
 	var hookOut, hookErr bytes.Buffer
-	code := runHook(nil, false, "", &hookOut, &hookErr)
+	code := runHook(ctx, nil, false, "", &hookOut, &hookErr)
 	if hookErr.Len() > 0 {
 		_, _ = stderr.Write(hookErr.Bytes())
 	}

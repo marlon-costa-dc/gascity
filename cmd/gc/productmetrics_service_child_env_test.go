@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -60,7 +61,7 @@ func TestProductMetricsServiceChildEnvDriftRestart(t *testing.T) {
 func TestProductMetricsServiceChildEnvAgentScriptMailSend(t *testing.T) {
 	installProductMetricsDirectChildSpyCommand(t, "gc")
 	entries := captureProductMetricsDirectChildEnv(t, func() error {
-		return runAgentScriptCommand(io.Discard, io.Discard, "gc", "mail", "send", "worker", "subject")
+		return runAgentScriptCommand(context.Background(), io.Discard, io.Discard, "gc", "mail", "send", "worker", "subject")
 	})
 	assertProductMetricsDirectChildEnv(t, entries)
 }
@@ -71,7 +72,7 @@ func TestProductMetricsServiceChildEnvAgentScriptExplicitStoreEnv(t *testing.T) 
 	entries := captureProductMetricsDirectChildEnv(t, func() error {
 		env := append([]string(nil), os.Environ()...)
 		env = append(env, execenv.UsageMetricsDisableEnv+"=hostile-explicit-late-value")
-		return runAgentScriptCommandInStore(io.Discard, io.Discard, dir, env, "gc", "mail", "send", "worker", "subject")
+		return runAgentScriptCommandInStore(context.Background(), io.Discard, io.Discard, dir, env, "gc", "mail", "send", "worker", "subject")
 	})
 	assertProductMetricsDirectChildEnv(t, entries)
 	if got := valuesForProductMetricsDirectChildKey(entries, "PWD"); !slices.Equal(got, []string{dir}) {
@@ -82,7 +83,7 @@ func TestProductMetricsServiceChildEnvAgentScriptExplicitStoreEnv(t *testing.T) 
 func TestProductMetricsServiceChildEnvAgentScriptBDIsUnaffected(t *testing.T) {
 	installProductMetricsDirectChildSpyCommand(t, "bd")
 	entries := captureProductMetricsDirectChildEnv(t, func() error {
-		return runAgentScriptCommand(io.Discard, io.Discard, "bd", "show", "gc-test")
+		return runAgentScriptCommand(context.Background(), io.Discard, io.Discard, "bd", "show", "gc-test")
 	})
 	if got := valuesForProductMetricsDirectChildKey(entries, execenv.UsageMetricsDisableEnv); !slices.Equal(got, []string{"0"}) {
 		t.Fatalf("agent-script bd child %s values = %#v, want inherited [0]", execenv.UsageMetricsDisableEnv, got)
@@ -155,9 +156,6 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 				t.Fatalf("launchctl getenv probes for fixed service key %s = %d, want 0", execenv.UsageMetricsDisableEnv, launchctlGCProbes)
 			}
 			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
-				if !slices.Contains(data.InheritedEnv, key) {
-					t.Fatalf("supervisor InheritedEnv missing explicit name %s: %#v", key, data.InheritedEnv)
-				}
 				if _, ok := supervisorServiceEnvMap(data.ExtraEnv)[key]; ok {
 					t.Fatalf("supervisor ExtraEnv contains explicit value for %s", key)
 				}
@@ -179,10 +177,8 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			}, func(key, value string) string {
 				return "Environment=" + systemdEnv(key, value)
 			})
-			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
-				if !strings.Contains(systemdContent, "PassEnvironment="+key) {
-					t.Fatalf("systemd service missing inherited name %s:\n%s", key, systemdContent)
-				}
+			if strings.Contains(systemdContent, "PassEnvironment=") {
+				t.Fatalf("systemd service retained inherited environment:\n%s", systemdContent)
 			}
 			wantExecStart := "ExecStart=" + supervisorSystemdQuotePath(data.GCPath) + " supervisor run"
 			if !strings.Contains(systemdContent, wantExecStart) {

@@ -27,9 +27,10 @@ import (
 )
 
 // nudgeFunc is an optional callback for nudging an agent after sending or
-// replying to mail. When non-nil, it is called with the recipient name.
+// replying to mail. When non-nil, it is called with the command context and
+// recipient name.
 // Errors are non-fatal.
-type nudgeFunc func(recipient string) error
+type nudgeFunc func(context.Context, string) error
 
 const (
 	mailInjectMaxMessages          = 3
@@ -114,12 +115,12 @@ func summarizeMailMessage(m mail.Message) mailMessageSummary {
 }
 
 func newMailNudgeFunc(sender string) nudgeFunc {
-	return func(recipient string) error {
-		target, err := resolveNudgeTarget(recipient, io.Discard)
+	return func(ctx context.Context, recipient string) error {
+		target, err := resolveNudgeTarget(ctx, recipient, io.Discard)
 		if err != nil {
 			return err
 		}
-		return sendMailNotify(target, sender)
+		return sendMailNotify(ctx, target, sender)
 	}
 }
 
@@ -214,7 +215,7 @@ func cmdMailArchive(args []string, stdout, stderr io.Writer) int {
 }
 
 func cmdMailArchiveJSON(args []string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail archive")
+	mp, code := openCityMailProvider(context.Background(), stderr, "gc mail archive")
 	if mp == nil {
 		return code
 	}
@@ -240,7 +241,7 @@ func (o mailArchiveSelectOptions) hasContentFilter() bool {
 }
 
 func cmdMailArchiveSelectedJSON(args []string, opts mailArchiveSelectOptions, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail archive")
+	mp, code := openCityMailProvider(context.Background(), stderr, "gc mail archive")
 	if mp == nil {
 		return code
 	}
@@ -515,8 +516,8 @@ $GC_ALIAS, $GC_AGENT, or "human".`,
   gc mail check --inject
   gc mail check mayor`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdMailCheckWithFormat(args, inject, hookFormat, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdMailCheckWithFormat(cmd.Context(), args, inject, hookFormat, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -527,7 +528,7 @@ $GC_ALIAS, $GC_AGENT, or "human".`,
 	return cmd
 }
 
-func cmdMailCheckWithFormat(args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int {
+func cmdMailCheckWithFormat(ctx context.Context, args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int {
 	// --inject writes a <system-reminder> straight into a provider's system
 	// prompt. With no recipient argument the mailbox falls back through
 	// GC_SESSION_ID/GC_ALIAS/GC_AGENT to "human"
@@ -550,10 +551,10 @@ func cmdMailCheckWithFormat(args []string, inject bool, hookFormat string, stdou
 		}
 	}
 	if cityPathErr != nil {
-		return doMailCheckFallback(args, inject, hookFormat, stdout, stderr)
+		return doMailCheckFallback(ctx, args, inject, hookFormat, stdout, stderr)
 	}
 	c, reason := mailCheckAPIClient(cityPath)
-	return routeMailCheck(cityPath, args, inject, hookFormat, c, reason, stdout, stderr)
+	return routeMailCheck(ctx, cityPath, args, inject, hookFormat, c, reason, stdout, stderr)
 }
 
 // mailCheckAPIClient returns (client, "") when the API path is available,
@@ -573,7 +574,7 @@ var mailCheckAPIClient = func(cityPath string) (*api.Client, string) {
 // path because provider-backed mail may need to perform delivery side effects
 // after successful injection.
 // Emits exactly one route=... log line per exit path (gated on GC_DEBUG).
-func routeMailCheck(_ string, args []string, inject bool, hookFormat string, c *api.Client, nilReason string, stdout, stderr io.Writer) int {
+func routeMailCheck(ctx context.Context, _ string, args []string, inject bool, hookFormat string, c *api.Client, nilReason string, stdout, stderr io.Writer) int {
 	const cmdName = "mail check"
 	recipient := defaultMailIdentity()
 	if len(args) > 0 {
@@ -601,7 +602,7 @@ func routeMailCheck(_ string, args []string, inject bool, hookFormat string, c *
 			}
 		}
 		logRoute(stderr, cmdName, "fallback", "inject-local-side-effects")
-		return doMailCheckFallback(args, inject, hookFormat, stdout, stderr)
+		return doMailCheckFallback(ctx, args, inject, hookFormat, stdout, stderr)
 	}
 	if c != nil {
 		cr, err := c.ListMailInbox(recipient, "")
@@ -623,7 +624,7 @@ func routeMailCheck(_ string, args []string, inject bool, hookFormat string, c *
 	} else {
 		logRoute(stderr, cmdName, "fallback", nilReason)
 	}
-	return doMailCheckFallback(args, inject, hookFormat, stdout, stderr)
+	return doMailCheckFallback(ctx, args, inject, hookFormat, stdout, stderr)
 }
 
 // renderMailCheckFromAPI formats the API-sourced inbox for `gc mail check`.
@@ -697,8 +698,8 @@ func formatMailCheckPartialDegradedNotice() string {
 }
 
 // doMailCheckFallback is the direct-bd path for `gc mail check`.
-func doMailCheckFallback(args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail check")
+func doMailCheckFallback(ctx context.Context, args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int {
+	mp, code := openCityMailProvider(ctx, stderr, "gc mail check")
 	if mp == nil {
 		if inject {
 			return 0 // --inject always exits 0
@@ -706,7 +707,7 @@ func doMailCheckFallback(args []string, inject bool, hookFormat string, stdout, 
 		return code
 	}
 
-	target, ok := resolveMailTargetFromArgs(args, stderr, "gc mail check")
+	target, ok := resolveMailTargetFromArgs(ctx, args, stderr, "gc mail check")
 	if !ok {
 		if inject {
 			return 0
@@ -1277,14 +1278,14 @@ func resolveMailTargetsCached(sessStore beads.Store, identifier string, cache *m
 	}, nil
 }
 
-func resolveMailTargetsForCommand(identifier string, stderr io.Writer, cmdName string) (resolvedMailTarget, bool) {
+func resolveMailTargetsForCommand(ctx context.Context, identifier string, stderr io.Writer, cmdName string) (resolvedMailTarget, bool) {
 	if normalized := normalizeNamedSessionTarget(identifier); normalized == "" || normalized == "human" {
 		return resolvedMailTarget{display: "human", recipients: []string{"human"}}, true
 	}
 	if isStorelessMailProvider() {
-		return resolveRawMailTargetForStorelessProvider(identifier, stderr, cmdName)
+		return resolveRawMailTargetForStorelessProvider(ctx, identifier, stderr, cmdName)
 	}
-	store, code := openCityStore(stderr, cmdName)
+	store, code := openCityStore(ctx, stderr, cmdName)
 	if store == nil {
 		_ = code
 		return resolvedMailTarget{}, false
@@ -1302,12 +1303,12 @@ func resolveMailTargetsForCommand(identifier string, stderr io.Writer, cmdName s
 // against the city's bead store and returns the first that resolves. A
 // stale GC_ALIAS on a pool worker would otherwise block inbox access when
 // GC_SESSION_ID still matches the bead via session_name.
-func resolveDefaultMailTargetsForCommand(stderr io.Writer, cmdName string) (resolvedMailTarget, bool) {
+func resolveDefaultMailTargetsForCommand(ctx context.Context, stderr io.Writer, cmdName string) (resolvedMailTarget, bool) {
 	candidates := defaultMailIdentityCandidates()
 	if len(candidates) == 1 || isStorelessMailProvider() {
-		return resolveMailTargetsForCommand(candidates[0], stderr, cmdName)
+		return resolveMailTargetsForCommand(ctx, candidates[0], stderr, cmdName)
 	}
-	store, code := openCityStore(stderr, cmdName)
+	store, code := openCityStore(ctx, stderr, cmdName)
 	if store == nil {
 		_ = code
 		return resolvedMailTarget{}, false
@@ -1351,18 +1352,18 @@ func resolveDefaultMailSenderForCommandCached(cityPath string, cfg *config.City,
 	return "", false
 }
 
-func resolveMailTargetFromArgs(args []string, stderr io.Writer, cmdName string) (resolvedMailTarget, bool) {
+func resolveMailTargetFromArgs(ctx context.Context, args []string, stderr io.Writer, cmdName string) (resolvedMailTarget, bool) {
 	if len(args) > 0 {
-		return resolveMailTargetsForCommand(args[0], stderr, cmdName)
+		return resolveMailTargetsForCommand(ctx, args[0], stderr, cmdName)
 	}
-	return resolveDefaultMailTargetsForCommand(stderr, cmdName)
+	return resolveDefaultMailTargetsForCommand(ctx, stderr, cmdName)
 }
 
-func resolveRawMailTargetForStorelessProvider(identifier string, stderr io.Writer, cmdName string) (resolvedMailTarget, bool) {
+func resolveRawMailTargetForStorelessProvider(ctx context.Context, identifier string, stderr io.Writer, cmdName string) (resolvedMailTarget, bool) {
 	if !isStorelessMailProvider() {
 		return resolvedMailTarget{}, false
 	}
-	store, err := openMailTargetStore()
+	store, err := openMailTargetStore(ctx)
 	if err != nil {
 		if isNoCityStoreError(err) {
 			return resolvedMailTarget{display: identifier, recipients: []string{identifier}}, true
@@ -1394,16 +1395,16 @@ func isNoCityStoreError(err error) bool {
 
 var openMailTargetStore = tryOpenCityStore
 
-func tryOpenCityStore() (beads.Store, error) {
+func tryOpenCityStore(ctx context.Context) (beads.Store, error) {
 	cityPath, err := resolveCity()
 	if err != nil {
 		return nil, err
 	}
-	return openStoreAtForCity(cityPath, cityPath)
+	return openStoreAtForCity(ctx, cityPath, cityPath)
 }
 
-func resolveMailAddressForCommand(identifier string, stderr io.Writer, cmdName string) (string, bool) {
-	target, ok := resolveMailTargetsForCommand(identifier, stderr, cmdName)
+func resolveMailAddressForCommand(ctx context.Context, identifier string, stderr io.Writer, cmdName string) (string, bool) {
+	target, ok := resolveMailTargetsForCommand(ctx, identifier, stderr, cmdName)
 	if !ok {
 		return "", false
 	}
@@ -1485,12 +1486,12 @@ Use --all to broadcast to all live sessions (excluding sender and "human").`,
   gc mail send polecat "Priority task" --notify
   gc mail send --all "Status update: tests passing"`,
 		Args: cobra.ArbitraryArgs,
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			code := 0
 			if jsonOut {
-				code = cmdMailSendJSON(args, notify, all, from, to, subject, message, true, stdout, stderr)
+				code = cmdMailSendJSON(cmd.Context(), args, notify, all, from, to, subject, message, true, stdout, stderr)
 			} else {
-				code = cmdMailSend(args, notify, all, from, to, subject, message, stdout, stderr)
+				code = cmdMailSend(cmd.Context(), args, notify, all, from, to, subject, message, stdout, stderr)
 			}
 			if code != 0 {
 				return errExit
@@ -1521,8 +1522,8 @@ func newMailInboxCmd(stdout, stderr io.Writer) *cobra.Command {
 Shows message ID, sender, subject, and body in a table. The recipient defaults
 to $GC_SESSION_ID, $GC_ALIAS, $GC_AGENT, or "human". Pass a session alias to view another inbox.`,
 		Args: cobra.ArbitraryArgs,
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdMailInboxWithJSON(args, jsonOut, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdMailInboxWithJSON(cmd.Context(), args, jsonOut, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -1590,12 +1591,12 @@ it can request a wake for a non-running recipient.
 Unread mail alone does not request a wake.
 Use -s/--subject for the reply subject and -m/--message for the reply body.`,
 		Args: cobra.ArbitraryArgs,
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			code := 0
 			if jsonOut {
-				code = cmdMailReplyJSON(args, subject, message, notify, true, stdout, stderr)
+				code = cmdMailReplyJSON(cmd.Context(), args, subject, message, notify, true, stdout, stderr)
 			} else {
-				code = cmdMailReply(args, subject, message, notify, stdout, stderr)
+				code = cmdMailReply(cmd.Context(), args, subject, message, notify, stdout, stderr)
 			}
 			if code != 0 {
 				return errExit
@@ -1712,8 +1713,8 @@ func newMailCountCmd(stdout, stderr io.Writer) *cobra.Command {
 		Long: `Show total and unread message counts for a session alias or human.
 The recipient defaults to $GC_SESSION_ID, $GC_ALIAS, $GC_AGENT, or "human".`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
-			if cmdMailCountWithJSON(args, jsonOut, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmdMailCountWithJSON(cmd.Context(), args, jsonOut, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -1726,12 +1727,12 @@ The recipient defaults to $GC_SESSION_ID, $GC_ALIAS, $GC_AGENT, or "human".`,
 // cmdMailSend is the CLI entry point for sending mail. It opens the provider,
 // resolves session mailbox identities, and delegates to doMailSend.
 // The to parameter is the --to flag value (empty if not set).
-func cmdMailSend(args []string, notify bool, all bool, from string, to string, subject string, message string, stdout, stderr io.Writer) int {
-	return cmdMailSendJSON(args, notify, all, from, to, subject, message, false, stdout, stderr)
+func cmdMailSend(ctx context.Context, args []string, notify bool, all bool, from string, to string, subject string, message string, stdout, stderr io.Writer) int {
+	return cmdMailSendJSON(ctx, args, notify, all, from, to, subject, message, false, stdout, stderr)
 }
 
-func cmdMailSendJSON(args []string, notify bool, all bool, from string, to string, subject string, message string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail send")
+func cmdMailSendJSON(ctx context.Context, args []string, notify bool, all bool, from string, to string, subject string, message string, jsonOut bool, stdout, stderr io.Writer) int {
+	mp, code := openCityMailProvider(ctx, stderr, "gc mail send")
 	if mp == nil {
 		return code
 	}
@@ -1744,7 +1745,7 @@ func cmdMailSendJSON(args []string, notify bool, all bool, from string, to strin
 	cityPath, err := resolveCity()
 	if err == nil {
 		cfg, _ = loadCityConfig(cityPath, stderr)
-		store, err = openStoreAtForCity(cityPath, cityPath)
+		store, err = openStoreAtForCity(ctx, cityPath, cityPath)
 	}
 	// Narrower than isStorelessMailProvider: exec: providers can legitimately
 	// run without a city store, but fake/fail still require one for alias
@@ -1835,21 +1836,21 @@ func cmdMailSendJSON(args []string, notify bool, all bool, from string, to strin
 
 	if all {
 		rec := openCityRecorder(stderr)
-		return doMailSendAllJSON(mp, rec, validRecipients, sender, args, nf, jsonOut, stdout, stderr)
+		return doMailSendAllJSON(ctx, mp, rec, validRecipients, sender, args, nf, jsonOut, stdout, stderr)
 	}
 
 	rec := openCityRecorder(stderr)
-	return doMailSendJSON(mp, rec, validRecipients, sender, args, nf, jsonOut, stdout, stderr)
+	return doMailSendJSON(ctx, mp, rec, validRecipients, sender, args, nf, jsonOut, stdout, stderr)
 }
 
 // doMailSend creates a message addressed to a recipient. args is [to, subject, body]
 // or [to, body] (subject="" if no -s flag). When nudgeFn is non-nil, the
 // recipient is nudged after message creation (skipped for "human").
-func doMailSend(mp mail.Provider, rec events.Recorder, validRecipients map[string]bool, sender string, args []string, nudgeFn nudgeFunc, stdout, stderr io.Writer) int {
-	return doMailSendJSON(mp, rec, validRecipients, sender, args, nudgeFn, false, stdout, stderr)
+func doMailSend(ctx context.Context, mp mail.Provider, rec events.Recorder, validRecipients map[string]bool, sender string, args []string, nudgeFn nudgeFunc, stdout, stderr io.Writer) int {
+	return doMailSendJSON(ctx, mp, rec, validRecipients, sender, args, nudgeFn, false, stdout, stderr)
 }
 
-func doMailSendJSON(mp mail.Provider, rec events.Recorder, validRecipients map[string]bool, sender string, args []string, nudgeFn nudgeFunc, jsonOut bool, stdout, stderr io.Writer) int {
+func doMailSendJSON(ctx context.Context, mp mail.Provider, rec events.Recorder, validRecipients map[string]bool, sender string, args []string, nudgeFn nudgeFunc, jsonOut bool, stdout, stderr io.Writer) int {
 	if len(args) < 2 {
 		fmt.Fprintln(stderr, "gc mail send: usage: gc mail send <to> <body>  OR  gc mail send <to> -s <subject> [-m <body>]") //nolint:errcheck // best-effort stderr
 		return 1
@@ -1881,7 +1882,7 @@ func doMailSendJSON(mp mail.Provider, rec events.Recorder, validRecipients map[s
 	}
 
 	m, err := mp.Send(sender, to, subject, body)
-	telemetry.RecordMailOp(context.Background(), "send", err)
+	telemetry.RecordMailOp(ctx, "send", err)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc mail send: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -1900,7 +1901,7 @@ func doMailSendJSON(mp mail.Provider, rec events.Recorder, validRecipients map[s
 	// Nudge recipient if requested and recipient is not human.
 	notified := false
 	if nudgeFn != nil && to != "human" {
-		if err := nudgeFn(to); err != nil {
+		if err := nudgeFn(ctx, to); err != nil {
 			fmt.Fprintf(stderr, "gc mail send: nudge failed: %v\n", err) //nolint:errcheck // best-effort stderr
 		} else {
 			notified = true
@@ -1915,11 +1916,11 @@ func doMailSendJSON(mp mail.Provider, rec events.Recorder, validRecipients map[s
 
 // doMailSendAll broadcasts a message to all live session mailboxes (excluding the
 // sender and "human"). With --all, args is [subject, body] or [body].
-func doMailSendAll(mp mail.Provider, rec events.Recorder, validRecipients map[string]bool, sender string, args []string, stdout, stderr io.Writer) int {
-	return doMailSendAllJSON(mp, rec, validRecipients, sender, args, nil, false, stdout, stderr)
+func doMailSendAll(ctx context.Context, mp mail.Provider, rec events.Recorder, validRecipients map[string]bool, sender string, args []string, stdout, stderr io.Writer) int {
+	return doMailSendAllJSON(ctx, mp, rec, validRecipients, sender, args, nil, false, stdout, stderr)
 }
 
-func doMailSendAllJSON(mp mail.Provider, rec events.Recorder, validRecipients map[string]bool, sender string, args []string, nudgeFn nudgeFunc, jsonOut bool, stdout, stderr io.Writer) int {
+func doMailSendAllJSON(ctx context.Context, mp mail.Provider, rec events.Recorder, validRecipients map[string]bool, sender string, args []string, nudgeFn nudgeFunc, jsonOut bool, stdout, stderr io.Writer) int {
 	if len(args) < 1 {
 		fmt.Fprintln(stderr, "gc mail send --all: usage: gc mail send --all <body>") //nolint:errcheck // best-effort stderr
 		return 1
@@ -1974,7 +1975,7 @@ func doMailSendAllJSON(mp mail.Provider, rec events.Recorder, validRecipients ma
 		}
 
 		if nudgeFn != nil {
-			if err := nudgeFn(to); err != nil {
+			if err := nudgeFn(ctx, to); err != nil {
 				fmt.Fprintf(stderr, "gc mail send --all: nudge %s failed: %v\n", to, err) //nolint:errcheck // best-effort stderr
 			} else {
 				notified = true
@@ -1988,17 +1989,17 @@ func doMailSendAllJSON(mp mail.Provider, rec events.Recorder, validRecipients ma
 }
 
 // cmdMailInbox is the CLI entry point for checking the inbox.
-func cmdMailInbox(args []string, stdout, stderr io.Writer) int {
-	return cmdMailInboxWithJSON(args, false, stdout, stderr)
+func cmdMailInbox(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	return cmdMailInboxWithJSON(ctx, args, false, stdout, stderr)
 }
 
-func cmdMailInboxWithJSON(args []string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail inbox")
+func cmdMailInboxWithJSON(ctx context.Context, args []string, jsonOut bool, stdout, stderr io.Writer) int {
+	mp, code := openCityMailProvider(ctx, stderr, "gc mail inbox")
 	if mp == nil {
 		return code
 	}
 
-	target, ok := resolveMailTargetFromArgs(args, stderr, "gc mail inbox")
+	target, ok := resolveMailTargetFromArgs(ctx, args, stderr, "gc mail inbox")
 	if !ok {
 		return 1
 	}
@@ -2054,7 +2055,7 @@ func doMailInboxTargetWithJSON(mp mailInboxReader, target resolvedMailTarget, js
 }
 
 func cmdMailReadWithJSON(args []string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail read")
+	mp, code := openCityMailProvider(context.Background(), stderr, "gc mail read")
 	if mp == nil {
 		return code
 	}
@@ -2167,7 +2168,7 @@ func routeMailPeek(_ string, args []string, c *api.Client, nilReason string, jso
 
 // doMailPeekFallback is the direct-bd path for `gc mail peek`.
 func doMailPeekFallback(args []string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail peek")
+	mp, code := openCityMailProvider(context.Background(), stderr, "gc mail peek")
 	if mp == nil {
 		return code
 	}
@@ -2208,17 +2209,17 @@ func doMailPeekWithJSON(mp mail.Provider, args []string, jsonOut bool, stdout, s
 }
 
 // cmdMailReply replies to a message.
-func cmdMailReply(args []string, subject, message string, notify bool, stdout, stderr io.Writer) int {
-	return cmdMailReplyJSON(args, subject, message, notify, false, stdout, stderr)
+func cmdMailReply(ctx context.Context, args []string, subject, message string, notify bool, stdout, stderr io.Writer) int {
+	return cmdMailReplyJSON(ctx, args, subject, message, notify, false, stdout, stderr)
 }
 
-func cmdMailReplyJSON(args []string, subject, message string, notify bool, jsonOut bool, stdout, stderr io.Writer) int {
+func cmdMailReplyJSON(ctx context.Context, args []string, subject, message string, notify bool, jsonOut bool, stdout, stderr io.Writer) int {
 	if len(args) < 1 {
 		fmt.Fprintln(stderr, "gc mail reply: missing message ID") //nolint:errcheck // best-effort stderr
 		return 1
 	}
 
-	mp, code := openCityMailProvider(stderr, "gc mail reply")
+	mp, code := openCityMailProvider(ctx, stderr, "gc mail reply")
 	if mp == nil {
 		return code
 	}
@@ -2237,7 +2238,7 @@ func cmdMailReplyJSON(args []string, subject, message string, notify bool, jsonO
 			cityPath, err = resolveCity()
 			if err == nil {
 				cfg, _ = loadCityConfig(cityPath, stderr)
-				store, err = openStoreAtForCity(cityPath, cityPath)
+				store, err = openStoreAtForCity(ctx, cityPath, cityPath)
 			}
 			if err != nil {
 				notifySetupErr = err
@@ -2245,7 +2246,7 @@ func cmdMailReplyJSON(args []string, subject, message string, notify bool, jsonO
 			}
 		case !isStorelessMailProvider():
 			var storeCode int
-			store, storeCode = openCityStore(stderr, "gc mail reply")
+			store, storeCode = openCityStore(ctx, stderr, "gc mail reply")
 			if store == nil {
 				return storeCode
 			}
@@ -2281,17 +2282,17 @@ func cmdMailReplyJSON(args []string, subject, message string, notify bool, jsonO
 		fmt.Fprintf(stderr, "gc mail reply: --notify requested but no city store available; nudge skipped: %v\n", notifySetupErr) //nolint:errcheck // best-effort stderr
 	}
 
-	return doMailReplyJSON(mp, rec, args[0], sender, subject, body, nf, jsonOut, stdout, stderr)
+	return doMailReplyJSON(ctx, mp, rec, args[0], sender, subject, body, nf, jsonOut, stdout, stderr)
 }
 
 // doMailReply creates a reply to an existing message.
-func doMailReply(mp mail.Provider, rec events.Recorder, id, sender, subject, body string, nudgeFn nudgeFunc, stdout, stderr io.Writer) int {
-	return doMailReplyJSON(mp, rec, id, sender, subject, body, nudgeFn, false, stdout, stderr)
+func doMailReply(ctx context.Context, mp mail.Provider, rec events.Recorder, id, sender, subject, body string, nudgeFn nudgeFunc, stdout, stderr io.Writer) int {
+	return doMailReplyJSON(ctx, mp, rec, id, sender, subject, body, nudgeFn, false, stdout, stderr)
 }
 
-func doMailReplyJSON(mp mail.Provider, rec events.Recorder, id, sender, subject, body string, nudgeFn nudgeFunc, jsonOut bool, stdout, stderr io.Writer) int {
+func doMailReplyJSON(ctx context.Context, mp mail.Provider, rec events.Recorder, id, sender, subject, body string, nudgeFn nudgeFunc, jsonOut bool, stdout, stderr io.Writer) int {
 	reply, err := mp.Reply(id, sender, subject, body)
-	telemetry.RecordMailOp(context.Background(), "reply", err)
+	telemetry.RecordMailOp(ctx, "reply", err)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc mail reply: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -2309,7 +2310,7 @@ func doMailReplyJSON(mp mail.Provider, rec events.Recorder, id, sender, subject,
 
 	notified := false
 	if nudgeFn != nil && reply.To != "human" {
-		if err := nudgeFn(reply.To); err != nil {
+		if err := nudgeFn(ctx, reply.To); err != nil {
 			fmt.Fprintf(stderr, "gc mail reply: nudge failed: %v\n", err) //nolint:errcheck // best-effort stderr
 		} else {
 			notified = true
@@ -2328,7 +2329,7 @@ func cmdMailMarkRead(args []string, stdout, stderr io.Writer) int {
 }
 
 func cmdMailMarkReadJSON(args []string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail mark-read")
+	mp, code := openCityMailProvider(context.Background(), stderr, "gc mail mark-read")
 	if mp == nil {
 		return code
 	}
@@ -2372,7 +2373,7 @@ func cmdMailMarkUnread(args []string, stdout, stderr io.Writer) int {
 }
 
 func cmdMailMarkUnreadJSON(args []string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail mark-unread")
+	mp, code := openCityMailProvider(context.Background(), stderr, "gc mail mark-unread")
 	if mp == nil {
 		return code
 	}
@@ -2416,7 +2417,7 @@ func cmdMailDelete(args []string, stdout, stderr io.Writer) int {
 }
 
 func cmdMailDeleteJSON(args []string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail delete")
+	mp, code := openCityMailProvider(context.Background(), stderr, "gc mail delete")
 	if mp == nil {
 		return code
 	}
@@ -2527,7 +2528,7 @@ func doMailDeleteManyJSON(mp mail.Provider, rec events.Recorder, ids []string, j
 }
 
 func cmdMailThreadWithJSON(args []string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail thread")
+	mp, code := openCityMailProvider(context.Background(), stderr, "gc mail thread")
 	if mp == nil {
 		return code
 	}
@@ -2599,13 +2600,13 @@ func canonicalMailThreadID(fallback string, msgs []mail.Message) string {
 	return fallback
 }
 
-func cmdMailCountWithJSON(args []string, jsonOut bool, stdout, stderr io.Writer) int {
+func cmdMailCountWithJSON(ctx context.Context, args []string, jsonOut bool, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
-		return doMailCountFallback(args, jsonOut, stdout, stderr)
+		return doMailCountFallback(ctx, args, jsonOut, stdout, stderr)
 	}
 	c, reason := mailCountAPIClient(cityPath)
-	return routeMailCount(cityPath, args, c, reason, jsonOut, stdout, stderr)
+	return routeMailCount(ctx, cityPath, args, c, reason, jsonOut, stdout, stderr)
 }
 
 // mailCountAPIClient returns (client, "") when the API path is available,
@@ -2621,7 +2622,7 @@ var mailCountAPIClient = func(cityPath string) (*api.Client, string) {
 // routeMailCount dispatches `mail count` to the supervisor API when a
 // controller is up; otherwise falls back to the local mail-provider path.
 // Emits exactly one route=... log line per exit path (gated on GC_DEBUG).
-func routeMailCount(_ string, args []string, c *api.Client, nilReason string, jsonOut bool, stdout, stderr io.Writer) int {
+func routeMailCount(ctx context.Context, _ string, args []string, c *api.Client, nilReason string, jsonOut bool, stdout, stderr io.Writer) int {
 	recipient := defaultMailIdentity()
 	if len(args) > 0 {
 		recipient = strings.TrimSpace(args[0])
@@ -2658,18 +2659,18 @@ func routeMailCount(_ string, args []string, c *api.Client, nilReason string, js
 			}
 			return 0
 		},
-		func() int { return doMailCountFallback(args, jsonOut, stdout, stderr) },
+		func() int { return doMailCountFallback(ctx, args, jsonOut, stdout, stderr) },
 	)
 }
 
 // doMailCountFallback is the direct-bd path for `gc mail count`.
-func doMailCountFallback(args []string, jsonOut bool, stdout, stderr io.Writer) int {
-	mp, code := openCityMailProvider(stderr, "gc mail count")
+func doMailCountFallback(ctx context.Context, args []string, jsonOut bool, stdout, stderr io.Writer) int {
+	mp, code := openCityMailProvider(ctx, stderr, "gc mail count")
 	if mp == nil {
 		return code
 	}
 
-	target, ok := resolveMailTargetFromArgs(args, stderr, "gc mail count")
+	target, ok := resolveMailTargetFromArgs(ctx, args, stderr, "gc mail count")
 	if !ok {
 		return 1
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,7 +37,7 @@ dolt.user: agent
 		t.Fatal(err)
 	}
 
-	env, err := bdRuntimeEnvWithError(cityPath)
+	env, err := bdRuntimeEnvWithError(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvWithError() error = %v", err)
 	}

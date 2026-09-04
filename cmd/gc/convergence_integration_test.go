@@ -39,7 +39,7 @@ func setupConvergenceRuntime(t *testing.T) (*CityRuntime, *beads.MemStore) {
 		cityName: "test",
 		cfg:      cfg,
 		sp:       sp,
-		buildFn: func(_ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+		buildFn: func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 			return DesiredStateResult{}
 		},
 		rec:                 events.Discard,

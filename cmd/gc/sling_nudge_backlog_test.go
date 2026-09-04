@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -67,7 +68,7 @@ func timeEnqueue(t *testing.T, backlog int, latency time.Duration) enqueueTiming
 	store := &advancingNudgeStore{fakeClock: fakeClock, latency: latency, failAfter: maxOps}
 	item := queuedNudge{ID: "nudge-new", Agent: "gascity/deployer", Source: "sling", Message: "Work slung. Check your hook."}
 	start := fakeClock.Now()
-	if err := enqueueQueuedNudgeWithStoreAndClock(cityPath, beads.NudgesStore{Store: store}, item, fakeClock); err != nil {
+	if err := enqueueQueuedNudgeWithStoreAndClock(context.Background(), cityPath, beads.NudgesStore{Store: store}, item, fakeClock); err != nil {
 		t.Fatalf("enqueue (backlog=%d): %v", backlog, err)
 	}
 	timing := enqueueTiming{

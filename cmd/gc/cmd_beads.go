@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -60,8 +61,8 @@ and is not wired for this command; use --format=json.`,
   gc beads list --label ready-to-build
   gc beads list --status open --format=json`,
 		Args: cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if cmdBeadsList(format, beadFilters{label: label, status: status, all: all}, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmdBeadsList(cmd.Context(), format, beadFilters{label: label, status: status, all: all}, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -95,12 +96,12 @@ command; use --format=json.`,
 		// depends on. ExactArgs would reject the zero-arg case in cobra, before
 		// the resolver, inverting that documented ordering.
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			id := ""
 			if len(args) > 0 {
 				id = args[0]
 			}
-			if cmdBeadsShow(id, format, stdout, stderr) != 0 {
+			if cmdBeadsShow(cmd.Context(), id, format, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -114,9 +115,9 @@ command; use --format=json.`,
 // and filters are parsed by cobra (see newBeadsListCmd) and passed in. Routes
 // through the supervisor API when a controller is up and falls back to a direct
 // multi-store read otherwise.
-func cmdBeadsList(format string, filters beadFilters, stdout, stderr io.Writer) int {
+func cmdBeadsList(ctx context.Context, format string, filters beadFilters, stdout, stderr io.Writer) int {
 	return routeReadCmd("beads list", stderr, beadsListAPIClient, func(cityPath string, c *api.Client, nilReason string) int {
-		return routeBeadsList(cityPath, c, nilReason, format, filters, stdout, stderr)
+		return routeBeadsList(ctx, cityPath, c, nilReason, format, filters, stdout, stderr)
 	})
 }
 
@@ -134,7 +135,7 @@ var beadsListAPIClient = func(cityPath string) (*api.Client, string) {
 // routeBeadsList dispatches `beads list` to the supervisor API when a
 // controller is up; otherwise falls back to the local multi-store iterator.
 // Emits exactly one route=... log line per exit path (gated on GC_DEBUG).
-func routeBeadsList(cityPath string, c *api.Client, nilReason, format string, filters beadFilters, stdout, stderr io.Writer) int {
+func routeBeadsList(ctx context.Context, cityPath string, c *api.Client, nilReason, format string, filters beadFilters, stdout, stderr io.Writer) int {
 	var cr api.CachedRead[[]beads.Bead]
 	return routeRead(c, "beads list", nilReason, stderr,
 		func() error {
@@ -147,7 +148,7 @@ func routeBeadsList(cityPath string, c *api.Client, nilReason, format string, fi
 			return err
 		},
 		func() int { return renderBeadsListFromAPI(cr, format, filters, stdout) },
-		func() int { return doBeadsListFallback(cityPath, format, filters, stdout, stderr) },
+		func() int { return doBeadsListFallback(ctx, cityPath, format, filters, stdout, stderr) },
 	)
 }
 
@@ -176,8 +177,8 @@ func renderBeadsListFromAPI(cr api.CachedRead[[]beads.Bead], format string, filt
 // This lane is UNBOUNDED: the store list uses Limit 0 (unlimited), so every
 // matching bead is returned. api.Client.ListBeads follows next_cursor to match
 // this coverage on the API/remote lanes (previously it truncated to page 1).
-func doBeadsListFallback(cityPath, format string, filters beadFilters, stdout, stderr io.Writer) int {
-	stores, code := openAllConvoyStoresAt(cityPath, stderr, "gc beads list")
+func doBeadsListFallback(ctx context.Context, cityPath, format string, filters beadFilters, stdout, stderr io.Writer) int {
+	stores, code := openAllConvoyStoresAt(ctx, cityPath, stderr, "gc beads list")
 	if stores == nil {
 		return code
 	}
@@ -205,7 +206,7 @@ func doBeadsListFallback(cityPath, format string, filters beadFilters, stdout, s
 // observable side effects — the classifyGCNoAPI stderr warning on a malformed
 // GC_NO_API, plus a controller-liveness probe and config.Load). The hook runs in
 // exactly that slot.
-func cmdBeadsShow(id, format string, stdout, stderr io.Writer) int {
+func cmdBeadsShow(ctx context.Context, id, format string, stdout, stderr io.Writer) int {
 	return routeReadCmdWithHooks("beads show", stderr, readCmdHooks{
 		guard: func() (int, bool) {
 			if id == "" {
@@ -215,7 +216,7 @@ func cmdBeadsShow(id, format string, stdout, stderr io.Writer) int {
 			return 0, false
 		},
 	}, beadsShowAPIClient, func(cityPath string, c *api.Client, nilReason string) int {
-		return routeBeadsShow(cityPath, c, nilReason, id, format, stdout, stderr)
+		return routeBeadsShow(ctx, cityPath, c, nilReason, id, format, stdout, stderr)
 	})
 }
 
@@ -228,7 +229,7 @@ var beadsShowAPIClient = func(cityPath string) (*api.Client, string) {
 
 // routeBeadsShow dispatches `beads show <id>` to the supervisor API and
 // falls back otherwise. Exactly one route=... line per exit path.
-func routeBeadsShow(cityPath string, c *api.Client, nilReason, beadID, format string, stdout, stderr io.Writer) int {
+func routeBeadsShow(ctx context.Context, cityPath string, c *api.Client, nilReason, beadID, format string, stdout, stderr io.Writer) int {
 	var cr api.CachedRead[beads.Bead]
 	return routeRead(c, "beads show", nilReason, stderr,
 		func() error {
@@ -237,7 +238,7 @@ func routeBeadsShow(cityPath string, c *api.Client, nilReason, beadID, format st
 			return err
 		},
 		func() int { return renderBeadsShowFromAPI(cr, format, stdout) },
-		func() int { return doBeadsShowFallback(cityPath, beadID, format, stdout, stderr) },
+		func() int { return doBeadsShowFallback(ctx, cityPath, beadID, format, stdout, stderr) },
 	)
 }
 
@@ -261,7 +262,7 @@ func renderBeadsShowFromAPI(cr api.CachedRead[beads.Bead], format string, stdout
 // converged city an infrastructure bead would otherwise be shown from the copy
 // `gc storage migrate` retained in the city store, frozen at migration time and
 // reported as though it were current.
-func doBeadsShowFallback(cityPath, beadID, format string, stdout, stderr io.Writer) int {
+func doBeadsShowFallback(ctx context.Context, cityPath, beadID, format string, stdout, stderr io.Writer) int {
 	owner, ownedByBinding, err := cliByIDBindingOwner(cityPath, beadID)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc beads show: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -281,7 +282,7 @@ func doBeadsShowFallback(cityPath, beadID, format string, stdout, stderr io.Writ
 		return 0
 	}
 
-	stores, code := openAllConvoyStoresAt(cityPath, stderr, "gc beads show")
+	stores, code := openAllConvoyStoresAt(ctx, cityPath, stderr, "gc beads show")
 	if stores == nil {
 		return code
 	}
@@ -341,19 +342,19 @@ func newBeadsHealthCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "health",
 		Short: "Check beads provider health",
-		Long: `Check beads provider health and attempt recovery on failure.
+		Long: `Check beads provider health.
 
 Delegates to the provider's lifecycle health operation. For exec
 providers (including bd/dolt), the script handles multi-tier checking
-and recovery internally. For the file provider, always succeeds (no-op).
+and returns its first failure. For the file provider, always succeeds (no-op).
 
 Also used by the beads-health system order for periodic monitoring.`,
 		Example: `  gc beads health
   gc beads health --quiet
   gc beads health --json`,
 		Args: cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if doBeadsHealth(quiet, jsonOut, stdout, stderr) != 0 {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if doBeadsHealth(cmd.Context(), quiet, jsonOut, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -374,15 +375,15 @@ type beadsHealthJSONResult struct {
 }
 
 // doBeadsHealth runs the beads provider health check.
-// Returns 0 if healthy, 1 if unhealthy/recovery-failed.
-func doBeadsHealth(quiet, jsonOut bool, stdout, stderr io.Writer) int {
+// Returns 0 if healthy, 1 if unhealthy.
+func doBeadsHealth(ctx context.Context, quiet, jsonOut bool, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc beads health: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
 
-	if err := healthBeadsProvider(cityPath); err != nil {
+	if err := healthBeadsProvider(ctx, cityPath); err != nil {
 		fmt.Fprintf(stderr, "gc beads health: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}

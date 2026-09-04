@@ -145,7 +145,7 @@ work_query = "kill -9 $$"
 	t.Setenv("GC_SESSION_NAME", "worker-1")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithFormat(nil, false, "", &stdout, &stderr)
+	code := cmdHookWithFormat(context.Background(), nil, false, "", &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("cmdHookWithFormat() = %d, want 1 for killed work query; stderr=%s", code, stderr.String())
 	}
@@ -205,7 +205,7 @@ work_query = "kill -9 $$"
 	t.Setenv("GC_SESSION_NAME", "worker-1")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithFormat([]string{"other"}, false, "", &stdout, &stderr)
+	code := cmdHookWithFormat(context.Background(), []string{"other"}, false, "", &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("cmdHookWithFormat(explicit other) = %d, want 1 for killed work query; stderr=%s", code, stderr.String())
 	}
@@ -255,7 +255,7 @@ work_query = "printf '[{\"id\":\"ga-pool1\",\"status\":\"open\",\"title\":\"work
 
 	var stdout, stderr bytes.Buffer
 	// Simulate "gc hook $GC_AGENT" — positional arg is the instance name.
-	code := cmdHookWithFormat([]string{"polecat-adhoc-abc123"}, false, "", &stdout, &stderr)
+	code := cmdHookWithFormat(context.Background(), []string{"polecat-adhoc-abc123"}, false, "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdHookWithFormat(pool instance arg) = %d, want 0; stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
@@ -302,7 +302,7 @@ work_query = "printf '[{\"id\":\"ga-pool1\",\"status\":\"open\",\"title\":\"work
 
 	var stdout, stderr bytes.Buffer
 	// An unrelated, unresolved explicit target must NOT fall back to the template.
-	code := cmdHookWithFormat([]string{"some-other-missing-agent"}, false, "", &stdout, &stderr)
+	code := cmdHookWithFormat(context.Background(), []string{"some-other-missing-agent"}, false, "", &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("cmdHookWithFormat(unrelated target) = %d, want 1; stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
@@ -357,7 +357,7 @@ func TestDoHookClaimReturnsExistingAssignment(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(existing) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -404,7 +404,7 @@ func TestDoHookClaimPromotesReadyAssignment(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(ready assignment) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -458,7 +458,7 @@ func TestDoHookClaimRejectsInvalidReadyAssignmentReadback(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+			code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 			if code != 1 {
 				t.Fatalf("doHookClaim(invalid ready assignment readback) = %d, want 1", code)
 			}
@@ -495,7 +495,7 @@ func TestDoHookClaimReadyAssignmentErrorDoesNotClaimFreshWork(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doHookClaim(ready assignment error) = %d, want 1", code)
 	}
@@ -556,7 +556,7 @@ func TestDoHookClaimReadyAssignmentLostRaceFallsThrough(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(ready assignment lost race) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -637,7 +637,7 @@ func TestDoHookClaimClaimsRoutedUnassignedWork(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(claim) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -682,7 +682,7 @@ func TestDoHookClaimRetriesAfterClaimConflict(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(conflict) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -732,7 +732,7 @@ func TestDoHookClaimEmitsRejectedOnLostClaim(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(lost claim) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -777,7 +777,7 @@ func TestDoHookClaimStampsWorkBranch(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(stamp) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -815,7 +815,7 @@ func TestDoHookClaimSkipsStampWhenBranchUnchanged(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
+	if code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr); code != 0 {
 		t.Fatalf("doHookClaim(idempotent stamp) = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if stampCalls != 0 {
@@ -848,7 +848,7 @@ func TestDoHookClaimClaimsLegacyRunTargetWorkflowRoot(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(run_target) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -875,7 +875,7 @@ func TestDoHookClaimRejectsNonJSONWorkQueryOutput(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready", "", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready", "", opts, ops, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doHookClaim(text output) = %d, want 1", code)
 	}
@@ -919,7 +919,7 @@ func TestDoHookClaimToleratesMalformedMetadataBead(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(malformed+good) = %d, want 0 (poison skipped, good claimed); stderr=%s", code, stderr.String())
 	}
@@ -997,7 +997,7 @@ func TestDoHookClaimCommandErrorKeepsProtocolStdoutEmpty(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "", opts, ops, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doHookClaim(error) = %d, want 1", code)
 	}
@@ -1014,7 +1014,7 @@ func TestDoHookClaimDrainAckOnNoWork(t *testing.T) {
 	runner := func(string, string) (string, error) { return "[]", nil }
 	ops := hookClaimOps{
 		Runner: runner,
-		DrainAck: func(io.Writer) error {
+		DrainAck: func(context.Context, io.Writer) error {
 			drained = true
 			return nil
 		},
@@ -1028,7 +1028,7 @@ func TestDoHookClaimDrainAckOnNoWork(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(no work drain) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -1090,7 +1090,7 @@ func TestClaimHookWorkRetriesLaterStoreWhenSelectedStoreLosesClaimRace(t *testin
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner("bd ready --json", "city", stores[0].env, stores, opts, ops, run, func(string, error) {}, &stdout, &stderr)
+	code := claimHookWorkWithRunner(context.Background(), "bd ready --json", "city", stores[0].env, stores, opts, ops, run, func(string, error) {}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("claimHookWorkWithRunner = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -1139,7 +1139,7 @@ func TestClaimHookWorkDrainsWhenPrimaryLosesRaceThenFederatedStoreErrors(t *test
 		},
 		EmitClaimRejected: func(string, string, string) {},
 		ResolveWorkBranch: func(string) string { return "" },
-		DrainAck:          func(io.Writer) error { return nil },
+		DrainAck:          func(context.Context, io.Writer) error { return nil },
 	}
 	opts := hookClaimOptions{
 		Assignee:           "worker-1",
@@ -1151,7 +1151,7 @@ func TestClaimHookWorkDrainsWhenPrimaryLosesRaceThenFederatedStoreErrors(t *test
 
 	emitted := false
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner("bd ready --json", "city", stores[0].env, stores, opts, ops, run, func(string, error) { emitted = true }, &stdout, &stderr)
+	code := claimHookWorkWithRunner(context.Background(), "bd ready --json", "city", stores[0].env, stores, opts, ops, run, func(string, error) { emitted = true }, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("claimHookWorkWithRunner = %d, want 0 (clean drain); stderr=%s", code, stderr.String())
 	}
@@ -1212,7 +1212,7 @@ func TestClaimHookWorkUsesFallbackStoreDirEnvAndOutput(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner("bd ready --json", "city", stores[0].env, stores, opts, ops, run, func(string, error) {}, &stdout, &stderr)
+	code := claimHookWorkWithRunner(context.Background(), "bd ready --json", "city", stores[0].env, stores, opts, ops, run, func(string, error) {}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("claimHookWorkWithRunner = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -1271,7 +1271,7 @@ func TestDoHookClaimPreassignsContinuationGroupSiblings(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(continuation) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -1455,6 +1455,124 @@ func TestHookRunPreservesChildExitCodeAndOutput(t *testing.T) {
 	}
 	if stdout.String() != "ok" {
 		t.Fatalf("stdout = %q, want ok", stdout.String())
+	}
+}
+
+func setCompleteManagedSessionHookEnv(t *testing.T) {
+	t.Helper()
+	clearGCEnv(t)
+	t.Setenv("GC_SESSION_ID", "gc-session-test")
+	t.Setenv("GC_SESSION_NAME", "worker-test")
+	t.Setenv("GC_AGENT", "rig/worker-test")
+	t.Setenv("GC_CITY", "/city")
+}
+
+func TestHookRunWhenManagedSessionRunsChildWithCompleteContext(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	setCompleteManagedSessionHookEnv(t)
+	restore := setHookRunExecutableForTest(t)
+	defer restore()
+
+	var stdout, stderr bytes.Buffer
+	code := cmdHookRun([]string{"-c", "printf selected"}, hookRunOptions{
+		Timeout:            time.Second,
+		TimeoutExitCode:    124,
+		WhenManagedSession: true,
+	}, nil, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("cmdHookRun complete managed context = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	if stdout.String() != "selected" {
+		t.Fatalf("stdout = %q, want selected child output", stdout.String())
+	}
+}
+
+func TestHookRunWhenManagedSessionConsumesStdinAndDoesNotRunChildWhenContextAbsent(t *testing.T) {
+	clearGCEnv(t)
+	called := false
+	previous := hookRunExecutable
+	hookRunExecutable = func() (string, error) {
+		called = true
+		return "", errors.New("child must not be resolved")
+	}
+	t.Cleanup(func() { hookRunExecutable = previous })
+
+	payload := strings.Repeat("provider-payload", 128)
+	stdin := &trackingReader{r: strings.NewReader(payload)}
+	var stdout, stderr bytes.Buffer
+	code := cmdHookRun([]string{"handoff", "--auto", "context cycle"}, hookRunOptions{
+		Timeout:            time.Second,
+		TimeoutExitCode:    124,
+		WhenManagedSession: true,
+	}, stdin, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("cmdHookRun absent managed context = %d, want 0; stderr=%s", code, stderr.String())
+	}
+	if called {
+		t.Fatal("unmanaged callback resolved or ran the child")
+	}
+	if stdin.read != len(payload) {
+		t.Fatalf("unmanaged callback consumed %d/%d stdin bytes, want complete provider payload drain", stdin.read, len(payload))
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "NOT SELECTED: managed session context absent") {
+		t.Fatalf("stderr = %q, want explicit NOT SELECTED warning", stderr.String())
+	}
+}
+
+func TestHookRunWhenManagedSessionFailsBeforeChildOnPartialContext(t *testing.T) {
+	clearGCEnv(t)
+	t.Setenv("GC_SESSION_ID", "gc-partial")
+	called := false
+	previous := hookRunExecutable
+	hookRunExecutable = func() (string, error) {
+		called = true
+		return "", errors.New("child must not be resolved")
+	}
+	t.Cleanup(func() { hookRunExecutable = previous })
+
+	var stdout, stderr bytes.Buffer
+	code := cmdHookRun([]string{"handoff", "--auto", "context cycle"}, hookRunOptions{
+		Timeout:            time.Second,
+		TimeoutExitCode:    124,
+		WhenManagedSession: true,
+	}, strings.NewReader(`{"hook":"PreCompact"}`), &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("cmdHookRun partial managed context = %d, want 1; stderr=%s", code, stderr.String())
+	}
+	if called {
+		t.Fatal("partial managed callback resolved or ran the child")
+	}
+	for _, missing := range []string{"GC_SESSION_NAME", "one of GC_ALIAS/GC_AGENT", "one of GC_CITY/GC_CITY_PATH/GC_CITY_ROOT"} {
+		if !strings.Contains(stderr.String(), missing) {
+			t.Fatalf("stderr = %q, want missing-field diagnostic %q", stderr.String(), missing)
+		}
+	}
+}
+
+func TestHookRunWhenManagedSessionPropagatesRealChildFailure(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	setCompleteManagedSessionHookEnv(t)
+	restore := setHookRunExecutableForTest(t)
+	defer restore()
+
+	var stdout, stderr bytes.Buffer
+	code := cmdHookRun([]string{"-c", "printf handoff-failed; exit 9"}, hookRunOptions{
+		Timeout:            time.Second,
+		TimeoutExitCode:    124,
+		WhenManagedSession: true,
+	}, nil, &stdout, &stderr)
+	if code != 9 {
+		t.Fatalf("cmdHookRun selected child failure = %d, want 9; stderr=%s", code, stderr.String())
+	}
+	if stdout.String() != "handoff-failed" {
+		t.Fatalf("stdout = %q, want complete child failure output", stdout.String())
 	}
 }
 
@@ -1706,7 +1824,7 @@ esac
 	t.Setenv("GC_SESSION_ORIGIN", "ephemeral")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdHookWithOptions(--claim) = %d, want 0; stdout=%q stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -1806,7 +1924,7 @@ name = "worker"
 	t.Setenv("GC_SESSION_NAME", "runtime-session")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithFormat(nil, false, "", &stdout, &stderr)
+	code := cmdHookWithFormat(context.Background(), nil, false, "", &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("cmdHookWithFormat() = %d, want 1 for empty work; stderr=%s", code, stderr.String())
 	}
@@ -2000,7 +2118,7 @@ printf '[]'
 	t.Setenv("GC_SESSION_ID", "session-builder-1")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("cmdHookWithOptions(--claim, suffixed pool worker) = %d, want 1 (no_work drain); stdout=%q stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2072,7 +2190,7 @@ mode = "on_demand"
 	t.Setenv("GC_SESSION_ID", "session-builder")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdHookWithOptions(--claim, named holder) = %d, want 0; stdout=%q stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2121,7 +2239,7 @@ func TestPoolWorkerIdentityCandidatesExcludeBareTemplate(t *testing.T) {
 		JSON:               true,
 	}
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	var result hookClaimJSONResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("stdout is not JSON: %v\nraw: %s", err, stdout.String())
@@ -2175,7 +2293,7 @@ func TestHookClaimSkipsMessageBeadsAheadOfRoutedWork(t *testing.T) {
 		JSON:               true,
 	}
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	var result hookClaimJSONResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("stdout is not JSON: %v\nraw: %s", err, stdout.String())
@@ -2834,7 +2952,7 @@ dir = "myrig"
 	t.Setenv("GC_DIR", rigDir)
 
 	wantAgent := "myrig/worker"
-	wantSession := cliSessionName(cityDir, "test-city", wantAgent, "")
+	wantSession := cliSessionName(context.Background(), cityDir, "test-city", wantAgent, "")
 
 	var stdout, stderr bytes.Buffer
 	code := cmdHook([]string{"worker"}, &stdout, &stderr)
@@ -2898,7 +3016,7 @@ func TestDoHookClaimSkipsUnclaimableCandidateError(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(skip error) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -2939,7 +3057,7 @@ func TestDoHookClaimDrainsClaimsErroredWhenEveryCandidateErrors(t *testing.T) {
 			attempts = append(attempts, beadID)
 			return beads.Bead{}, false, fmt.Errorf("claiming %s: store write timeout", beadID)
 		},
-		DrainAck: func(io.Writer) error {
+		DrainAck: func(context.Context, io.Writer) error {
 			drained = true
 			return nil
 		},
@@ -2953,7 +3071,7 @@ func TestDoHookClaimDrainsClaimsErroredWhenEveryCandidateErrors(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim("bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
+	code := doHookClaim(context.Background(), "bd ready --json", "/tmp/work", opts, ops, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doHookClaim(all candidates error) = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -2992,7 +3110,7 @@ func TestClaimHookWorkDrainsClaimsErroredWhenEveryCandidateErrors(t *testing.T) 
 		},
 		EmitClaimRejected: func(string, string, string) {},
 		ResolveWorkBranch: func(string) string { return "" },
-		DrainAck:          func(io.Writer) error { return nil },
+		DrainAck:          func(context.Context, io.Writer) error { return nil },
 	}
 	opts := hookClaimOptions{
 		Assignee:           "worker-1",
@@ -3004,7 +3122,7 @@ func TestClaimHookWorkDrainsClaimsErroredWhenEveryCandidateErrors(t *testing.T) 
 
 	emitted := false
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner("bd ready --json", "city", stores[0].env, stores, opts, ops, run, func(string, error) { emitted = true }, &stdout, &stderr)
+	code := claimHookWorkWithRunner(context.Background(), "bd ready --json", "city", stores[0].env, stores, opts, ops, run, func(string, error) { emitted = true }, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("claimHookWorkWithRunner(all candidates error) = %d, want 0; stderr=%s", code, stderr.String())
 	}

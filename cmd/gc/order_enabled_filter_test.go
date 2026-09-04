@@ -42,7 +42,7 @@ func TestBuildOrderDispatcherOverrideDisablesOrder(t *testing.T) {
 	cityDir, cfg := newOrderEnabledFilterCity(t)
 
 	var stderr bytes.Buffer
-	ad := buildOrderDispatcher(nil, cityDir, cfg, events.Discard, &stderr)
+	ad := buildOrderDispatcher(context.Background(), nil, cityDir, cfg, events.Discard, &stderr)
 	if ad == nil {
 		t.Fatalf("buildOrderDispatcher returned nil; stderr: %s", stderr.String())
 	}
@@ -129,7 +129,7 @@ func TestCmdOrderHistoryIncludesOverrideDisabledOrder(t *testing.T) {
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdOrderHistory("drop", "", &stdout, &stderr)
+	code := cmdOrderHistory(context.Background(), "drop", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdOrderHistory = %d, want 0; stderr: %s", code, stderr.String())
 	}

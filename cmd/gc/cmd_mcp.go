@@ -46,7 +46,7 @@ func newMcpListCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Show projected MCP servers",
 		Long:  "Show the precedence-resolved MCP servers that Gas City would project into the provider-native config for one agent or session target.",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			agentName = strings.TrimSpace(agentName)
 			sessionID = strings.TrimSpace(sessionID)
 			switch {
@@ -74,7 +74,7 @@ func newMcpListCmd(stdout, stderr io.Writer) *cobra.Command {
 				view  resolvedMCPProjection
 			)
 			if sessionID != "" {
-				store, err = openCityStoreAt(cityPath)
+				store, err = openCityStoreAt(cmd.Context(), cityPath)
 				if err != nil {
 					fmt.Fprintf(stderr, "gc mcp list: %v\n", err) //nolint:errcheck // best-effort stderr
 					return errExit

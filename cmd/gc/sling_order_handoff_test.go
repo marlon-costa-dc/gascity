@@ -135,7 +135,7 @@ func newHandoffFixture(t *testing.T) *handoffFixture {
 	h := &handoffFixture{store: store, cfg: cfg, dir: t.TempDir()}
 
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = &sessionBeadSnapshot{}
 	desired := map[string]TemplateParams{}
 	seedID := h.mustSeed(t, "demand evidence").ID
@@ -222,7 +222,7 @@ func (h *handoffFixture) runHook(t *testing.T, run func() (string, error)) hookC
 	ops := h.ops()
 
 	var stdout, stderr bytes.Buffer
-	claimHookWorkWithRunner("work-query", h.dir, env, stores, opts, ops,
+	claimHookWorkWithRunner(context.Background(), "work-query", h.dir, env, stores, opts, ops,
 		func(string, string, []string) (string, error) { return run() },
 		func(string, error) {}, &stdout, &stderr)
 
@@ -273,6 +273,6 @@ func (h *handoffFixture) ops() hookClaimOps {
 		},
 		ResolveWorkBranch: func(string) string { return "" },
 		PublishRunMap:     func(string, string, ...string) error { return nil },
-		DrainAck:          func(io.Writer) error { h.drainAcked = true; return nil },
+		DrainAck:          func(context.Context, io.Writer) error { h.drainAcked = true; return nil },
 	}
 }

@@ -38,7 +38,7 @@ func runWarmupWithDefaultMailProvider(t *testing.T, cityPath string, cfg *config
 	var stderr bytes.Buffer
 	report, err := warmup.RunWarmupChecks(context.Background(), cityPath, cfg, warmup.WarmupOpts{
 		Checks: []doctor.Check{failingWarmupCheck{name: "rig-root-branch"}},
-		Mailer: defaultMailProvider(cityPath),
+		Mailer: defaultMailProvider(context.Background(), cityPath),
 		Stderr: &stderr,
 	})
 	if err != nil {
@@ -69,7 +69,7 @@ func TestWarmupMailWritesTheBindingOnAMigratedCity(t *testing.T) {
 	captureCLIStorageStderr(t)
 	t.Setenv("GC_MAIL", "")
 
-	provider := defaultMailProvider(cityPath)
+	provider := defaultMailProvider(context.Background(), cityPath)
 	if provider == nil {
 		t.Fatal("defaultMailProvider returned nil")
 	}
@@ -87,7 +87,7 @@ func TestWarmupMailWritesTheBindingOnAMigratedCity(t *testing.T) {
 	if _, err := binding.Get(sent.ID); err != nil {
 		t.Errorf("the warm-up mail write did not land in the binding: %v", err)
 	}
-	work, err := openCityStoreAt(cityPath)
+	work, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("opening the retained work store: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestWarmupRunStrandsNothingOnAMigratedCity(t *testing.T) {
 		t.Fatalf("closing the one-shot routes: %v", err)
 	}
 	var log bytes.Buffer
-	got := checkInfraClassConvergence(cityPath, cfg, "gc start", &log)
+	got := checkInfraClassConvergence(context.Background(), cityPath, cfg, "gc start", &log)
 	if got.Outcome != infraMigrationConverged {
 		t.Errorf("the boot gate reports %s after one warm-up scan, want %s; stranded=%v\n%s",
 			got.Outcome, infraMigrationConverged, got.Stranded, log.String())
@@ -143,7 +143,7 @@ func TestWarmupBootPathWorkBeadStaysOnTheWorkLedger(t *testing.T) {
 	cityPath, cfg := migratedOneShotCLICity(t)
 	captureCLIStorageStderr(t)
 
-	work, err := openCityStoreAt(cityPath)
+	work, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("opening the city work store: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestWarmupMailStaysOnTheWorkStoreWithoutAStorageSection(t *testing.T) {
 	captureCLIStorageStderr(t)
 	t.Setenv("GC_MAIL", "")
 
-	provider := defaultMailProvider(cityPath)
+	provider := defaultMailProvider(context.Background(), cityPath)
 	if provider == nil {
 		t.Fatal("defaultMailProvider returned nil")
 	}
@@ -194,7 +194,7 @@ func TestWarmupMailStaysOnTheWorkStoreWithoutAStorageSection(t *testing.T) {
 	if err := closeCLIStorageRoutes(); err != nil {
 		t.Fatalf("closing the one-shot routes: %v", err)
 	}
-	work, err := openCityStoreAt(cityPath)
+	work, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("opening the city work store: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestWarmupMailRefusesOnAnUnconvergedCity(t *testing.T) {
 	stderr := captureCLIStorageStderr(t)
 	t.Setenv("GC_MAIL", "")
 
-	provider := defaultMailProvider(cityPath)
+	provider := defaultMailProvider(context.Background(), cityPath)
 	if provider == nil {
 		t.Fatal("defaultMailProvider returned nil")
 	}
@@ -246,7 +246,7 @@ func TestWarmupMailRefusesOnAnUnconvergedCity(t *testing.T) {
 	// The assertion that matters: nothing message-shaped reached the work
 	// ledger. A write here is the one the next boot's containment re-check
 	// reads as a stranded infrastructure bead.
-	work, err := openCityStoreAt(cityPath)
+	work, err := openCityStoreAt(context.Background(), cityPath)
 	if err != nil {
 		t.Fatalf("opening the city work store: %v", err)
 	}

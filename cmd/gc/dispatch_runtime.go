@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/beadmeta"
@@ -35,8 +37,8 @@ func cliGraphrouteDeps(cityPath string) graphroute.Deps {
 
 // applyGraphRouting delegates to graphroute.ApplyGraphRouting with CLI
 // dependencies.
-func applyGraphRouting(recipe *formula.Recipe, a *config.Agent, routedTo string, vars map[string]string, scopeKind, scopeRef, storeRef string, store beads.Store, cityName, cityPath string, cfg *config.City) error {
-	return graphroute.ApplyGraphRouting(recipe, a, routedTo, vars, "", scopeKind, scopeRef, storeRef, store, cityName, cfg, cliGraphrouteDeps(cityPath))
+func applyGraphRouting(ctx context.Context, recipe *formula.Recipe, a *config.Agent, routedTo string, vars map[string]string, scopeKind, scopeRef, storeRef string, store beads.Store, cityName, cityPath string, cfg *config.City) error {
+	return graphroute.ApplyGraphRouting(ctx, recipe, a, routedTo, vars, "", scopeKind, scopeRef, storeRef, store, cityName, cfg, cliGraphrouteDeps(cityPath))
 }
 
 var (
@@ -49,8 +51,6 @@ var (
 		}
 		return ep, nil
 	}
-	workflowServeIdlePollInterval  = 100 * time.Millisecond
-	workflowServeIdlePollAttempts  = 3
 	workflowServeWakeSweepInterval = 1 * time.Second
 	// Cap the --follow idle backoff at 5s. A worker that closes a step bead
 	// with a raw bd write does not publish a city BeadClosed event, so the
@@ -120,12 +120,12 @@ func followSleepDuration(idleSweeps int) time.Duration {
 const workflowServeScanLimit = 20
 
 // runConvoyControlServe is the entry point for `gc convoy control --serve`.
-func runConvoyControlServe(args []string, stdout, stderr io.Writer) error {
+func runConvoyControlServe(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	var agentName string
 	if len(args) > 0 {
 		agentName = args[0]
 	}
-	if err := runWorkflowServe(agentName, true, stdout, stderr); err != nil {
+	if err := runWorkflowServe(ctx, agentName, true, stdout, stderr); err != nil {
 		fmt.Fprintf(stderr, "gc convoy control --serve: %v\n", err) //nolint:errcheck
 		return errExit
 	}
@@ -268,9 +268,14 @@ func useWorkflowTraceWarnings(writer io.Writer) func() {
 	}
 }
 
-func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writer) error {
+func runWorkflowServe(parent context.Context, agentName string, follow bool, _ io.Writer, stderr io.Writer) error {
 	restoreTraceWarnings := useWorkflowTraceWarnings(stderr)
 	defer restoreTraceWarnings()
+	if parent == nil {
+		return fmt.Errorf("workflow serve: nil context")
+	}
+	ctx, cancel := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	if follow {
 		if err := requireWorkflowServeFollowSessionEnv(); err != nil {
@@ -310,7 +315,7 @@ func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writ
 		return fmt.Errorf("agent %q not found in config", agentName)
 	}
 	workDir := agentCommandDir(cityPath, &agentCfg, cfg.Rigs)
-	workEnv, err := controllerWorkQueryEnv(cityPath, cfg, &agentCfg)
+	workEnv, err := controllerWorkQueryEnv(ctx, cityPath, cfg, &agentCfg)
 	if err != nil {
 		return fmt.Errorf("building work query env: %w", err)
 	}
@@ -324,10 +329,10 @@ func runWorkflowServe(agentName string, follow bool, _ io.Writer, stderr io.Writ
 	}
 	workflowTracef("serve start agent=%s city=%s dir=%s", agentCfg.QualifiedName(), cityPath, workDir)
 	if !follow {
-		_, err := drainWorkflowServeWork(agentCfg, cityPath, workDir, workQuery, workEnv, stderr)
+		_, err := drainWorkflowServeWork(ctx, agentCfg, cityPath, workDir, workQuery, workEnv, stderr)
 		return err
 	}
-	return runWorkflowServeFollow(agentCfg, cityPath, workDir, workQuery, workEnv, stderr)
+	return runWorkflowServeFollow(ctx, agentCfg, cityPath, workDir, workQuery, workEnv, stderr)
 }
 
 func requireWorkflowServeFollowSessionEnv() error {
@@ -426,12 +431,14 @@ type workflowServeDrainResult struct {
 // for a single invocation. Returns whether it advanced a control bead and
 // whether the queue still contains only pending work so the --follow caller
 // can distinguish blocked work from genuine idle.
-func drainWorkflowServeWork(agentCfg config.Agent, cityPath, storePath, workQuery string, workEnv map[string]string, stderr io.Writer) (workflowServeDrainResult, error) {
+func drainWorkflowServeWork(ctx context.Context, agentCfg config.Agent, cityPath, storePath, workQuery string, workEnv map[string]string, stderr io.Writer) (workflowServeDrainResult, error) {
 	result := workflowServeDrainResult{}
-	idlePolls := 0
 	for {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		serveQuery := workflowServeWorkQuery(agentCfg, workQuery)
-		queue, err := workflowServeList(serveQuery, storePath, workEnv)
+		queue, err := workflowServeList(ctx, serveQuery, storePath, workEnv)
 		if err != nil {
 			workflowTracef("serve query-error agent=%s err=%v", agentCfg.QualifiedName(), err)
 			// Surface a killed/timed-out control work query on the event
@@ -442,16 +449,9 @@ func drainWorkflowServeWork(agentCfg config.Agent, cityPath, storePath, workQuer
 			return result, fmt.Errorf("querying control work for %s: %w", agentCfg.QualifiedName(), err)
 		}
 		if len(queue) == 0 {
-			if result.processedAny && idlePolls < workflowServeIdlePollAttempts {
-				idlePolls++
-				workflowTracef("serve idle-retry agent=%s attempt=%d", agentCfg.QualifiedName(), idlePolls)
-				time.Sleep(workflowServeIdlePollInterval)
-				continue
-			}
 			workflowTracef("serve idle-exit agent=%s", agentCfg.QualifiedName())
 			return result, nil
 		}
-		idlePolls = 0
 		processedThisCycle := false
 		pendingCount := 0
 		for _, candidate := range queue {
@@ -467,7 +467,7 @@ func drainWorkflowServeWork(agentCfg config.Agent, cityPath, storePath, workQuer
 			// control ga-fw2fm. The silent no-op now emits a separate
 			// `process-control ... skip reason=bead_not_open` line inside
 			// ProcessControl itself; see runtime.go.
-			if err := controlDispatcherServe(cityPath, storePath, beadID, io.Discard, stderr); err != nil {
+			if err := controlDispatcherServe(ctx, cityPath, storePath, beadID, io.Discard, stderr); err != nil {
 				if errors.Is(err, dispatch.ErrControlPending) {
 					pendingCount++
 					result.pendingAny = true
@@ -475,23 +475,6 @@ func drainWorkflowServeWork(agentCfg config.Agent, cityPath, storePath, workQuer
 					continue
 				}
 				workflowTracef("serve process-error bead=%s kind=%s err=%v", beadID, kind, err)
-				if dispatch.IsTransientControllerError(err) {
-					pendingCount++
-					// A quiet retry is a verbatim repeat of the failure this
-					// bead already reported. It still gets retried on every
-					// sweep, but it must not count as pending: pendingAny
-					// resets idleSweeps, and a permanently-stuck bead that
-					// resets the backoff every sweep holds the whole loop at
-					// its 1s floor forever. Two such beads consumed 95% of one
-					// city's control dispatches.
-					if dispatch.IsQuietControllerRetry(err) {
-						workflowTracef("serve transient-error-quiet bead=%s kind=%s err=%v", beadID, kind, err)
-						continue
-					}
-					result.pendingAny = true
-					workflowTracef("serve transient-error-pending bead=%s kind=%s err=%v", beadID, kind, err)
-					continue
-				}
 				return result, fmt.Errorf("processing control bead %s: %w", beadID, err)
 			}
 			workflowTracef("serve processed bead=%s kind=%s", beadID, kind)
@@ -510,7 +493,7 @@ func drainWorkflowServeWork(agentCfg config.Agent, cityPath, storePath, workQuer
 	}
 }
 
-func runWorkflowServeFollow(agentCfg config.Agent, cityPath, storePath, workQuery string, workEnv map[string]string, stderr io.Writer) error {
+func runWorkflowServeFollow(ctx context.Context, agentCfg config.Agent, cityPath, storePath, workQuery string, workEnv map[string]string, stderr io.Writer) error {
 	ep, err := workflowServeOpenEventsProvider(stderr)
 	if err != nil {
 		return err
@@ -521,7 +504,7 @@ func runWorkflowServeFollow(agentCfg config.Agent, cityPath, storePath, workQuer
 	if err != nil {
 		return fmt.Errorf("reading current event cursor: %w", err)
 	}
-	watcher, err := ep.Watch(context.Background(), afterSeq)
+	watcher, err := ep.Watch(ctx, afterSeq)
 	if err != nil {
 		return fmt.Errorf("watching city events: %w", err)
 	}
@@ -533,31 +516,10 @@ func runWorkflowServeFollow(agentCfg config.Agent, cityPath, storePath, workQuer
 	go pumpWorkflowEvents(done, watcher, eventCh)
 
 	idleSweeps := 0
-	var pendingWakeErr error
 	for {
-		drainResult, err := drainWorkflowServeWork(agentCfg, cityPath, storePath, workQuery, workEnv, stderr)
+		drainResult, err := drainWorkflowServeWork(ctx, agentCfg, cityPath, storePath, workQuery, workEnv, stderr)
 		if err != nil {
-			// A transient work-query/store failure — most commonly the
-			// work-query timeout (hookWorkQueryTimeout) when the bead store is
-			// briefly saturated — must NOT terminate this long-running serve
-			// loop. drainWorkflowServeWork already surfaced the failure on the
-			// event bus for reconciler visibility (#1496/#1497); returning here
-			// kills the dispatcher process (pane exits non-zero) and leaves the
-			// rig un-dispatched while its session bead still reports "active".
-			// Downgrade to a no-progress sweep so the idle backoff retries it;
-			// only genuinely fatal errors end the loop.
-			if !dispatch.IsTransientControllerError(err) {
-				return err
-			}
-			workflowTracef("serve drain-transient-retry agent=%s err=%v", agentCfg.QualifiedName(), err)
-			drainResult = workflowServeDrainResult{}
-		}
-		if pendingWakeErr != nil {
-			// The previous wait observed a relevant event and then a fatal
-			// watcher error in the same coalescing window. The drain above is
-			// the one re-scan that wake promised, so the observed work is now
-			// serviced; surface the watcher error to end the loop.
-			return pendingWakeErr
+			return err
 		}
 		if drainResult.processedAny || drainResult.pendingAny {
 			idleSweeps = 0
@@ -573,17 +535,7 @@ func runWorkflowServeFollow(agentCfg config.Agent, cityPath, storePath, workQuer
 		)
 		eventWake, err := workflowServeWaitForWake(eventCh, sleepDur, idleSweeps)
 		if err != nil {
-			if !eventWake {
-				// Fatal stream error with no relevant event observed: nothing to
-				// re-scan, so terminate immediately.
-				return err
-			}
-			// A relevant event was observed just before the fatal error. Loop
-			// once more so the next drain services that wake, then surface the
-			// error on the following iteration.
-			pendingWakeErr = err
-			idleSweeps = 0
-			continue
+			return err
 		}
 		switch {
 		case eventWake, drainResult.pendingAny:
@@ -672,13 +624,8 @@ func waitForRelevantWorkflowWakeWithTrace(eventCh <-chan workflowWatchResult, sl
 				if coalesced > 0 {
 					workflowTracef("serve wake-coalesce extra=%d debounce=%s", coalesced, workflowServeWakeDebounce)
 				}
-				// Report the wake even when a fatal stream error arrived during
-				// the coalescing window: a relevant event was already observed,
-				// so runWorkflowServeFollow must still perform the one re-scan it
-				// promised for that wake before terminating. Surfacing
-				// (true, err) lets the caller drain the observed wake and then
-				// exit on the error, instead of stranding newly-ready work until
-				// a dispatcher restart re-scans.
+				// A watcher error during coalescing is the first failure for
+				// this wait and is returned to the caller unchanged.
 				return true, coalesceErr
 			}
 			workflowTracef("serve ignore-event type=%s subject=%s", res.evt.Type, res.evt.Subject)
@@ -697,11 +644,9 @@ func waitForRelevantWorkflowWakeWithTrace(eventCh <-chan workflowWatchResult, sl
 // the workflowServeWakeDebounce window after a relevant event has already
 // decided to wake the loop. It returns the number of extra events it folded
 // into this wake so the caller emits a single drain for the whole burst, plus
-// any watcher error encountered while draining. The caller pairs that error
-// with the already-observed wake (returning true, err) so the serve loop still
-// performs the one promised re-scan before terminating on a fatal stream
-// failure. Events are only batched here, never dropped: the caller's single
-// re-scan already reflects every drained event.
+// any watcher error encountered while draining. Events are only batched here:
+// the caller's single re-scan reflects every drained event unless a watcher
+// error interrupts the wait first.
 func coalesceWorkflowWakeBurst(eventCh <-chan workflowWatchResult) (int, error) {
 	if workflowServeWakeDebounce <= 0 {
 		return 0, nil
@@ -923,11 +868,11 @@ func controlDispatcherBareRoute(target string) string {
 	return config.ControlDispatcherAgentName
 }
 
-func nextWorkflowServeBeads(workQuery, dir string, env map[string]string) ([]hookBead, error) {
+func nextWorkflowServeBeads(ctx context.Context, workQuery, dir string, env map[string]string) ([]hookBead, error) {
 	if workQuery == "" {
 		return nil, nil
 	}
-	if queue, handled, err := tryControlReadyFromCacheOrFallback(workQuery, dir, env); handled {
+	if queue, handled, err := tryControlReadyFromCacheOrFallback(ctx, workQuery, dir, env); handled {
 		return queue, err
 	}
 	output, err := shellWorkQueryWithEnv(workQuery, dir, mergeRuntimeEnv(os.Environ(), env))

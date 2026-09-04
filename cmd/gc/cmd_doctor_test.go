@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -230,7 +231,7 @@ prefix = "fe"
 	})
 
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, false, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, false, false, 0, &stdout, &stderr)
 
 	if citySkip == nil || *citySkip {
 		t.Fatalf("city dolt check skip = %v, want false when a bd-backed rig inherits the city endpoint", citySkip)
@@ -315,7 +316,7 @@ suspended = true
 			{Name: "sleeping", Path: "sleeping", Prefix: "sl", Suspended: true},
 		},
 	}
-	buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
+	buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    true,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,
@@ -394,7 +395,7 @@ prefix = "ma"
 		Workspace: config.Workspace{Name: "demo"},
 		Rigs:      []config.Rig{{Name: "managed", Path: "managed", Prefix: "ma"}},
 	}
-	checks := buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
+	checks := buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    true,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,
@@ -467,7 +468,7 @@ dolt_port = "3308"
 	})
 
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, false, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, false, false, 0, &stdout, &stderr)
 
 	if !strings.Contains(stdout.String(), "canonical/compat Dolt drift") {
 		t.Fatalf("doctor output missing Dolt topology drift:\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
@@ -499,7 +500,7 @@ source = "https://github.com/gastownhall/gc-actual-packs"
 	cleanupManagedDoltTestCity(t, cityDir)
 
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "stale-local-pack-dirs") {
 		t.Fatalf("doctor output missing stale-local-pack-dirs check:\n%s", out)
@@ -688,7 +689,7 @@ func runDoctorForStaleLocalPackDirTest(t *testing.T, cityDir string) string {
 	cleanupManagedDoltTestCity(t, cityDir)
 
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 	return stdout.String() + stderr.String()
 }
 
@@ -716,7 +717,7 @@ func TestDoDoctorReportsLegacyBDSplitStore(t *testing.T) {
 	t.Cleanup(func() { cityFlag = origCityFlag })
 
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, false, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, false, false, 0, &stdout, &stderr)
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "bd-split-store") {
 		t.Fatalf("doctor output missing bd-split-store check:\n%s", out)
@@ -811,7 +812,7 @@ func TestDoctorStoreFactoryUsesExplicitCityForRigOutsideCityTree(t *testing.T) {
 	}})
 	t.Setenv("GC_BEADS", "exec:"+script)
 
-	store, err := openStoreForCity(cityDir)(rigDir)
+	store, err := openStoreForCity(context.Background(), cityDir)(rigDir)
 	if err != nil {
 		t.Fatalf("openStoreForCity(rig): %v", err)
 	}
@@ -853,7 +854,7 @@ name = "demo"
 	if _, err := legacyCityStore.Create(beads.Bead{Title: "legacy city bead", Type: "task"}); err != nil {
 		t.Fatalf("legacy city Create: %v", err)
 	}
-	store, err := openStoreForCity(cityDir)(rigDir)
+	store, err := openStoreForCity(context.Background(), cityDir)(rigDir)
 	if err != nil {
 		t.Fatalf("openStoreForCity(rig): %v", err)
 	}

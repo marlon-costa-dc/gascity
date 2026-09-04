@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -20,12 +21,12 @@ import (
 // Store priority: if GC_RIG_ROOT is set the rig store is queried (where
 // rig-scoped polecat work beads live), otherwise the city store at cityPath.
 // When cityPath is empty the function falls back to GC_CITY from the env.
-func wispStepInjectionContent(cityPath string) string {
+func wispStepInjectionContent(ctx context.Context, cityPath string) string {
 	effective := cityPath
 	if effective == "" {
 		effective = strings.TrimSpace(os.Getenv("GC_CITY"))
 	}
-	store := openWispStepStore(effective)
+	store := openWispStepStore(ctx, effective)
 	if store == nil {
 		return ""
 	}
@@ -46,9 +47,9 @@ func wispStepInjectionContent(cityPath string) string {
 // work lives); otherwise it opens the city store at cityPath.
 // Returns nil on any error — callers treat nil as "no store available".
 // This is the WORK store and stays unrouted; see resolveActiveWispStep.
-func openWispStepStore(cityPath string) beads.Store {
+func openWispStepStore(ctx context.Context, cityPath string) beads.Store {
 	if rigRoot := strings.TrimSpace(os.Getenv("GC_RIG_ROOT")); rigRoot != "" {
-		store, err := openStoreAtForCity(rigRoot, cityPath)
+		store, err := openStoreAtForCity(ctx, rigRoot, cityPath)
 		if err == nil {
 			return store
 		}
@@ -56,7 +57,7 @@ func openWispStepStore(cityPath string) beads.Store {
 	if cityPath == "" {
 		return nil
 	}
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(ctx, cityPath)
 	if err != nil {
 		return nil
 	}

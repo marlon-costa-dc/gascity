@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -215,7 +216,7 @@ func TestBdByIDRigRuleAppliesToTheFlagAndNotToAutoDetectedScope(t *testing.T) {
 
 	t.Setenv("GC_RIG", byIDRigName)
 	var stdout, stderr bytes.Buffer
-	if code := doBd([]string{"show", bead.ID, "--json"}, &stdout, &stderr); code != 0 {
+	if code := doBd(context.Background(), []string{"show", bead.ID, "--json"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("GC_RIG=%s show exited %d: %s", byIDRigName, code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), bead.ID) {
@@ -225,7 +226,7 @@ func TestBdByIDRigRuleAppliesToTheFlagAndNotToAutoDetectedScope(t *testing.T) {
 	// The same city, the same bead, the same rig — written as the flag.
 	stdout.Reset()
 	stderr.Reset()
-	if code := doBd([]string{"--rig", byIDRigName, "show", bead.ID, "--json"}, &stdout, &stderr); code != 1 {
+	if code := doBd(context.Background(), []string{"--rig", byIDRigName, "show", bead.ID, "--json"}, &stdout, &stderr); code != 1 {
 		t.Fatalf("--rig %s show exited %d, want 1: stdout=%q stderr=%q", byIDRigName, code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "drop --rig") {
@@ -239,7 +240,7 @@ func TestBdByIDRigRuleAppliesToTheFlagAndNotToAutoDetectedScope(t *testing.T) {
 	prev := rigFlag
 	rigFlag = byIDRigName
 	t.Cleanup(func() { rigFlag = prev })
-	if code := doBd([]string{"show", bead.ID, "--json"}, &stdout, &stderr); code != 1 {
+	if code := doBd(context.Background(), []string{"show", bead.ID, "--json"}, &stdout, &stderr); code != 1 {
 		t.Fatalf("gc --rig %s bd show exited %d, want 1: stdout=%q stderr=%q", byIDRigName, code, stdout.String(), stderr.String())
 	}
 }

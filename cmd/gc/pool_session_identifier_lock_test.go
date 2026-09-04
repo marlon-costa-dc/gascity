@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io"
 	"sort"
@@ -279,7 +280,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_TransientExactNameRace(t *testing
 			MaxActiveSessions: intPtr(2),
 		}},
 	}
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
 	bp.sessionBeads = newSessionBeadSnapshot(nil)
 	locker := newTwoCallPoolIdentifierLocker()
 
@@ -312,7 +313,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_AliasedSlot2ExactNameRace(t *test
 			},
 		},
 	}
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
 	bp.sessionBeads = newSessionBeadSnapshot(nil)
 	locker := newTwoCallPoolIdentifierLocker()
 
@@ -337,7 +338,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_AliasAvailabilityErrorNeverCreate
 			TmuxAlias:         "crew",
 		}},
 	}
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
 	bp.sessionBeads = newSessionBeadSnapshot(nil)
 
 	info, err := createPoolSessionBeadWithGuardedAlias(bp, &cfg.Agents[0], "worker", "worker-1", 1, nil)
@@ -386,7 +387,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_ProvenAliasCollisionDefersAlias(t
 			NamepoolNames:     []string{"furiosa", "nux"},
 		}},
 	}
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
 	bp.sessionBeads = newSessionBeadSnapshotFromInfos(nil)
 	bp.sessionOccupancyInfos = bp.sessionBeads.OpenInfos()
 	bp.sessionSnapshotCompletenessKnown = true
@@ -452,7 +453,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_ForeignAliasCollisionDefersAlias(
 		}},
 	}
 	holder := seedGuardedPoolSessionHolder(t, foreign, "foreign alias holder", "rig/manual", "rig/furiosa", "manual-furiosa")
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
 	primeGuardedPoolCrossStoreCensus(t, bp, map[string]beads.Store{"rig": foreign})
 
 	_, qualifiedInstance, slot := poolDesiredRequestIdentity(&cfg.Agents[0], 1)
@@ -499,7 +500,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_LateForeignExactNameHolderBlocksC
 			MaxActiveSessions: &maxSessions,
 		}},
 	}
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
 	rigStores := map[string]beads.Store{"rig": foreign}
 	primeGuardedPoolCrossStoreCensus(t, bp, rigStores)
 	if len(bp.sessionOccupancyInfos) != 0 {
@@ -541,12 +542,12 @@ func TestCreatePoolSessionBeadWithGuardedAlias_LiveRecensusBypassesStaleForeignC
 	rigPath := t.TempDir()
 	primaryBacking := beads.NewMemStore()
 	primary := beads.NewCachingStoreForTest(primaryBacking, nil)
-	if err := primary.PrimeActive(); err != nil {
+	if err := primary.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("prime primary cache: %v", err)
 	}
 	foreignBacking := beads.NewMemStore()
 	foreign := beads.NewCachingStoreForTest(foreignBacking, nil)
-	if err := foreign.PrimeActive(); err != nil {
+	if err := foreign.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("prime foreign cache: %v", err)
 	}
 	maxSessions := 2
@@ -560,7 +561,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_LiveRecensusBypassesStaleForeignC
 			MaxActiveSessions: &maxSessions,
 		}},
 	}
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
 	rigStores := map[string]beads.Store{"rig": foreign}
 	primeGuardedPoolCrossStoreCensus(t, bp, rigStores)
 
@@ -618,7 +619,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_ForeignRecensusErrorNeverCreates(
 			MaxActiveSessions: &maxSessions,
 		}},
 	}
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
 	primeGuardedPoolCrossStoreCensus(t, bp, map[string]beads.Store{"rig": foreign})
 	foreign.fail = true // the foreign leg degrades after planning, before lock-time proof
 

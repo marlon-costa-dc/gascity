@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -52,8 +53,8 @@ func currentSessionRuntimeTarget() (sessionRuntimeTarget, error) {
 	}, nil
 }
 
-func resolveSessionRuntimeTarget(identifier string, warningWriter ...io.Writer) (sessionRuntimeTarget, error) {
-	target, err := resolveNudgeTarget(identifier, warningWriter...)
+func resolveSessionRuntimeTarget(ctx context.Context, identifier string, warningWriter ...io.Writer) (sessionRuntimeTarget, error) {
+	target, err := resolveNudgeTarget(ctx, identifier, warningWriter...)
 	if err != nil {
 		return sessionRuntimeTarget{}, err
 	}

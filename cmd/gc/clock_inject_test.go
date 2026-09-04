@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -90,7 +91,7 @@ func TestCmdNudgeDrainInjectClockAndNudgeSingleJSONDocument(t *testing.T) {
 			writeNamedSessionCityTOML(t, cityDir)
 			t.Setenv("GC_CITY", cityDir)
 
-			store, err := openCityStoreAt(cityDir)
+			store, err := openCityStoreAt(context.Background(), cityDir)
 			if err != nil {
 				t.Fatalf("openCityStoreAt: %v", err)
 			}
@@ -113,12 +114,12 @@ func TestCmdNudgeDrainInjectClockAndNudgeSingleJSONDocument(t *testing.T) {
 			item := newQueuedNudgeWithOptions("worker", "check hook output", "session", time.Now().Add(-time.Minute), queuedNudgeOptions{
 				SessionID: created.ID,
 			})
-			if err := enqueueQueuedNudgeWithStore(cityDir, beads.NudgesStore{Store: store}, item); err != nil {
+			if err := enqueueQueuedNudgeWithStore(context.Background(), cityDir, beads.NudgesStore{Store: store}, item); err != nil {
 				t.Fatalf("enqueueQueuedNudgeWithStore: %v", err)
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := cmdNudgeDrainWithFormat([]string{created.ID}, true, hookFormat, &stdout, &stderr)
+			code := cmdNudgeDrainWithFormat(context.Background(), []string{created.ID}, true, hookFormat, &stdout, &stderr)
 			if code != 0 {
 				t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0; stderr=%s", code, stderr.String())
 			}
@@ -171,7 +172,7 @@ func TestCmdNudgeDrainInjectStepInSingleJSONDocument(t *testing.T) {
 			// this identity.
 			t.Setenv("GC_ALIAS", "worker")
 
-			store, err := openCityStoreAt(cityDir)
+			store, err := openCityStoreAt(context.Background(), cityDir)
 			if err != nil {
 				t.Fatalf("openCityStoreAt: %v", err)
 			}
@@ -209,12 +210,12 @@ func TestCmdNudgeDrainInjectStepInSingleJSONDocument(t *testing.T) {
 			item := newQueuedNudgeWithOptions("worker", "check hook output", "session", time.Now().Add(-time.Minute), queuedNudgeOptions{
 				SessionID: created.ID,
 			})
-			if err := enqueueQueuedNudgeWithStore(cityDir, beads.NudgesStore{Store: store}, item); err != nil {
+			if err := enqueueQueuedNudgeWithStore(context.Background(), cityDir, beads.NudgesStore{Store: store}, item); err != nil {
 				t.Fatalf("enqueueQueuedNudgeWithStore: %v", err)
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := cmdNudgeDrainWithFormat([]string{created.ID}, true, hookFormat, &stdout, &stderr)
+			code := cmdNudgeDrainWithFormat(context.Background(), []string{created.ID}, true, hookFormat, &stdout, &stderr)
 			if code != 0 {
 				t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0; stderr=%s", code, stderr.String())
 			}

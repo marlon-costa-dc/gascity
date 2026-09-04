@@ -65,7 +65,7 @@ func TestHookClaimDoesNotServeHeldExistingAssignment(t *testing.T) {
 				},
 			}
 			var stdout, stderr bytes.Buffer
-			doHookClaim("bd ready --json", "/tmp/work", holdTestClaimOptions(), ops, &stdout, &stderr)
+			doHookClaim(context.Background(), "bd ready --json", "/tmp/work", holdTestClaimOptions(), ops, &stdout, &stderr)
 
 			var result hookClaimJSONResult
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
@@ -109,7 +109,7 @@ func TestHookClaimSkipsHeldAssignmentAndClaimsReadyWork(t *testing.T) {
 		},
 	}
 	var stdout, stderr bytes.Buffer
-	doHookClaim("bd ready --json", "/tmp/work", holdTestClaimOptions(), ops, &stdout, &stderr)
+	doHookClaim(context.Background(), "bd ready --json", "/tmp/work", holdTestClaimOptions(), ops, &stdout, &stderr)
 
 	var result hookClaimJSONResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
@@ -140,7 +140,7 @@ func TestHookClaimDoesNotPromoteHeldReadyAssignment(t *testing.T) {
 		},
 	}
 	var stdout, stderr bytes.Buffer
-	doHookClaim("bd ready --json", "/tmp/work", holdTestClaimOptions(), ops, &stdout, &stderr)
+	doHookClaim(context.Background(), "bd ready --json", "/tmp/work", holdTestClaimOptions(), ops, &stdout, &stderr)
 
 	var result hookClaimJSONResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {

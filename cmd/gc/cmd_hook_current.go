@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -38,8 +39,8 @@ The calling session is taken from $GC_SESSION_ID. Exits 1 when there is no
 session identity and when the session has claimed nothing, so a caller that
 cannot name its bead fails loudly instead of skipping its own work.`,
 		Args: cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return exitForCode(cmdHookCurrent(idOnly, stdout, stderr))
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return exitForCode(cmdHookCurrent(cmd.Context(), idOnly, stdout, stderr))
 		},
 	}
 	cmd.Flags().BoolVar(&idOnly, "id-only", false, "print only the bead id, with no surrounding context")
@@ -49,13 +50,13 @@ cannot name its bead fails loudly instead of skipping its own work.`,
 // cmdHookCurrent resolves the calling session from the environment and prints
 // its current claim. It is the thin env+front-door root over doHookCurrent, which
 // holds the whole decision so it can be exercised without a city on disk.
-func cmdHookCurrent(idOnly bool, stdout, stderr io.Writer) int {
+func cmdHookCurrent(ctx context.Context, idOnly bool, stdout, stderr io.Writer) int {
 	sessionID := strings.TrimSpace(os.Getenv("GC_SESSION_ID"))
 	if sessionID == "" {
 		fmt.Fprintln(stderr, "gc hook current: no session identity (set $GC_SESSION_ID); only a session that claimed work has a current bead") //nolint:errcheck
 		return 1
 	}
-	sessFront, err := hookCurrentSessionFrontDoor()
+	sessFront, err := hookCurrentSessionFrontDoor(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc hook current: %v\n", err) //nolint:errcheck
 		return 1

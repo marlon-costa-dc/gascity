@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -66,7 +67,7 @@ func TestPrepareStartCandidateStagesScaffoldInResolvedTaskWorkDirWhenCWDIsShared
 		t.Fatal(err)
 	}
 
-	prepared, err := prepareStartCandidateForCity(startCandidate{
+	prepared, err := prepareStartCandidateForCity(context.Background(), startCandidate{
 		info: sessiontest.SeedBead(t, session),
 		tp: TemplateParams{
 			TemplateName: "gascity/builder",

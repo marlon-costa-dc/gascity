@@ -157,15 +157,21 @@ func TestResolveWorkerSessionRuntimePreservesStoredResolvedCommandAndBackfillsCu
 		t.Errorf("SessionEnv[GC_CONTROL_DISPATCHER_TRACE_DEFAULT] = %q present, want absent (identity-only)", got)
 	}
 	for key, want := range map[string]string{
-		"ANTHROPIC_AUTH_TOKEN": "api-resume-anthropic-token",
-		"ANTHROPIC_BASE_URL":   "https://resolved.example.test",
-		"OLLAMA_API_KEY":       "api-resume-ollama-token",
+		"ANTHROPIC_BASE_URL": "https://resolved.example.test",
 	} {
 		if got := runtimeCfg.SessionEnv[key]; got != want {
 			t.Errorf("SessionEnv[%s] = %q, want %q", key, got, want)
 		}
 		if got := runtimeCfg.Hints.Env[key]; got != want {
 			t.Errorf("Hints.Env[%s] = %q, want %q", key, got, want)
+		}
+	}
+	for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "OLLAMA_API_KEY"} {
+		if got, present := runtimeCfg.SessionEnv[key]; present {
+			t.Errorf("SessionEnv[%s] = %q present, want absent ambient provider credential", key, got)
+		}
+		if got, present := runtimeCfg.Hints.Env[key]; present {
+			t.Errorf("Hints.Env[%s] = %q present, want absent ambient provider credential", key, got)
 		}
 	}
 	for _, key := range []string{"GC_RIG", "GC_SESSION_NAME"} {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -210,7 +211,7 @@ source = "`+gastownPackDir+`"
 	store := beads.NewMemStore()
 	var stdout bytes.Buffer
 	stderr.Reset()
-	code := doOrderRun(discovered, "digest-generate", "", cityDir, beads.OrdersStore{Store: store}, nil, &stdout, &stderr)
+	code := doOrderRun(context.Background(), discovered, "digest-generate", "", cityDir, beads.OrdersStore{Store: store}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doOrderRun = %d, want 0; stdout: %s stderr: %s", code, stdout.String(), stderr.String())
 	}

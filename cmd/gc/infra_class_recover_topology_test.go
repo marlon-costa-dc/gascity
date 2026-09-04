@@ -761,7 +761,7 @@ func TestStorageRecoverStrandedOnABornSplitCityDefersToTheBootGuard(t *testing.T
 	// The two authorities must agree about the same bead.
 	var statusOut, statusErr bytes.Buffer
 	stubInfraControllerPing(t, 0)
-	if code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &statusOut, &statusErr); code == 0 {
+	if code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &statusOut, &statusErr); code == 0 {
 		t.Fatalf("status exited 0 on a born-split city holding %s: %s", strayed.ID, statusOut.String())
 	}
 	if !strings.Contains(statusOut.String(), strayed.ID) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -24,7 +25,7 @@ func TestDoBeadsHealth_FileProvider(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsHealth(false, false, &stdout, &stderr)
+	code := doBeadsHealth(context.Background(), false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Errorf("exit code = %d, want 0; stderr = %s", code, stderr.String())
 	}
@@ -43,7 +44,7 @@ func TestDoBeadsHealth_FileProviderQuiet(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsHealth(true, false, &stdout, &stderr)
+	code := doBeadsHealth(context.Background(), true, false, &stdout, &stderr)
 	if code != 0 {
 		t.Errorf("exit code = %d, want 0", code)
 	}
@@ -98,7 +99,7 @@ func TestDoBeadsHealth_ExecProviderHealthy(t *testing.T) {
 	t.Setenv("GC_BEADS", "exec:"+script)
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsHealth(false, false, &stdout, &stderr)
+	code := doBeadsHealth(context.Background(), false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Errorf("exit code = %d, want 0; stderr = %s", code, stderr.String())
 	}
@@ -119,7 +120,7 @@ func TestDoBeadsHealth_ExecProviderUnhealthy(t *testing.T) {
 	t.Setenv("GC_BEADS", "exec:"+script)
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsHealth(false, false, &stdout, &stderr)
+	code := doBeadsHealth(context.Background(), false, false, &stdout, &stderr)
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1", code)
 	}
@@ -278,7 +279,7 @@ func TestRouteBeadsList_SixRowMatrix(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := routeBeadsList(cityPath, c, tc.nilReason, "text", beadFilters{}, &stdout, &stderr)
+			code := routeBeadsList(context.Background(), cityPath, c, tc.nilReason, "text", beadFilters{}, &stdout, &stderr)
 
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
@@ -378,7 +379,7 @@ func TestRouteBeadsShow_SixRowMatrix(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := routeBeadsShow(cityPath, c, tc.nilReason, "ga-missing", "text", &stdout, &stderr)
+			code := routeBeadsShow(context.Background(), cityPath, c, tc.nilReason, "ga-missing", "text", &stdout, &stderr)
 
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
@@ -431,7 +432,7 @@ func TestCmdBeadsShow_MissingID_DoesNotProbeAPIClient(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdBeadsShow("", "text", &stdout, &stderr) // no bead id
+	code := cmdBeadsShow(context.Background(), "", "text", &stdout, &stderr) // no bead id
 
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; stderr=%q", code, stderr.String())
@@ -456,7 +457,7 @@ func TestRouteBeadsList_APIJSONIncludesCacheAge(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeBeadsList(cityPath, c, "", "json", beadFilters{}, &stdout, &stderr); code != 0 {
+	if code := routeBeadsList(context.Background(), cityPath, c, "", "json", beadFilters{}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	var out map[string]any
@@ -470,7 +471,7 @@ func TestRouteBeadsList_APIJSONIncludesCacheAge(t *testing.T) {
 	// Fallback path must omit the envelope field.
 	stdout.Reset()
 	stderr.Reset()
-	if code := routeBeadsList(cityPath, nil, "controller-down", "json", beadFilters{}, &stdout, &stderr); code != 0 {
+	if code := routeBeadsList(context.Background(), cityPath, nil, "controller-down", "json", beadFilters{}, &stdout, &stderr); code != 0 {
 		t.Fatalf("fallback exit = %d, stderr=%q", code, stderr.String())
 	}
 	// Fallback path writes a bare JSON array (writeBeadsJSON) — no envelope.
@@ -495,7 +496,7 @@ func TestRouteBeadsList_StaleBannerOver30s(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeBeadsList(cityPath, c, "", "text", beadFilters{}, &stdout, &stderr); code != 0 {
+	if code := routeBeadsList(context.Background(), cityPath, c, "", "text", beadFilters{}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "cache age: 45s") {
@@ -514,7 +515,7 @@ func TestRouteBeadsList_AllFlag_Fallback(t *testing.T) {
 	// Without any filter and without --all, default CLI should still list
 	// (AllowScan permitted so the user sees active beads).
 	var stdout, stderr bytes.Buffer
-	code := doBeadsListFallback(cityPath, "text", beadFilters{}, &stdout, &stderr)
+	code := doBeadsListFallback(context.Background(), cityPath, "text", beadFilters{}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("default list fallback: exit = %d, stderr=%q", code, stderr.String())
 	}
@@ -523,7 +524,7 @@ func TestRouteBeadsList_AllFlag_Fallback(t *testing.T) {
 	// 'bead query requires scan'. This is the B1 regression.
 	stdout.Reset()
 	stderr.Reset()
-	code = doBeadsListFallback(cityPath, "text", beadFilters{all: true}, &stdout, &stderr)
+	code = doBeadsListFallback(context.Background(), cityPath, "text", beadFilters{all: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("--all fallback: exit = %d, stderr=%q", code, stderr.String())
 	}
@@ -553,7 +554,7 @@ func TestRouteBeadsList_AllFlag_APIQuery(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeBeadsList(cityPath, c, "", "text", beadFilters{all: true}, &stdout, &stderr); code != 0 {
+	if code := routeBeadsList(context.Background(), cityPath, c, "", "text", beadFilters{all: true}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	if got := gotQuery.Get("all"); got != "true" {
@@ -564,7 +565,7 @@ func TestRouteBeadsList_AllFlag_APIQuery(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	gotQuery = nil
-	if code := routeBeadsList(cityPath, c, "", "text", beadFilters{}, &stdout, &stderr); code != 0 {
+	if code := routeBeadsList(context.Background(), cityPath, c, "", "text", beadFilters{}, &stdout, &stderr); code != 0 {
 		t.Fatalf("no-all exit = %d, stderr=%q", code, stderr.String())
 	}
 	if got := gotQuery.Get("all"); got == "true" {
@@ -584,7 +585,7 @@ func TestDoBeadsHealth_BdSkip(t *testing.T) {
 	t.Setenv("GC_DOLT", "skip")
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsHealth(false, false, &stdout, &stderr)
+	code := doBeadsHealth(context.Background(), false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Errorf("exit code = %d, want 0; stderr = %s", code, stderr.String())
 	}

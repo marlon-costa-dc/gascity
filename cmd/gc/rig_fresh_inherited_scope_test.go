@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -98,7 +99,7 @@ func TestInitAndHookDirLeavesAFreshInheritedRigUnpinned(t *testing.T) {
 	t.Setenv("GC_BEADS", "exec:"+script)
 	t.Setenv("GC_BEADS_SCOPE_ROOT", cityPath)
 
-	if err := initAndHookDir(cityPath, rigPath, "fresh"); err != nil {
+	if err := initAndHookDir(context.Background(), cityPath, rigPath, "fresh"); err != nil {
 		t.Fatalf("initAndHookDir: %v", err)
 	}
 

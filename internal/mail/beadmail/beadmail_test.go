@@ -1,6 +1,7 @@
 package beadmail
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"strings"
@@ -180,7 +181,7 @@ func TestInboxUsesSingleBothTierMessageScanAcrossRoutes(t *testing.T) {
 func TestInboxBypassesPrimedCacheForFreshMessages(t *testing.T) {
 	backing := beads.NewMemStore()
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 

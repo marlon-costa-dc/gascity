@@ -51,12 +51,13 @@ func bootSplitCityForReload(t *testing.T) (*CityRuntime, string, *bytes.Buffer) 
 	sp := runtime.NewFake()
 	var stdout, stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
+		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),

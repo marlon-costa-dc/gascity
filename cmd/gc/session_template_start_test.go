@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"path/filepath"
 	"strings"
@@ -33,7 +34,7 @@ func TestEnsureSessionForTemplate_CreatesFreshSessionForTemplateFallback(t *test
 		}},
 	}
 
-	sessionName, err := ensureSessionForTemplate(t.TempDir(), cfg, store, "mayor", io.Discard)
+	sessionName, err := ensureSessionForTemplate(context.Background(), t.TempDir(), cfg, store, "mayor", io.Discard)
 	if err != nil {
 		t.Fatalf("ensureSessionForTemplate(mayor): %v", err)
 	}
@@ -86,7 +87,7 @@ func TestEnsureSessionForTemplate_ReopensClosedNamedSessionWithCleanMetadata(t *
 		t.Fatalf("Close: %v", err)
 	}
 
-	gotName, err := ensureSessionForTemplate(t.TempDir(), cfg, store, "mayor", io.Discard)
+	gotName, err := ensureSessionForTemplate(context.Background(), t.TempDir(), cfg, store, "mayor", io.Discard)
 	if err != nil {
 		t.Fatalf("ensureSessionForTemplate(mayor): %v", err)
 	}
@@ -130,11 +131,11 @@ func TestEnsureSessionForTemplate_PoolTemplateWithoutAliasUsesGeneratedWorkDirId
 	}
 	store := beads.NewMemStore()
 
-	firstName, err := ensureSessionForTemplate(cityPath, cfg, store, "demo/ant", io.Discard)
+	firstName, err := ensureSessionForTemplate(context.Background(), cityPath, cfg, store, "demo/ant", io.Discard)
 	if err != nil {
 		t.Fatalf("ensureSessionForTemplate(first) = %v", err)
 	}
-	secondName, err := ensureSessionForTemplate(cityPath, cfg, store, "demo/ant", io.Discard)
+	secondName, err := ensureSessionForTemplate(context.Background(), cityPath, cfg, store, "demo/ant", io.Discard)
 	if err != nil {
 		t.Fatalf("ensureSessionForTemplate(second) = %v", err)
 	}
@@ -204,7 +205,7 @@ func TestEnsureSessionForTemplate_RebrandedSingletonKeepsTemplateWorkDirIdentity
 	}
 	store := beads.NewMemStore()
 
-	sessionName, err := ensureSessionForTemplate(cityPath, cfg, store, "demo/boot", io.Discard)
+	sessionName, err := ensureSessionForTemplate(context.Background(), cityPath, cfg, store, "demo/boot", io.Discard)
 	if err != nil {
 		t.Fatalf("ensureSessionForTemplate = %v", err)
 	}

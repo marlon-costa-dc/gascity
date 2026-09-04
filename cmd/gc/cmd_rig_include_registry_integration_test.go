@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -63,7 +64,7 @@ func TestRigAddIncludeResolvesScopedRegistryPackName(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 
 	var stdout, stderr bytes.Buffer
-	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, []string{"wespd/cacc-twin-team"}, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, []string{"wespd/cacc-twin-team"}, "", "", "", false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigAdd returned %d, stderr: %s", code, stderr.String())
 	}

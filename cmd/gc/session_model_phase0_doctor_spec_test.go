@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -47,7 +48,7 @@ func TestPhase0DoctorReportsClosedBeadOwner(t *testing.T) {
 
 	t.Setenv("GC_CITY", cityPath)
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "closed-bead-owner") {
@@ -71,7 +72,7 @@ func TestPhase0DoctorReportsStaleRoutedConfig(t *testing.T) {
 
 	t.Setenv("GC_CITY", cityPath)
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "stale-routed-config") {
@@ -93,7 +94,7 @@ func TestPhase0DoctorReportsMissingBeadOwner(t *testing.T) {
 
 	t.Setenv("GC_CITY", cityPath)
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "missing-bead-owner") {
@@ -129,7 +130,7 @@ func TestPhase0DoctorReportsRetiredBeadOwner(t *testing.T) {
 
 	t.Setenv("GC_CITY", cityPath)
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "retired-bead-owner") {
@@ -165,7 +166,7 @@ func TestPhase0DoctorDoesNotReportContinuityEligibleArchivedOwnerAsRetired(t *te
 
 	t.Setenv("GC_CITY", cityPath)
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 
 	out := stdout.String() + stderr.String()
 	if strings.Contains(out, "retired-bead-owner") {
@@ -200,7 +201,7 @@ func TestPhase0DoctorReportsAmbiguousLegacySessionToken(t *testing.T) {
 
 	t.Setenv("GC_CITY", cityPath)
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "ambiguous-legacy-session-token") {
@@ -231,7 +232,7 @@ start_command = "true"
 
 	t.Setenv("GC_CITY", cityPath)
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "legacy-token-matches-config-only") {
@@ -265,7 +266,7 @@ func TestPhase0DoctorReportsHistoricalAliasOwner(t *testing.T) {
 
 	t.Setenv("GC_CITY", cityPath)
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "historical-alias-owner") {
@@ -303,7 +304,7 @@ mode = "on_demand"
 
 	t.Setenv("GC_CITY", cityPath)
 	var stdout, stderr bytes.Buffer
-	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
 
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "configured-named-conflict") {

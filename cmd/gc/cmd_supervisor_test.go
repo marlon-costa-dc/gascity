@@ -88,6 +88,20 @@ func stubSupervisorSystemctlUserAvailable(t *testing.T, available bool) {
 	})
 }
 
+func stubSupervisorSystemctlShowEnvironment(t *testing.T) {
+	t.Helper()
+	old := supervisorSystemctlOutput
+	supervisorSystemctlOutput = func(args ...string) ([]byte, error) {
+		if strings.Join(args, " ") != "--user show-environment" {
+			return nil, fmt.Errorf("unexpected systemctl output call: %v", args)
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		supervisorSystemctlOutput = old
+	})
+}
+
 func startWorkspaceServiceSentinel(t *testing.T, gcHome, cityPath, serviceName string) workspaceServiceSentinel {
 	t.Helper()
 	processgrouptest.RequireRealProcessSignals(t)
@@ -210,6 +224,7 @@ func shortTempDir(t *testing.T, prefix string) string {
 
 func installFakeSystemctl(t *testing.T) string {
 	t.Helper()
+	stubSupervisorSystemctlShowEnvironment(t)
 	binDir := t.TempDir()
 	logFile := filepath.Join(t.TempDir(), "systemctl.log")
 	script := filepath.Join(binDir, "systemctl")
@@ -336,7 +351,6 @@ func TestRenderSupervisorLaunchdTemplate(t *testing.T) {
 		ExtraEnv: []supervisorServiceEnvVar{
 			{Name: "CLAUDE_CONFIG_DIR", Value: `/home/user/.config/claude-&<"'>`},
 		},
-		InheritedEnv: []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
 	}
 
 	content, err := renderSupervisorTemplate(supervisorLaunchdTemplate, data)
@@ -402,7 +416,10 @@ func TestRenderSupervisorSystemdTemplate(t *testing.T) {
 		ExtraEnv: []supervisorServiceEnvVar{
 			{Name: "GC_DOLT_LOGLEVEL", Value: "debug"},
 		},
-		InheritedEnv: []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
+		UnsetEnv: []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY"},
+		Credentials: []supervisorServiceCredential{
+			{ID: "openai-token", Path: "/home/user/.gc/creds/openai-token.cred", Env: "OPENAI_API_KEY"},
+		},
 	}
 
 	content, err := renderSupervisorTemplate(supervisorSystemdTemplate, data)
@@ -420,12 +437,17 @@ func TestRenderSupervisorSystemdTemplate(t *testing.T) {
 		`Environment=XDG_RUNTIME_DIR="/tmp/gc-run"`,
 		`Environment=PATH="/usr/local/bin:/usr/bin:/bin"`,
 		`Environment=GC_DOLT_LOGLEVEL="debug"`,
-		`PassEnvironment=ANTHROPIC_API_KEY`,
-		`PassEnvironment=OPENAI_API_KEY`,
+		`TimeoutStopSec=infinity`,
+		`PrivateMounts=yes`,
+		`UnsetEnvironment=ANTHROPIC_API_KEY OPENAI_API_KEY`,
+		`LoadCredentialEncrypted=openai-token:/home/user/.gc/creds/openai-token.cred`,
 	} {
 		if !strings.Contains(content, check) {
 			t.Fatalf("systemd template missing %q", check)
 		}
+	}
+	if strings.Contains(content, "PassEnvironment=") {
+		t.Fatalf("systemd template retained PassEnvironment:\n%s", content)
 	}
 	if strings.Contains(content, "sk-") {
 		t.Fatalf("systemd template contains a credential value:\n%s", content)
@@ -513,7 +535,7 @@ func TestBuildSupervisorServiceDataDoesNotPersistLogTeeByDefault(t *testing.T) {
 
 // TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn pins the
 // explicit-selection contract without serializing its value.
-func TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn(t *testing.T) {
+func TestBuildSupervisorServiceDataDoesNotInheritLogTeeViaSupervisorEnvOptIn(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -528,10 +550,6 @@ func TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn(t *testin
 	if got := supervisorServiceEnvMap(data.ExtraEnv); got[supervisorLogTeeEnv] != "" {
 		t.Fatalf("ExtraEnv[%s] = %q, want omitted value (all env: %#v)", supervisorLogTeeEnv, got[supervisorLogTeeEnv], got)
 	}
-	if !slices.Contains(data.InheritedEnv, supervisorLogTeeEnv) {
-		t.Fatalf("InheritedEnv missing %s: %#v", supervisorLogTeeEnv, data.InheritedEnv)
-	}
-
 	launchdContent, err := renderSupervisorTemplate(supervisorLaunchdTemplate, data)
 	if err != nil {
 		t.Fatal(err)
@@ -544,8 +562,8 @@ func TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(systemdContent, "PassEnvironment="+supervisorLogTeeEnv) {
-		t.Fatalf("systemd unit missing inherited %s name:\n%s", supervisorLogTeeEnv, systemdContent)
+	if strings.Contains(systemdContent, "PassEnvironment=") || strings.Contains(systemdContent, supervisorLogTeeEnv) {
+		t.Fatalf("systemd unit serialized inherited %s:\n%s", supervisorLogTeeEnv, systemdContent)
 	}
 	if strings.Contains(systemdContent, "Environment="+supervisorLogTeeEnv+"=") {
 		t.Fatalf("systemd unit serialized %s value:\n%s", supervisorLogTeeEnv, systemdContent)
@@ -593,9 +611,6 @@ func TestBuildSupervisorServiceDataInheritsProviderEnvByNameOnly(t *testing.T) {
 		if _, ok := got[key]; ok {
 			t.Fatalf("ExtraEnv contains inherited value for %s: %#v", key, got)
 		}
-		if !slices.Contains(data.InheritedEnv, key) {
-			t.Fatalf("InheritedEnv missing %s: %#v", key, data.InheritedEnv)
-		}
 	}
 	if got["CLAUDE_CONFIG_DIR"] != filepath.Join(homeDir, ".claude") {
 		t.Fatalf("safe CLAUDE_CONFIG_DIR = %q, want projected literal", got["CLAUDE_CONFIG_DIR"])
@@ -603,9 +618,6 @@ func TestBuildSupervisorServiceDataInheritsProviderEnvByNameOnly(t *testing.T) {
 	for _, key := range []string{"GC_HOME", "PATH", "XDG_RUNTIME_DIR", "IGNORED_EMPTY", "UNRELATED_SECRET", "AWS_PAGER"} {
 		if _, ok := got[key]; ok {
 			t.Fatalf("ExtraEnv should not include %s: %#v", key, got)
-		}
-		if slices.Contains(data.InheritedEnv, key) {
-			t.Fatalf("InheritedEnv should not include %s: %#v", key, data.InheritedEnv)
 		}
 	}
 }
@@ -642,16 +654,16 @@ CUSTOM_PROVIDER_TOKEN=custom-from-file
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
 	for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "CUSTOM_PROVIDER_TOKEN"} {
-		if _, ok := supervisorServiceEnvMap(data.ExtraEnv)[key]; ok || slices.Contains(data.InheritedEnv, key) {
-			t.Fatalf("retired secrets file selected %s: ExtraEnv=%#v InheritedEnv=%#v", key, data.ExtraEnv, data.InheritedEnv)
+		if _, ok := supervisorServiceEnvMap(data.ExtraEnv)[key]; ok {
+			t.Fatalf("retired secrets file selected %s: ExtraEnv=%#v", key, data.ExtraEnv)
 		}
 	}
 }
 
-// TestBuildSupervisorServiceDataInheritsRepresentativeProviderPrefixes asserts
-// that internal/processenv's provider selection crosses the supervisor
-// boundary as names only.
-func TestBuildSupervisorServiceDataInheritsRepresentativeProviderPrefixes(t *testing.T) {
+// TestBuildSupervisorServiceDataRejectsRepresentativeProviderPrefixes asserts
+// that internal/processenv's provider credential selection does not cross the
+// service manager boundary.
+func TestBuildSupervisorServiceDataRejectsRepresentativeProviderPrefixes(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -689,9 +701,6 @@ func TestBuildSupervisorServiceDataInheritsRepresentativeProviderPrefixes(t *tes
 	for key := range probes {
 		if _, ok := got[key]; ok {
 			t.Errorf("ExtraEnv contains provider value for %s", key)
-		}
-		if !slices.Contains(data.InheritedEnv, key) {
-			t.Errorf("InheritedEnv missing provider name %s", key)
 		}
 	}
 }
@@ -742,12 +751,9 @@ func TestBuildSupervisorServiceDataInheritsCuratedProviderCredentialEnvKeys(t *t
 		if _, ok := got[key]; ok {
 			t.Errorf("ExtraEnv contains curated provider value for %s", key)
 		}
-		if !slices.Contains(data.InheritedEnv, key) {
-			t.Errorf("InheritedEnv missing curated provider name %s", key)
-		}
 	}
 	for _, key := range []string{"AWS_EXECUTION_ENV", "AWS_PAGER", "AWS_VAULT"} {
-		if _, ok := got[key]; ok || slices.Contains(data.InheritedEnv, key) {
+		if _, ok := got[key]; ok {
 			t.Errorf("supervisor env should not include broad AWS runtime state %s", key)
 		}
 	}
@@ -837,9 +843,6 @@ func TestBuildSupervisorServiceDataSkipsDoltEndpointEnvUnlessExplicitlyOptedIn(t
 		if _, ok := got[key]; ok {
 			t.Fatalf("ExtraEnv contains explicit inherited value for %s: %#v", key, got)
 		}
-		if !slices.Contains(data.InheritedEnv, key) {
-			t.Fatalf("InheritedEnv missing explicit name %s: %#v", key, data.InheritedEnv)
-		}
 	}
 }
 
@@ -893,8 +896,8 @@ func TestBuildSupervisorServiceDataDoesNotReadExplicitEnvOptInFromLaunchctl(t *t
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
 	got := supervisorServiceEnvMap(data.ExtraEnv)
-	if _, ok := got["GC_DOLT_DATA_DIR"]; ok || slices.Contains(data.InheritedEnv, "GC_DOLT_DATA_DIR") {
-		t.Fatalf("empty current-process opt-in was selected: ExtraEnv=%#v InheritedEnv=%#v", got, data.InheritedEnv)
+	if _, ok := got["GC_DOLT_DATA_DIR"]; ok {
+		t.Fatalf("empty current-process opt-in was selected: ExtraEnv=%#v", got)
 	}
 }
 
@@ -1313,6 +1316,7 @@ func TestInstallSupervisorSystemdWarmRefreshGracefullySignalsMainPIDWhenUnitChan
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -1389,6 +1393,7 @@ func TestInstallSupervisorSystemdWarmRefreshRefusesActivePrePreserveSupervisor(t
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 1 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 1; stderr=%q", code, stderr.String())
 	}
@@ -1456,6 +1461,7 @@ func TestInstallSupervisorSystemdWarmRefreshSignalsMainPIDWithoutRestart(t *test
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -1588,6 +1594,7 @@ func TestInstallSupervisorSystemdWarmRefreshStopsWorkspaceServicesBeforeStart(t 
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -1664,6 +1671,7 @@ func TestInstallSupervisorSystemdWarmRefreshLeavesUnregisteredWorkspaceServices(
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -1938,6 +1946,7 @@ func TestInstallSupervisorSystemdWarmRefreshPreservesNewUnitWhenStartFails(t *te
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 1 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 1; stderr=%q", code, stderr.String())
 	}
@@ -2043,6 +2052,7 @@ func TestInstallSupervisorSystemdWarmRefreshPreservesNewUnitWhenCleanupFails(t *
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 1 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 1; stderr=%q", code, stderr.String())
 	}
@@ -2103,6 +2113,7 @@ func TestInstallSupervisorSystemdWritesPrivateUnitFile(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -2147,6 +2158,7 @@ func TestInstallSupervisorSystemdStartsInactiveService(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -2192,6 +2204,7 @@ func TestInstallSupervisorSystemdUsesIsolatedUnitNameForIsolatedGCHome(t *testin
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -2448,6 +2461,7 @@ func TestInstallSupervisorSystemdRemovesMatchingLegacyDefaultUnitForIsolatedGCHo
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -2513,6 +2527,7 @@ func TestInstallSupervisorSystemdIgnoresLegacyStopDisableFailures(t *testing.T) 
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -2566,6 +2581,7 @@ func TestInstallSupervisorSystemdKeepsLegacyUnitWhenNewServiceFails(t *testing.T
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 1 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 1; stderr=%q", code, stderr.String())
 	}
@@ -2645,6 +2661,7 @@ func TestInstallSupervisorSystemdKeepsLegacyUnitWhenEarlySetupFails(t *testing.T
 			})
 
 			var stdout, stderr bytes.Buffer
+			stubSupervisorSystemctlShowEnvironment(t)
 			if code := installSupervisorSystemd(data, &stdout, &stderr); code != 1 {
 				t.Fatalf("installSupervisorSystemd code = %d, want 1; stderr=%q", code, stderr.String())
 			}
@@ -2718,6 +2735,7 @@ func TestInstallSupervisorSystemdRestoresPreviousCurrentUnitWhenUpdateFails(t *t
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 1 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 1; stderr=%q", code, stderr.String())
 	}
@@ -4104,7 +4122,6 @@ func TestRunSupervisorSIGTERMPreservesSessionsEndToEnd(t *testing.T) {
 	got := stdout.String()
 	for _, want := range []string{
 		"Preserving city '" + cityPath + "' sessions for re-adoption...",
-		"Preserving agent sessions for supervisor re-adoption.",
 		"City '" + cityPath + "' preserved.",
 	} {
 		if !strings.Contains(got, want) {
@@ -4371,7 +4388,7 @@ func TestDoStartRequiresInitializedCity(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doStart([]string{dir}, false, &stdout, &stderr)
+	code := doStart(context.Background(), []string{dir}, false, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doStart code = %d, want 1", code)
 	}
@@ -4400,7 +4417,7 @@ func TestDoStartForegroundRejectsSupervisorManagedCity(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doStart([]string{cityPath}, true, &stdout, &stderr)
+	code := doStart(context.Background(), []string{cityPath}, true, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doStart code = %d, want 1", code)
 	}
@@ -4428,7 +4445,7 @@ func TestDoStartRejectsStandaloneOnlyFlagsUnderSupervisor(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := doStart([]string{cityPath}, false, &stdout, &stderr)
+	code := doStart(context.Background(), []string{cityPath}, false, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doStart code = %d, want 1", code)
 	}
@@ -4469,7 +4486,7 @@ func TestStopManagedCityForcesCleanupAfterTimeout(t *testing.T) {
 
 	var stderr bytes.Buffer
 	start := time.Now()
-	err := stopManagedCity(mc, cityPath, &stderr)
+	err := stopManagedCity(context.Background(), mc, cityPath, &stderr)
 	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
 		t.Fatalf("stopManagedCity took %s, want bounded timeout", elapsed)
 	}
@@ -4526,7 +4543,7 @@ func TestStopManagedCityAllowsForcedShutdownToUnwind(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	err := stopManagedCity(mc, cityPath, &stderr)
+	err := stopManagedCity(context.Background(), mc, cityPath, &stderr)
 	if err != nil {
 		t.Fatalf("stopManagedCity: %v; stderr=%q", err, stderr.String())
 	}
@@ -4574,7 +4591,7 @@ func TestStopManagedCityDoesNotUseStartupOrDriftTimeouts(t *testing.T) {
 
 	var stderr bytes.Buffer
 	start := time.Now()
-	err := stopManagedCity(mc, cityPath, &stderr)
+	err := stopManagedCity(context.Background(), mc, cityPath, &stderr)
 	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
 		t.Fatalf("stopManagedCity took %s, want shutdown-timeout bound", elapsed)
 	}
@@ -5858,6 +5875,7 @@ func TestInstallSupervisorSystemdRefreshesStaleTmpExecStart(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -5970,6 +5988,7 @@ func TestInstallSupervisorSystemdBailsCleanlyWhenUserManagerMissing(t *testing.T
 	}
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	code := installSupervisorSystemd(data, &stdout, &stderr)
 
 	if code != 1 {
@@ -6034,6 +6053,7 @@ func TestInstallSupervisorSystemdCreatesLogDirBeforeStartingService(t *testing.T
 	}
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -6259,6 +6279,7 @@ func TestInstallSupervisorSystemdEnablesLinger(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
+	stubSupervisorSystemctlShowEnvironment(t)
 	if code := installSupervisorSystemd(data, &stdout, &stderr); code != 0 {
 		t.Fatalf("installSupervisorSystemd code = %d, want 0; stderr=%q", code, stderr.String())
 	}

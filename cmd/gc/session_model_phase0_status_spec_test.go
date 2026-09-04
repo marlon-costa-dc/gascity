@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -25,7 +26,7 @@ func TestPhase0StatusText_DoesNotExposePoolOntology(t *testing.T) {
 	dops := newDrainOps(sp)
 
 	var stdout bytes.Buffer
-	if code := doCityStatus(sp, dops, cfg, t.TempDir(), &stdout, &bytes.Buffer{}); code != 0 {
+	if code := doCityStatus(context.Background(), sp, dops, cfg, t.TempDir(), &stdout, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("doCityStatus() = %d, want 0", code)
 	}
 	statusBody := stdout.String()
@@ -49,8 +50,8 @@ func TestPhase0StatusJSON_DoesNotEmitPoolField(t *testing.T) {
 	sp := runtime.NewFake()
 
 	var stdout bytes.Buffer
-	if code := doCityStatusJSON(sp, cfg, t.TempDir(), &stdout, &bytes.Buffer{}); code != 0 {
-		t.Fatalf("doCityStatusJSON() = %d, want 0", code)
+	if code := doCityStatusJSON(context.Background(), sp, cfg, t.TempDir(), &stdout, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("doCityStatusJSON(context.Background(), ) = %d, want 0", code)
 	}
 	if strings.Contains(stdout.String(), `"pool"`) {
 		t.Fatalf("status json should not expose pool field:\n%s", stdout.String())
@@ -72,7 +73,7 @@ func TestPhase0StatusText_ShowsReservedUnmaterializedNamedIdentity(t *testing.T)
 	dops := newDrainOps(sp)
 
 	var stdout bytes.Buffer
-	if code := doCityStatus(sp, dops, cfg, t.TempDir(), &stdout, &bytes.Buffer{}); code != 0 {
+	if code := doCityStatus(context.Background(), sp, dops, cfg, t.TempDir(), &stdout, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("doCityStatus() = %d, want 0", code)
 	}
 	out := strings.ToLower(stdout.String())

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -34,7 +35,7 @@ func TestPrepareStartCandidateRejectsNonSessionBead(t *testing.T) {
 		info: session.Info{ID: corrupt.ID},
 		tp:   TemplateParams{TemplateName: "worker"},
 	}
-	prepared, err := prepareStartCandidate(candidate, &config.City{}, store, clock.Real{})
+	prepared, err := prepareStartCandidate(context.Background(), candidate, &config.City{}, store, clock.Real{})
 	if err == nil {
 		t.Fatal("prepareStartCandidate err=nil for a bead that failed the front-door session gate; want the loading-session rejection, no launch")
 	}

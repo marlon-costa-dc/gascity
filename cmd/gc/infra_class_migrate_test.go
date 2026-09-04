@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -57,7 +58,7 @@ func migrateInfraClasses(t *testing.T, cityPath string, cfg *config.City, stderr
 	if !ok {
 		return infraMigrationReport{Outcome: infraMigrationNotConfigured}
 	}
-	report := runInfraClassMigration(cityPath, target, "gc storage migrate", stderr)
+	report := runInfraClassMigration(context.Background(), cityPath, target, "gc storage migrate", stderr)
 	report.Target = target
 	report.BindingProvenEmpty, report.BindingProbe = infraBindingHoldsNothing(target)
 	return report
@@ -71,7 +72,7 @@ func stubInfraMigrationSource(t *testing.T) beads.Store {
 	t.Helper()
 	source := beads.NewMemStore()
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(string) (beads.Store, error) { return source, nil }
+	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) { return source, nil }
 	t.Cleanup(func() { openInfraMigrationSource = prev })
 	return source
 }
@@ -88,7 +89,7 @@ func stubInfraMigrationSource(t *testing.T) beads.Store {
 func refuseInfraMigrationSource(t *testing.T) {
 	t.Helper()
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(string) (beads.Store, error) {
+	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) {
 		t.Error("the migration opened the work store when it should have done nothing")
 		return beads.NewMemStore(), nil
 	}
@@ -353,7 +354,7 @@ func TestEnsureInfraClassMigratedIsDarkForGenesisCities(t *testing.T) {
 			refuseInfraMigrationSource(t)
 
 			var log bytes.Buffer
-			if got := checkInfraClassConvergence(cityPath, tc.cfg, "gc start", &log); got.Outcome != infraMigrationNotConfigured {
+			if got := checkInfraClassConvergence(context.Background(), cityPath, tc.cfg, "gc start", &log); got.Outcome != infraMigrationNotConfigured {
 				t.Fatalf("outcome = %v, want not-configured; log: %s", got.Outcome, log.String())
 			}
 			if log.Len() != 0 {
@@ -565,7 +566,7 @@ func TestEnsureInfraClassMigratedAbortsBeforeMarker(t *testing.T) {
 	cityPath := t.TempDir()
 	storeDir := filepath.Join(cityPath, ".gc", "store")
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(string) (beads.Store, error) { return nil, os.ErrPermission }
+	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) { return nil, os.ErrPermission }
 	t.Cleanup(func() { openInfraMigrationSource = prev })
 
 	cfg := infraSplitConfig(storeDir)
@@ -611,7 +612,7 @@ func TestEnsureInfraClassMigratedBlocksOnAnEqualityMismatch(t *testing.T) {
 	storeDir := filepath.Join(cityPath, ".gc", "store")
 	growing := &growingInfraSource{Store: beads.NewMemStore(), t: t}
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(string) (beads.Store, error) { return growing, nil }
+	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) { return growing, nil }
 	t.Cleanup(func() { openInfraMigrationSource = prev })
 	early := mustCreateInfraBead(t, growing.Store, beads.Bead{Title: "copied", Type: "session", Labels: []string{"gc:session"}})
 
@@ -632,7 +633,7 @@ func TestEnsureInfraClassMigratedBlocksOnAnEqualityMismatch(t *testing.T) {
 	}
 
 	// Quiet source: the retry converges, and the late row crosses.
-	openInfraMigrationSource = func(string) (beads.Store, error) { return growing.Store, nil }
+	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) { return growing.Store, nil }
 	log.Reset()
 	if got := migrateInfraClasses(t, cityPath, cfg, &log); got.Outcome != infraMigrationConverged {
 		t.Fatalf("retry outcome = %v, want converged; log: %s", got.Outcome, log.String())
@@ -1129,7 +1130,7 @@ func (s unlistableInfraSource) List(beads.ListQuery) ([]beads.Bead, error) { ret
 
 // failInfraMigrationSourceWith points the work-store seam at a broken open for
 // the rest of the test.
-func failInfraMigrationSourceWith(t *testing.T, open func(string) (beads.Store, error)) {
+func failInfraMigrationSourceWith(t *testing.T, open func(context.Context, string) (beads.Store, error)) {
 	t.Helper()
 	prev := openInfraMigrationSource
 	openInfraMigrationSource = open
@@ -1414,7 +1415,7 @@ func TestInfraMigrationRevertAdviceRequiresAProvablyEmptyBinding(t *testing.T) {
 			mustRender:  true,
 			setup: func(t *testing.T) (string, *config.City) {
 				cityPath, cfg := freshCityWithRoot(t)
-				failInfraMigrationSourceWith(t, func(string) (beads.Store, error) { return nil, os.ErrPermission })
+				failInfraMigrationSourceWith(t, func(_ context.Context, _ string) (beads.Store, error) { return nil, os.ErrPermission })
 				return cityPath, cfg
 			},
 		},
@@ -1425,7 +1426,7 @@ func TestInfraMigrationRevertAdviceRequiresAProvablyEmptyBinding(t *testing.T) {
 			setup: func(t *testing.T) (string, *config.City) {
 				cityPath, cfg, source := freshCity(t)
 				broken := unlistableInfraSource{Store: source, err: fmt.Errorf("database is locked")}
-				failInfraMigrationSourceWith(t, func(string) (beads.Store, error) { return broken, nil })
+				failInfraMigrationSourceWith(t, func(_ context.Context, _ string) (beads.Store, error) { return broken, nil })
 				return cityPath, cfg
 			},
 		},
@@ -1435,7 +1436,7 @@ func TestInfraMigrationRevertAdviceRequiresAProvablyEmptyBinding(t *testing.T) {
 			setup: func(t *testing.T) (string, *config.City) {
 				cityPath, cfg, source := freshCity(t)
 				broken := undeppableInfraSource{Store: source, err: fmt.Errorf("database is locked")}
-				failInfraMigrationSourceWith(t, func(string) (beads.Store, error) { return broken, nil })
+				failInfraMigrationSourceWith(t, func(_ context.Context, _ string) (beads.Store, error) { return broken, nil })
 				return cityPath, cfg
 			},
 		},
@@ -1446,7 +1447,7 @@ func TestInfraMigrationRevertAdviceRequiresAProvablyEmptyBinding(t *testing.T) {
 				cityPath := t.TempDir()
 				growing := &growingInfraSource{Store: beads.NewMemStore(), t: t}
 				mustCreateInfraBead(t, growing.Store, beads.Bead{Title: "copied", Type: "session", Labels: []string{"gc:session"}})
-				failInfraMigrationSourceWith(t, func(string) (beads.Store, error) { return growing, nil })
+				failInfraMigrationSourceWith(t, func(_ context.Context, _ string) (beads.Store, error) { return growing, nil })
 				return cityPath, infraSplitConfig(filepath.Join(cityPath, ".gc", "store"))
 			},
 		},
@@ -1520,7 +1521,7 @@ func TestInfraMigrationRevertAdviceRequiresAProvablyEmptyBinding(t *testing.T) {
 			wantOutcome: infraMigrationUncheckable,
 			setup: func(t *testing.T) (string, *config.City) {
 				cityPath, cfg, _, _ := convergedInfraCity(t)
-				failInfraMigrationSourceWith(t, func(string) (beads.Store, error) { return nil, os.ErrPermission })
+				failInfraMigrationSourceWith(t, func(_ context.Context, _ string) (beads.Store, error) { return nil, os.ErrPermission })
 				return cityPath, cfg
 			},
 		},
@@ -1796,7 +1797,7 @@ func TestEnsureInfraClassMigratedSeparatesUnverifiableFromUnconverged(t *testing
 		{
 			name: "the work store will not open",
 			fault: func(t *testing.T, _ infraBindingTarget, _ beads.Store) string {
-				failInfraMigrationSourceWith(t, func(string) (beads.Store, error) { return nil, os.ErrPermission })
+				failInfraMigrationSourceWith(t, func(_ context.Context, _ string) (beads.Store, error) { return nil, os.ErrPermission })
 				return "opening work store"
 			},
 		},
@@ -1804,7 +1805,7 @@ func TestEnsureInfraClassMigratedSeparatesUnverifiableFromUnconverged(t *testing
 			name: "the work store will not list",
 			fault: func(t *testing.T, _ infraBindingTarget, source beads.Store) string {
 				broken := unlistableInfraSource{Store: source, err: fmt.Errorf("database is locked")}
-				failInfraMigrationSourceWith(t, func(string) (beads.Store, error) { return broken, nil })
+				failInfraMigrationSourceWith(t, func(_ context.Context, _ string) (beads.Store, error) { return broken, nil })
 				return "listing work store"
 			},
 		},

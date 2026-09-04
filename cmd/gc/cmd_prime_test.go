@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -206,7 +207,7 @@ func TestPrimeInjectMailContentSurfacesUnreadMailForPromptlessWake(t *testing.T)
 
 	// Seed unread mail for the self-recipient (mayor) through the real city
 	// provider so the read path is exercised end to end.
-	mp, code := openCityMailProvider(io.Discard, "test seed")
+	mp, code := openCityMailProvider(context.Background(), io.Discard, "test seed")
 	if mp == nil {
 		t.Fatalf("openCityMailProvider returned nil (code=%d)", code)
 	}
@@ -281,7 +282,7 @@ path = "./rigs/bravo"
 	t.Setenv("GC_AGENT", "")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode([]string{"alpha-worker"}, &stdout, &stderr, false, true)
+	code := doPrimeWithMode(context.Background(), []string{"alpha-worker"}, &stdout, &stderr, false, true)
 	if code != 0 {
 		t.Fatalf("doPrime() = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -443,7 +444,7 @@ prompt_template = "prompts/polecat.template.md"
 	t.Setenv("GC_SESSION_ID", "sess-777")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode() = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -570,7 +571,7 @@ prompt_template = "prompts/worker.md"
 			t.Setenv(startupPromptDeliveredEnv, tc.delivered)
 
 			var stdout, stderr bytes.Buffer
-			code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
+			code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
 			if code != 0 {
 				t.Fatalf("doPrimeWithMode() = %d, want 0; stderr=%q", code, stderr.String())
 			}
@@ -623,7 +624,7 @@ prompt_template = "prompts/worker.md"
 	withPrimeHookStdin(t)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, hookOutputFormatGemini, false)
+	code := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, true, hookOutputFormatGemini, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -695,7 +696,7 @@ prompt_template = "prompts/worker.md"
 			// Seed unread mail for the self-recipient (worker) through the real
 			// city provider so the SessionStart injection path is exercised end
 			// to end.
-			mp, code := openCityMailProvider(io.Discard, "test seed")
+			mp, code := openCityMailProvider(context.Background(), io.Discard, "test seed")
 			if mp == nil {
 				t.Fatalf("openCityMailProvider returned nil (code=%d)", code)
 			}
@@ -704,7 +705,7 @@ prompt_template = "prompts/worker.md"
 			}
 
 			var stdout, stderr bytes.Buffer
-			if got := doPrimeWithHookFormat(nil, &stdout, &stderr, true, hookFormat, false); got != 0 {
+			if got := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, true, hookFormat, false); got != 0 {
 				t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", got, stderr.String())
 			}
 
@@ -796,7 +797,7 @@ provider = "exec:/not-used-by-auto-handoff"
 
 			// Seed an in-progress molecule with an in-progress step child assigned
 			// to the agent so wispStepInjectionContent resolves an active step.
-			store, err := openCityStoreAt(cityDir)
+			store, err := openCityStoreAt(context.Background(), cityDir)
 			if err != nil {
 				t.Fatalf("openCityStoreAt: %v", err)
 			}
@@ -837,7 +838,7 @@ provider = "exec:/not-used-by-auto-handoff"
 			withPrimeHookStdin(t)
 
 			var stdout, stderr bytes.Buffer
-			code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, hookFormat, false)
+			code := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, true, hookFormat, false)
 			if code != 0 {
 				t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 			}
@@ -850,23 +851,23 @@ provider = "exec:/not-used-by-auto-handoff"
 			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 				t.Fatalf("hook output is not JSON: %v; stdout=%q", err, stdout.String())
 			}
-			context := got.HookSpecificOutput.AdditionalContext
+			additionalContext := got.HookSpecificOutput.AdditionalContext
 			// The suppressed startup prompt must be absent...
-			if strings.Contains(context, promptContent) {
-				t.Fatalf("additionalContext = %q, want no repeated startup prompt", context)
+			if strings.Contains(additionalContext, promptContent) {
+				t.Fatalf("additionalContext = %q, want no repeated startup prompt", additionalContext)
 			}
 			// ...but the active step reminder must survive suppression.
 			for _, want := range []string{"<system-reminder>", step.Title, step.ID, "Write the widget code"} {
-				if !strings.Contains(context, want) {
-					t.Fatalf("additionalContext = %q, want step reminder substring %q", context, want)
+				if !strings.Contains(additionalContext, want) {
+					t.Fatalf("additionalContext = %q, want step reminder substring %q", additionalContext, want)
 				}
 			}
-			if !strings.Contains(context, "[gastown] worker") {
-				t.Fatalf("additionalContext = %q, want hook beacon", context)
+			if !strings.Contains(additionalContext, "[gastown] worker") {
+				t.Fatalf("additionalContext = %q, want hook beacon", additionalContext)
 			}
 			for _, want := range []string{auto.ID, auto.Subject, auto.Body} {
-				if !strings.Contains(context, want) {
-					t.Fatalf("additionalContext = %q, want auto-handoff substring %q", context, want)
+				if !strings.Contains(additionalContext, want) {
+					t.Fatalf("additionalContext = %q, want auto-handoff substring %q", additionalContext, want)
 				}
 			}
 			// This city configures an exec: ordinary-mail provider, so the
@@ -874,8 +875,8 @@ provider = "exec:/not-used-by-auto-handoff"
 			// while beadmail-backed auto-handoff still does. (The beadmail-backed
 			// ordinary case — where unread mail *is* injected — is pinned by
 			// TestDoPrimeWithHook_SessionStartDedupsAutoHandoffAndKeepsOrdinaryMailOpen.)
-			if strings.Contains(context, ordinary.ID) || strings.Contains(context, ordinary.Body) {
-				t.Fatalf("additionalContext = %q, want no ordinary mail %q from the exec: provider at SessionStart", context, ordinary.ID)
+			if strings.Contains(additionalContext, ordinary.ID) || strings.Contains(additionalContext, ordinary.Body) {
+				t.Fatalf("additionalContext = %q, want no ordinary mail %q from the exec: provider at SessionStart", additionalContext, ordinary.ID)
 			}
 			assertAutoHandoffRetainedAddressable(t, store, auto.ID)
 			if _, err := store.Get(ordinary.ID); err != nil {
@@ -890,7 +891,7 @@ provider = "exec:/not-used-by-auto-handoff"
 			if !ok {
 				t.Fatal("createHandoffMail(undelivered) failed")
 			}
-			if code := doPrimeWithHookFormat(nil, primeHookFailWriter{err: errors.New("hook output unavailable")}, &stderr, true, hookFormat, false); code != 0 {
+			if code := doPrimeWithHookFormat(context.Background(), nil, primeHookFailWriter{err: errors.New("hook output unavailable")}, &stderr, true, hookFormat, false); code != 0 {
 				t.Fatalf("doPrimeWithHookFormat(failed writer) = %d, want 0; stderr=%q", code, stderr.String())
 			}
 			if _, err := store.Get(undelivered.ID); err != nil {
@@ -935,7 +936,7 @@ prompt_template = "prompts/worker.md"
 		t.Fatalf("WriteFile(city.toml): %v", err)
 	}
 
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -964,7 +965,7 @@ prompt_template = "prompts/worker.md"
 	withPrimeHookStdin(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, hookOutputFormatCodex, false); code != 0 {
+	if code := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, true, hookOutputFormatCodex, false); code != 0 {
 		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 	}
 
@@ -1027,7 +1028,7 @@ prompt_template = "prompts/worker.md"
 		t.Fatalf("WriteFile(city.toml): %v", err)
 	}
 
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1078,7 +1079,7 @@ prompt_template = "prompts/worker.md"
 	// The real hook invocation still consumes it, so the preview did not
 	// merely mark the mail read in a way that suppresses later delivery.
 	var hookStdout bytes.Buffer
-	if code := doPrimeWithHookFormat(nil, &hookStdout, &stderr, true, "codex", false); code != 0 {
+	if code := doPrimeWithHookFormat(context.Background(), nil, &hookStdout, &stderr, true, "codex", false); code != 0 {
 		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 	}
 	if !strings.Contains(hookStdout.String(), auto.ID) {
@@ -1096,7 +1097,7 @@ func TestDoPrimeWithHookFormat_GatesDefaultFallbackWithoutManagedSession(t *test
 	t.Setenv("GC_HOOK_EVENT_NAME", "SessionStart")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, hookOutputFormatCodex, false)
+	code := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, true, hookOutputFormatCodex, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -1114,7 +1115,7 @@ func TestDoPrimeExplicitInvocationStillFormatsDefaultFallback(t *testing.T) {
 	t.Setenv("GC_TEMPLATE", "")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithHookFormat(nil, &stdout, &stderr, false, "", false)
+	code := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, false, "", false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -1178,7 +1179,7 @@ prompt_template = "prompts/worker.md"
 	withPrimeHookStdin(t)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, "codex", false)
+	code := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, true, "codex", false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -1290,7 +1291,7 @@ prompt_template = %q
 			t.Chdir(agentWorkDir)
 
 			var stdout, stderr bytes.Buffer
-			code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, hookOutputFormatCodex, false)
+			code := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, true, hookOutputFormatCodex, false)
 			if code != 0 {
 				t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 			}
@@ -1342,7 +1343,7 @@ func createPrimeHookSession(t *testing.T, cityDir, sessionName, template string)
 
 	t.Setenv("GC_BEADS", "file")
 	t.Setenv("GC_BEADS_SCOPE_ROOT", "")
-	store, err := openCityStoreAt(cityDir)
+	store, err := openCityStoreAt(context.Background(), cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%s): %v", cityDir, err)
 	}

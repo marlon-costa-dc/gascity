@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -106,13 +107,13 @@ func TestCmdHookCurrentRequiresASessionIdentity(t *testing.T) {
 	opened := false
 	restore := hookCurrentSessionFrontDoor
 	t.Cleanup(func() { hookCurrentSessionFrontDoor = restore })
-	hookCurrentSessionFrontDoor = func() (*session.Store, error) {
+	hookCurrentSessionFrontDoor = func(context.Context) (*session.Store, error) {
 		opened = true
 		return nil, errors.New("must not be reached")
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdHookCurrent(true, &stdout, &stderr); code != 1 {
+	if code := cmdHookCurrent(context.Background(), true, &stdout, &stderr); code != 1 {
 		t.Fatalf("cmdHookCurrent (no GC_SESSION_ID) = %d, want 1", code)
 	}
 	if opened {
@@ -130,12 +131,12 @@ func TestCmdHookCurrentReadsTheCallingSessionFromEnv(t *testing.T) {
 	t.Setenv("GC_SESSION_ID", "mc-sess1")
 	restore := hookCurrentSessionFrontDoor
 	t.Cleanup(func() { hookCurrentSessionFrontDoor = restore })
-	hookCurrentSessionFrontDoor = func() (*session.Store, error) {
+	hookCurrentSessionFrontDoor = func(context.Context) (*session.Store, error) {
 		return hookCurrentFrontDoor(t, "gcg-42"), nil
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdHookCurrent(true, &stdout, &stderr); code != 0 {
+	if code := cmdHookCurrent(context.Background(), true, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdHookCurrent = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if got := stdout.String(); got != "gcg-42\n" {

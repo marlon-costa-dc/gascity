@@ -74,12 +74,12 @@ or ID. Subject is required unless --auto is set.`,
 			}
 			return cobra.RangeArgs(1, 2)(cmd, args)
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			out := stdout
 			if jsonOut {
 				out = io.Discard
 			}
-			if cmdHandoff(args, target, auto, hookFormat, out, stderr) != 0 {
+			if cmdHandoff(cmd.Context(), args, target, auto, hookFormat, out, stderr) != 0 {
 				return errExit
 			}
 			if jsonOut {
@@ -131,13 +131,13 @@ func handoffJSONSubject(args []string, auto bool) string {
 	return "HANDOFF: context cycle"
 }
 
-func cmdHandoff(args []string, target string, auto bool, hookFormat string, stdout, stderr io.Writer) int {
+func cmdHandoff(ctx context.Context, args []string, target string, auto bool, hookFormat string, stdout, stderr io.Writer) int {
 	if target != "" {
 		if auto {
 			fmt.Fprintln(stderr, "gc handoff: --auto cannot be used with --target") //nolint:errcheck // best-effort stderr
 			return 1
 		}
-		return cmdHandoffRemote(args, target, stdout, stderr)
+		return cmdHandoffRemote(ctx, args, target, stdout, stderr)
 	}
 
 	current, err := currentSessionRuntimeTarget()
@@ -146,7 +146,7 @@ func cmdHandoff(args []string, target string, auto bool, hookFormat string, stdo
 		return 1
 	}
 
-	store, err := openCityStoreAt(current.cityPath)
+	store, err := openCityStoreAt(ctx, current.cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc handoff: %v\n", err)                    //nolint:errcheck // best-effort stderr
 		fmt.Fprintln(stderr, "hint: run \"gc doctor\" for diagnostics") //nolint:errcheck // best-effort stderr
@@ -168,7 +168,7 @@ func cmdHandoff(args []string, target string, auto bool, hookFormat string, stdo
 		return doHandoffAuto(msgStore, sessStore, rec, current.display, args, hookFormat, stdout, stderr)
 	}
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc handoff: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -185,7 +185,7 @@ func cmdHandoff(args []string, target string, auto bool, hookFormat string, stdo
 		return 0
 	}
 
-	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	sigCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	return waitForControllerRestart(sigCtx, dops, sp, current.sessionName, "gc handoff",
 		controllerRestartPollInterval, controllerRestartTimeout(cfg), stderr)
@@ -193,14 +193,14 @@ func cmdHandoff(args []string, target string, auto bool, hookFormat string, stdo
 
 // cmdHandoffRemote sends handoff mail to a remote session and kills its runtime.
 // Returns immediately (non-blocking). The reconciler restarts the target.
-func cmdHandoffRemote(args []string, target string, stdout, stderr io.Writer) int {
-	targetInfo, err := resolveSessionRuntimeTarget(target, stderr)
+func cmdHandoffRemote(ctx context.Context, args []string, target string, stdout, stderr io.Writer) int {
+	targetInfo, err := resolveSessionRuntimeTarget(ctx, target, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc handoff: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
 
-	store, code := openCityStore(stderr, "gc handoff")
+	store, code := openCityStore(ctx, stderr, "gc handoff")
 	if store == nil {
 		return code
 	}
@@ -221,7 +221,7 @@ func cmdHandoffRemote(args []string, target string, stdout, stderr io.Writer) in
 		return 1
 	}
 
-	sp, err := newSessionProvider()
+	sp, err := newSessionProvider(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc handoff: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1

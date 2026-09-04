@@ -655,7 +655,7 @@ func TestCollectAssignedWorkBeadsUsesLiveReadyReadModel(t *testing.T) {
 	}
 	backing.ready = []beads.Bead{handoff}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -687,7 +687,7 @@ func TestCollectAssignedWorkBeadsUsesCachedInProgressReadModel(t *testing.T) {
 		t.Fatalf("reload active bead: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -716,7 +716,7 @@ func TestCollectAssignedWorkBeadsReprimesWhenCachedInProgressDirty(t *testing.T)
 		t.Fatalf("create active bead: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -813,7 +813,7 @@ func TestDefaultScaleCheckCountsKeepsCachedRowsWhenLiveFreshnessFails(t *testing
 	}
 	const template = "gascity/workflows.codex-min"
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -840,7 +840,7 @@ func TestDefaultScaleCheckCountsSeesExternalRoutedWorkAfterCachePrime(t *testing
 	const template = "gascity/workflows.codex-min"
 	backing := beads.NewMemStore()
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	counts, _, errs := defaultScaleCheckCounts([]defaultScaleCheckTarget{{
@@ -1039,7 +1039,7 @@ func TestDefaultScaleCheckCountsUsesLiveReadyWhenCachedRowWasAssigned(t *testing
 		t.Fatalf("create routed bead: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	assignee := "worker-session"
@@ -1075,7 +1075,7 @@ func TestDefaultScaleCheckCountsUsesLiveReadyWhenCachedRowWasClosed(t *testing.T
 		t.Fatalf("create routed bead: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	if err := backing.Close(work.ID); err != nil {
@@ -1113,7 +1113,7 @@ func TestDefaultScaleCheckCountsUsesLiveReadyWhenCachedRowWasRerouted(t *testing
 		t.Fatalf("create routed bead: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	if err := backing.Update(work.ID, beads.UpdateOpts{Metadata: map[string]string{"gc.routed_to": liveTemplate}}); err != nil {
@@ -1260,7 +1260,7 @@ func TestDefaultScaleCheckCountsCountsUnassignedRoutedPoolWork(t *testing.T) {
 		t.Fatalf("create handoff bead: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1293,7 +1293,7 @@ func TestDefaultScaleCheckCountsCountsRoutedVaporWispViaReady(t *testing.T) {
 		t.Fatalf("create vapor wisp root: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1328,7 +1328,7 @@ func TestDefaultScaleCheckCountsCountsUnassignedRoutedTaskWisp(t *testing.T) {
 		t.Fatalf("create routed wisp: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1360,7 +1360,7 @@ func TestDefaultScaleCheckCountsCountsRunTargetOnlyWorkflowDuringMigration(t *te
 		t.Fatalf("create legacy workflow root: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1395,7 +1395,7 @@ func TestDefaultScaleCheckCountsIgnoresRunTargetOnNonWorkflowDivergentWork(t *te
 		t.Fatalf("create legacy divergent step: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1433,7 +1433,7 @@ func TestDefaultScaleCheckCountsIgnoresRunTargetWhenWorkflowRoutedToPresent(t *t
 		t.Fatalf("create divergent workflow root: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1467,7 +1467,7 @@ func TestDefaultScaleCheckCountsFallsBackToRoutedToWhenRunTargetDoesNotMatchTemp
 		t.Fatalf("create graph step: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1499,7 +1499,7 @@ func TestDefaultScaleCheckCountsDoesNotTreatTemplateAssigneeAsDemand(t *testing.
 		t.Fatalf("create assigned bead: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1535,7 +1535,7 @@ func TestDefaultScaleCheckCountsExcludesBeadsAssignedToSession(t *testing.T) {
 		t.Fatalf("create in-flight bead: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1565,7 +1565,7 @@ func TestDefaultScaleCheckCountsIgnoresOpenMoleculeContainers(t *testing.T) {
 		t.Fatalf("create molecule bead: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1607,7 +1607,7 @@ func TestDefaultScaleCheckCountsIgnoresGraphV2StepRoutedToPool(t *testing.T) {
 		t.Fatalf("create graph.v2 step: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1647,7 +1647,7 @@ func TestDefaultScaleCheckCountsHonorsCachedWriteThroughDependencies(t *testing.
 		t.Fatalf("create blocked: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(); err != nil {
+	if err := cache.PrimeActive(context.Background()); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	if err := cache.DepAdd(blocked.ID, blocker.ID, "blocks"); err != nil {
@@ -1910,7 +1910,7 @@ func TestBuildDesiredStateDefaultScaleCheckMissingRigStoreReportsZeroDemand(t *t
 	}
 
 	var stderr strings.Builder
-	got := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	got := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 	if demand := got.ScaleCheckCounts["repos/repo/worker"]; demand != 0 {
 		t.Fatalf("ScaleCheckCounts[repos/repo/worker] = %d, want 0 without rig store", demand)
 	}
@@ -2813,7 +2813,7 @@ func TestBuildDesiredState_UsesAgentHookOverride(t *testing.T) {
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	if len(dsResult.State) != 1 {
 		t.Fatalf("desired state size = %d, want 1", len(dsResult.State))
 	}
@@ -2853,7 +2853,7 @@ func TestBuildDesiredStateRejectsExplicitTmuxAgentWhenSessionProviderCannotRoute
 	sp := &acpOnlyDesiredStateProvider{Fake: runtime.NewFake()}
 	var stderr strings.Builder
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, sp, store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, sp, store, &stderr)
 	if len(dsResult.State) != 0 {
 		t.Fatalf("desired state size = %d, want 0: %#v", len(dsResult.State), dsResult.State)
 	}
@@ -2886,7 +2886,7 @@ func TestBuildDesiredState_InstallsGeminiHooksBeforeFingerprinting(t *testing.T)
 		}},
 	}
 
-	first := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	first := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	if len(first.State) != 1 {
 		t.Fatalf("first desired state size = %d, want 1", len(first.State))
 	}
@@ -2916,7 +2916,7 @@ func TestBuildDesiredState_InstallsGeminiHooksBeforeFingerprinting(t *testing.T)
 		t.Fatalf("first fingerprint missing gemini hook copy file %q: %#v", wantRelDst, firstCfg.CopyFiles)
 	}
 
-	second := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	second := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	if len(second.State) != 1 {
 		t.Fatalf("second desired state size = %d, want 1", len(second.State))
 	}
@@ -2988,7 +2988,7 @@ func TestBuildDesiredState_MaterializesHookOverlaysBeforeFingerprinting(t *testi
 		}},
 	}
 
-	first := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	first := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	var firstTP TemplateParams
 	for _, tp := range first.State {
 		firstTP = tp
@@ -3003,7 +3003,7 @@ func TestBuildDesiredState_MaterializesHookOverlaysBeforeFingerprinting(t *testi
 		t.Fatalf("StageSessionWorkDir: %v", err)
 	}
 
-	second := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	second := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	var secondTP TemplateParams
 	for _, tp := range second.State {
 		secondTP = tp
@@ -3065,7 +3065,7 @@ func TestPrepareTemplateResolution_MaterializesFamilyOverlayForCustomProvider(t 
 		RigOverlayDirs: map[string][]string{"myrig": {overlayDir}},
 	}
 
-	bp := newAgentBuildParams("test-city", cityDir, cfg, runtime.NewFake(), time.Now().UTC(), nil, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityDir, cfg, runtime.NewFake(), time.Now().UTC(), nil, io.Discard)
 	prepareTemplateResolution(bp, &cfg.Agents[0], "myrig/polecat", io.Discard)
 
 	staged := filepath.Join(rigDir, ".pi", "extensions", "gc-hooks.js")
@@ -3142,7 +3142,7 @@ mode = "always"
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
 
-	dsResult := buildDesiredState(cfg.EffectiveCityName(), cityPath, time.Now().UTC(), cfg, runtime.NewFake(), beads.NewMemStore(), io.Discard)
+	dsResult := buildDesiredState(context.Background(), cfg.EffectiveCityName(), cityPath, time.Now().UTC(), cfg, runtime.NewFake(), beads.NewMemStore(), io.Discard)
 
 	captain, ok := dsResult.State["gs__captain"]
 	if !ok {
@@ -3223,7 +3223,7 @@ mode = "always"
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
 
-	dsResult := buildDesiredState(cfg.EffectiveCityName(), cityPath, time.Now().UTC(), cfg, runtime.NewFake(), beads.NewMemStore(), io.Discard)
+	dsResult := buildDesiredState(context.Background(), cfg.EffectiveCityName(), cityPath, time.Now().UTC(), cfg, runtime.NewFake(), beads.NewMemStore(), io.Discard)
 	if _, ok := dsResult.State["outer__captain"]; !ok {
 		t.Fatalf("desired state missing outer__captain; keys=%v", mapKeys(dsResult.State))
 	}
@@ -3262,7 +3262,7 @@ func TestBuildDesiredState_RoutedQueueDoesNotCreateOneSessionPerBead(t *testing.
 	}
 
 	var stderr bytes.Buffer
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 	if len(dsResult.AssignedWorkBeads) != 0 {
 		t.Fatalf("AssignedWorkBeads = %d, want 0 for routed-only queue", len(dsResult.AssignedWorkBeads))
 	}
@@ -3293,7 +3293,7 @@ func TestBuildDesiredState_NewPoolSessionBeadCreatedWithConcreteIdentity(t *test
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if len(dsResult.State) != 1 {
 		t.Fatalf("desired sessions = %d, want 1", len(dsResult.State))
 	}
@@ -3351,7 +3351,7 @@ func TestBuildDesiredState_MaxOneAgentDemandUsesCanonicalIdentity(t *testing.T) 
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if len(dsResult.State) != 1 {
 		t.Fatalf("desired sessions = %d, want 1", len(dsResult.State))
 	}
@@ -3410,7 +3410,7 @@ func TestBuildDesiredState_NoStoreMaxOneAgentDemandUsesCanonicalSlotZero(t *test
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	if len(dsResult.State) != 1 {
 		t.Fatalf("desired sessions = %d, want 1", len(dsResult.State))
 	}
@@ -3443,7 +3443,7 @@ func TestSyncSessionBeads_DoesNotBackfillPoolSlotForCanonicalMaxOneDemand(t *tes
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	var stderr bytes.Buffer
 	syncSessionBeads(
 		cityPath,
@@ -3509,7 +3509,7 @@ func TestBuildDesiredState_MaxOneAgentNormalizesStalePoolIdentityBead(t *testing
 	}
 
 	var stderr bytes.Buffer
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 	if len(dsResult.State) != 1 {
 		t.Fatalf("desired sessions = %d, want 1", len(dsResult.State))
 	}
@@ -3602,7 +3602,7 @@ func TestBuildDesiredState_MaxOneAgentPrefersCanonicalWhenStaleDuplicateExists(t
 	}
 
 	var stderr bytes.Buffer
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	if strings.Contains(stderr.String(), "(skipping)") {
 		t.Fatalf("stderr = %q, want stale duplicate to remain recoverable", stderr.String())
@@ -3655,7 +3655,7 @@ func TestBuildDesiredState_MaxOneAgentPreservesManualStaleIdentityBesideCanonica
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	manualTP, ok := dsResult.State[manual.Metadata["session_name"]]
 	if !ok {
@@ -3734,7 +3734,7 @@ func TestBuildDesiredState_MaxOneManualAssignedWorkPreservesManualIdentity(t *te
 	}
 
 	var stderr bytes.Buffer
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	manualTP, ok := dsResult.State[manual.Metadata["session_name"]]
 	if !ok {
@@ -3841,7 +3841,7 @@ func TestBuildDesiredState_MaxOneAgentSkipsCanonicalDuplicateWhenStaleAssignedWo
 	}
 
 	var stderr bytes.Buffer
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	if _, ok := dsResult.State[canonical.Metadata["session_name"]]; ok {
 		t.Fatalf("desired state includes unselected canonical duplicate %q; keys=%v", canonical.Metadata["session_name"], mapKeys(dsResult.State))
@@ -3869,7 +3869,7 @@ func TestBuildDesiredState_MaxOneAgentSkipsCanonicalDuplicateWhenStaleAssignedWo
 	}
 
 	var secondStderr bytes.Buffer
-	secondResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &secondStderr)
+	secondResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &secondStderr)
 	if _, ok := secondResult.State[canonical.Metadata["session_name"]]; ok {
 		t.Fatalf("second desired state includes unselected canonical duplicate %q; keys=%v", canonical.Metadata["session_name"], mapKeys(secondResult.State))
 	}
@@ -3938,7 +3938,7 @@ func TestRealizePoolDesiredSessionsDefersAliasWhenNormalizationCollides(t *testi
 	snapshot.addInfo(sessiontest.SeedBead(t, stale))
 	snapshot.addInfo(sessiontest.SeedBead(t, canonical))
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = snapshot
 	desired := map[string]TemplateParams{}
 
@@ -4024,7 +4024,7 @@ func TestRealizePoolDesiredSessionsResumePreservesLegacyBoundSessionName(t *test
 	snapshot := &sessionBeadSnapshot{}
 	snapshot.addInfo(sessiontest.SeedBead(t, adopted))
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = snapshot
 	desired := map[string]TemplateParams{}
 
@@ -4064,7 +4064,7 @@ func TestRealizePoolDesiredSessionsLimitsFreshCreatesToWakeBudget(t *testing.T) 
 		}},
 	}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = &sessionBeadSnapshot{}
 	requests := make([]SessionRequest, 5)
 	for i := range requests {
@@ -4101,7 +4101,7 @@ func TestRealizePoolDesiredSessionsBindsTriggerBeadToFreshSession(t *testing.T) 
 		}},
 	}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = &sessionBeadSnapshot{}
 	desired := map[string]TemplateParams{}
 
@@ -4239,7 +4239,7 @@ func TestRealizePoolDesiredSessionsRebindPreservesDistinctWorkDirPerSlot(t *test
 	snapshot.addInfo(sessiontest.SeedBead(t, reusable1))
 	snapshot.addInfo(sessiontest.SeedBead(t, reusable2))
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = snapshot
 
 	realizePoolDesiredSessions(bp, &cfg.Agents[0], PoolDesiredState{
@@ -4289,7 +4289,7 @@ func TestRealizePoolDesiredSessionsHonorsExplicitPackWorkspace(t *testing.T) {
 		}},
 	}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = &sessionBeadSnapshot{}
 	workspace := "gp-59q-fix-pack-route-templates"
 
@@ -4363,7 +4363,7 @@ func TestRealizePoolDesiredSessionsRebindUpdatesPackWorkspaceMetadata(t *testing
 	snapshot := &sessionBeadSnapshot{}
 	snapshot.addInfo(sessiontest.SeedBead(t, reusable))
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = snapshot
 	workspace := "route-smoke"
 
@@ -4450,7 +4450,7 @@ func TestRealizePoolDesiredSessionsLiveRetryPreservesLauncherWorkDir(t *testing.
 			snapshot := &sessionBeadSnapshot{}
 			snapshot.addInfo(sessiontest.SeedBead(t, reusable))
 			var stderr bytes.Buffer
-			bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+			bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 			bp.sessionBeads = snapshot
 
 			retry := workBead("fi-new", "worker", reusable.ID, "in_progress", 1)
@@ -4516,7 +4516,7 @@ func TestRealizePoolDesiredSessionsBudgetExhaustionStillAllowsLaterReuse(t *test
 	snapshot := &sessionBeadSnapshot{}
 	snapshot.addInfo(sessiontest.SeedBead(t, reusable))
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = snapshot
 	desired := map[string]TemplateParams{}
 
@@ -4559,7 +4559,7 @@ func TestRealizePoolDesiredSessionsRefundsFreshCreateBudgetAfterFailure(t *testi
 		},
 	}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = &sessionBeadSnapshot{}
 	desired := map[string]TemplateParams{}
 
@@ -4616,7 +4616,7 @@ func TestBuildDesiredStateTranslatesFloorDemandIntoCreateBudget(t *testing.T) {
 	}
 	var stderr bytes.Buffer
 
-	result := buildDesiredState("test-city", t.TempDir(), time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	result := buildDesiredState(context.Background(), "test-city", t.TempDir(), time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	counts := map[string]int{}
 	for _, tp := range result.State {
@@ -4672,7 +4672,7 @@ func TestBuildDesiredStateFairShareIgnoresInFlightPoolCreates(t *testing.T) {
 	}
 	var stderr bytes.Buffer
 
-	result := buildDesiredState("test-city", t.TempDir(), time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	result := buildDesiredState(context.Background(), "test-city", t.TempDir(), time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	counts := map[string]int{}
 	for _, tp := range result.State {
@@ -4714,7 +4714,7 @@ func TestBuildDesiredStateDependencyFloorExemptFromFreshCreateBudget(t *testing.
 	}
 	var stderr bytes.Buffer
 
-	result := buildDesiredState("test-city", t.TempDir(), time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	result := buildDesiredState(context.Background(), "test-city", t.TempDir(), time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	var apiCreates, dbFloors int
 	for _, tp := range result.State {
@@ -4785,7 +4785,7 @@ func TestSyncSessionBeads_ReclaimsDeferredSingletonAliasAfterConflictClears(t *t
 	snapshot.addInfo(sessiontest.SeedBead(t, stale))
 	snapshot.addInfo(sessiontest.SeedBead(t, canonical))
 	var buildStderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &buildStderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &buildStderr)
 	bp.sessionBeads = snapshot
 	desired := map[string]TemplateParams{}
 
@@ -4874,7 +4874,7 @@ func TestNormalizeNonExpandingPoolSessionBeadReclaimsDeferredAlias(t *testing.T)
 		}},
 	}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 
 	result, err := normalizeNonExpandingPoolSessionInfo(bp, &cfg.Agents[0], sessiontest.SeedBead(t, stale))
 	if err != nil {
@@ -4965,7 +4965,7 @@ func TestReconcilerClosesUnselectedCanonicalSingletonBeforeAliasReclaim(t *testi
 	}
 
 	var buildStderr bytes.Buffer
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &buildStderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &buildStderr)
 	if _, ok := dsResult.State[canonical.Metadata["session_name"]]; ok {
 		t.Fatalf("desired state includes unselected canonical singleton %q; keys=%v", canonical.Metadata["session_name"], mapKeys(dsResult.State))
 	}
@@ -5035,10 +5035,9 @@ func TestSyncDoesNotMintDuplicateForSameCycleSingletonCreate(t *testing.T) {
 	}
 	sessionBeads := newSessionBeadSnapshot(nil)
 	var buildStderr bytes.Buffer
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		store, nil, sessionBeads, nil, &buildStderr,
-	)
+		store, nil, sessionBeads, nil, &buildStderr)
 
 	// The create appended the new session to the snapshot's typed half (addInfo).
 	infos := sessionBeads.OpenInfos()
@@ -5148,7 +5147,7 @@ func TestProductionOrderDeferredSingletonAliasReclaimsOnSecondTick(t *testing.T)
 	clk := &clock.Fake{Time: time.Date(2026, 5, 6, 4, 0, 0, 0, time.UTC)}
 
 	var firstBuildStderr bytes.Buffer
-	firstTick := buildDesiredState("test-city", cityPath, clk.Now().UTC(), cfg, sp, store, &firstBuildStderr)
+	firstTick := buildDesiredState(context.Background(), "test-city", cityPath, clk.Now().UTC(), cfg, sp, store, &firstBuildStderr)
 	if _, ok := firstTick.State[stale.Metadata["session_name"]]; !ok {
 		t.Fatalf("first tick desired state missing stale singleton resume %q; keys=%v stderr=%q", stale.Metadata["session_name"], mapKeys(firstTick.State), firstBuildStderr.String())
 	}
@@ -5198,7 +5197,7 @@ func TestProductionOrderDeferredSingletonAliasReclaimsOnSecondTick(t *testing.T)
 
 	clk.Advance(time.Minute)
 	var secondBuildStderr bytes.Buffer
-	secondTick := buildDesiredState("test-city", cityPath, clk.Now().UTC(), cfg, sp, store, &secondBuildStderr)
+	secondTick := buildDesiredState(context.Background(), "test-city", cityPath, clk.Now().UTC(), cfg, sp, store, &secondBuildStderr)
 	var secondSyncStderr bytes.Buffer
 	syncSessionBeads(
 		cityPath,
@@ -5271,6 +5270,7 @@ func TestDiscoverSessionBeadsSkipsStaleMaxOneWhenDependencyFloorDesired(t *testi
 		},
 	}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		cityPath:     t.TempDir(),
 		city:         cfg,
 		beadStore:    store,
@@ -5333,12 +5333,12 @@ func TestBuildDesiredState_MaxOneCanonicalBeadIsIdempotent(t *testing.T) {
 		t.Fatalf("Get(%s): %v", canonical.ID, err)
 	}
 	var stderr bytes.Buffer
-	first := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	first := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 	afterFirst, err := store.Get(canonical.ID)
 	if err != nil {
 		t.Fatalf("Get(%s) after first pass: %v", canonical.ID, err)
 	}
-	second := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	second := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 	afterSecond, err := store.Get(canonical.ID)
 	if err != nil {
 		t.Fatalf("Get(%s) after second pass: %v", canonical.ID, err)
@@ -5376,7 +5376,7 @@ func TestBuildDesiredState_NamepoolMaxOneUsesNamepoolIdentity(t *testing.T) {
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if len(dsResult.State) != 1 {
 		t.Fatalf("desired sessions = %d, want 1", len(dsResult.State))
 	}
@@ -5446,7 +5446,7 @@ func TestBuildDesiredState_DoesNotCreateWhenConcreteNamepoolIdentityHeld(t *test
 	}
 
 	var stderr bytes.Buffer
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	sessionBeads, err := loadSessionBeads(store)
 	if err != nil {
@@ -5480,6 +5480,7 @@ func TestSelectOrCreatePoolSessionBead_SerializesAliasCheckAndCreate(t *testing.
 	cfgAgent := config.Agent{Name: "claude", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(5)}
 	newBuildParams := func() *agentBuildParams {
 		return &agentBuildParams{
+			ctx:          context.Background(),
 			cityPath:     cityPath,
 			beadStore:    store,
 			sessionBeads: &sessionBeadSnapshot{},
@@ -5580,6 +5581,7 @@ func TestSelectOrCreatePoolSessionBead_AliasedPoolStillCASesTheSlot(t *testing.T
 	}
 	newBuildParams := func() *agentBuildParams {
 		return &agentBuildParams{
+			ctx:          context.Background(),
 			cityPath:     cityPath,
 			beadStore:    store,
 			sessionBeads: &sessionBeadSnapshot{},
@@ -5642,7 +5644,7 @@ func TestCreatePoolSessionBeadWithGuardedAliasSerializesResolvedTmuxAlias(t *tes
 			TmuxAlias:         "crew--{{.CityName}}",
 		}},
 	}
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
 	bp.sessionBeads = newSessionBeadSnapshot(nil)
 	cfgAgent := &cfg.Agents[0]
 
@@ -5725,7 +5727,7 @@ func TestCreatePoolSessionBeadWithGuardedAliasFailsClosedWhenIdentifierLockFails
 		}},
 	}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = newSessionBeadSnapshot(nil)
 
 	info, err := createPoolSessionBeadWithGuardedAlias(bp, &cfg.Agents[0], "worker", "worker-1", 1, nil)
@@ -5843,7 +5845,7 @@ func TestRealizePoolDesiredSessions_ParallelizesDistinctAliasCreates(t *testing.
 		}},
 	}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = &sessionBeadSnapshot{}
 	desired := map[string]TemplateParams{}
 
@@ -5898,6 +5900,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_LockSetupFailureNeverCreates(t *t
 	}
 	var stderr bytes.Buffer
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		cityPath:     cityPath,
 		beadStore:    store,
 		sessionBeads: &sessionBeadSnapshot{},
@@ -5946,7 +5949,7 @@ func TestCreatePoolSessionBeadWithGuardedAliasRejectsUnsupportedTransport(t *tes
 	}
 	store := beads.NewMemStore()
 	sp := &acpOnlyDesiredStateProvider{Fake: runtime.NewFake()}
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, sp, time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, sp, time.Now().UTC(), store, io.Discard)
 
 	_, err := createPoolSessionBeadWithGuardedAlias(bp, &cfg.Agents[0], "worker", "worker", 0, nil)
 	if err == nil || !strings.Contains(err.Error(), "cannot route tmux sessions") {
@@ -6007,7 +6010,7 @@ func TestBuildDesiredState_MinZeroDefaultScaleCheckRoutedWorkCreatesPoolSession(
 	}
 
 	var stderr strings.Builder
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	if len(dsResult.AssignedWorkBeads) != 0 {
 		t.Fatalf("AssignedWorkBeads = %d, want 0 for routed unassigned work", len(dsResult.AssignedWorkBeads))
@@ -6082,10 +6085,9 @@ func TestBuildDesiredState_GH1654PoolReadyWorkGrowsPastMinActiveSessions(t *test
 		t.Fatalf("load session snapshot: %v", err)
 	}
 	var stderr strings.Builder
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		store, nil, sessionSnapshot, nil, &stderr,
-	)
+		store, nil, sessionSnapshot, nil, &stderr)
 
 	if got := dsResult.ScaleCheckCounts[template]; got != 6 {
 		t.Fatalf("ScaleCheckCounts[%s] = %d, want 6 queued ready beads", template, got)
@@ -6143,10 +6145,9 @@ func TestBuildDesiredState_MinZeroDefaultScaleCheckNoWorkDropsPendingPoolCreate(
 	}
 
 	var stderr strings.Builder
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		store, nil, newSessionBeadSnapshot([]beads.Bead{session}), nil, &stderr,
-	)
+		store, nil, newSessionBeadSnapshot([]beads.Bead{session}), nil, &stderr)
 
 	if got := dsResult.ScaleCheckCounts[template]; got != 0 {
 		t.Fatalf("ScaleCheckCounts[%s] = %d, want 0 with no routed ready work", template, got)
@@ -6210,10 +6211,9 @@ func TestBuildDesiredState_PoolInFlightSessionsPreservePartialScaleDemand(t *tes
 	}
 
 	var stderr strings.Builder
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		store, nil, sessionSnapshot, nil, &stderr,
-	)
+		store, nil, sessionSnapshot, nil, &stderr)
 
 	if got := dsResult.ScaleCheckCounts[template]; got != 5 {
 		t.Fatalf("ScaleCheckCounts[%s] = %d, want 5", template, got)
@@ -6275,7 +6275,7 @@ func TestBuildDesiredState_OnDemandNamedSession_DefaultRoutedWorkUsesTemplatePoo
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	foundNamed := false
 	foundGeneric := false
 	for _, tp := range dsResult.State {
@@ -6326,7 +6326,7 @@ func TestBuildDesiredState_OnDemandNamedSession_DefaultRoutedTaskWispUsesTemplat
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	foundNamed := false
 	foundGeneric := false
 	for _, tp := range dsResult.State {
@@ -6377,7 +6377,7 @@ func TestBuildDesiredState_OnDemandNamedSession_DefaultRoutedTemplateUsesGeneric
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	foundNamed := false
 	foundGeneric := false
 	for _, tp := range dsResult.State {
@@ -6428,7 +6428,7 @@ func TestBuildDesiredState_OnDemandNamedSession_DefaultRoutedTemplateDoesNotPick
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if dsResult.NamedSessionDemand["primary"] || dsResult.NamedSessionDemand["secondary"] {
 		t.Fatalf("ambiguous template route recorded named demand: %v", dsResult.NamedSessionDemand)
 	}
@@ -6468,7 +6468,7 @@ func TestBuildDesiredState_OnDemandNamedSession_DefaultRoutedNoMatchDoesNotMater
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if dsResult.NamedSessionDemand["primary"] {
 		t.Fatal("unmatched route should not record named-session demand")
 	}
@@ -6502,7 +6502,7 @@ func TestBuildDesiredState_OnDemandNamedSession_DirectAssigneeMaterializes(t *te
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	found := false
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "mayor" {
@@ -6571,7 +6571,7 @@ func TestBuildDesiredState_NamedBackingPoolNoCap_RoutedDemandDoesNotSpawnPhantom
 	}
 	identity := cfg.NamedSessions[0].QualifiedName()
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	// This facet must engage on healthy reads, distinguishing it from the
 	// ga-01yukx partial-read facet whose guards fail closed.
@@ -6645,7 +6645,7 @@ func TestBuildDesiredState_RoutedDemandWakesOnlyCanonicalSingletonNamedSessions(
 	singletonIdentity := cfg.NamedSessions[0].QualifiedName()
 	multiIdentity := cfg.NamedSessions[1].QualifiedName()
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	// Control: the singleton keeps the wake signal, so this test fails loudly if
 	// the gate is simply switched off rather than made selective.
@@ -6703,10 +6703,9 @@ func TestBuildDesiredState_OnDemandNamedSession_RuntimeAssigneeDoesNotMaterializ
 		t.Fatalf("create rig work: %v", err)
 	}
 
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		cfg.EffectiveCityName(), cityPath, time.Now().UTC(), cfg,
-		runtime.NewFake(), cityStore, map[string]beads.Store{"fixture": rigStore}, nil, nil, io.Discard,
-	)
+		runtime.NewFake(), cityStore, map[string]beads.Store{"fixture": rigStore}, nil, nil, io.Discard)
 
 	if dsResult.NamedSessionDemand[identity] {
 		t.Fatalf("NamedSessionDemand[%s] = true for future runtime assignee %q", identity, runtimeName)
@@ -6786,10 +6785,10 @@ func TestBuildDesiredState_RigOnDemandNamedSessionAssigneeWithRouteMaterializesN
 
 			sp := runtime.NewFake()
 			clk := &clock.Fake{Time: time.Date(2026, 5, 26, 15, 0, 0, 0, time.UTC)}
-			dsResult := buildDesiredStateWithSessionBeads(
+			dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 				"test-city", cityPath, clk.Now().UTC(), cfg, sp,
-				cityStore, map[string]beads.Store{"riga": rigStore}, nil, nil, io.Discard,
-			)
+				cityStore, map[string]beads.Store{"riga": rigStore}, nil, nil, io.Discard)
+
 			if !dsResult.NamedSessionDemand["riga/refinery"] {
 				t.Fatal("NamedSessionDemand[riga/refinery] = false for direct named-session assignee")
 			}
@@ -6819,13 +6818,15 @@ func TestBuildDesiredState_RigOnDemandNamedSessionAssigneeWithRouteMaterializesN
 				t.Fatalf("GC_TEMPLATE = %q, want riga/refinery", got)
 			}
 			for key, want := range map[string]string{
-				"ANTHROPIC_AUTH_TOKEN":       "test-anthropic-auth-token",
-				"ANTHROPIC_BASE_URL":         "https://ollama.example.test",
 				"CLAUDE_CODE_SUBAGENT_MODEL": "kimi-k2.5",
-				"OLLAMA_API_KEY":             "test-ollama-token",
 			} {
 				if got := refinery.Env[key]; got != want {
 					t.Fatalf("refinery Env[%s] = %q, want %q", key, got, want)
+				}
+			}
+			for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "OLLAMA_API_KEY"} {
+				if got, ok := refinery.Env[key]; ok {
+					t.Fatalf("refinery Env[%s] = %q present, want absent ambient provider credential/config", key, got)
 				}
 			}
 
@@ -6855,13 +6856,15 @@ func TestBuildDesiredState_RigOnDemandNamedSessionAssigneeWithRouteMaterializesN
 				t.Fatalf("LastStartConfig(%q) = nil; stdout:\n%s\nstderr:\n%s", refinery.SessionName, stdout.String(), stderr.String())
 			}
 			for key, want := range map[string]string{
-				"ANTHROPIC_AUTH_TOKEN":       "test-anthropic-auth-token",
-				"ANTHROPIC_BASE_URL":         "https://ollama.example.test",
 				"CLAUDE_CODE_SUBAGENT_MODEL": "kimi-k2.5",
-				"OLLAMA_API_KEY":             "test-ollama-token",
 			} {
 				if got := startCfg.Env[key]; got != want {
 					t.Fatalf("start Env[%s] = %q, want %q", key, got, want)
+				}
+			}
+			for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "OLLAMA_API_KEY"} {
+				if got, ok := startCfg.Env[key]; ok {
+					t.Fatalf("start Env[%s] = %q present, want absent ambient provider credential/config", key, got)
 				}
 			}
 		})
@@ -6901,10 +6904,10 @@ func TestBuildDesiredState_OnDemandNamedSession_IgnoresUnreachableAssignedWork(t
 		}},
 	}
 
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"riga": rigStore}, nil, nil, io.Discard,
-	)
+		cityStore, map[string]beads.Store{"riga": rigStore}, nil, nil, io.Discard)
+
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "riga/mayor" || tp.ConfiguredNamedIdentity == "riga/mayor" {
 			t.Fatalf("unreachable city-store assignee should not materialize rig named session: %+v", tp)
@@ -6961,10 +6964,10 @@ func TestBuildDesiredState_OnDemandNamedSession_ReachabilityUsesPerBeadSourceNot
 		}},
 	}
 
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"riga": rigStore}, nil, nil, io.Discard,
-	)
+		cityStore, map[string]beads.Store{"riga": rigStore}, nil, nil, io.Discard)
+
 	if dsResult.NamedSessionDemand["riga/mayor"] {
 		t.Fatal("same-ID rig bead should not make the city-store assignment reachable")
 	}
@@ -7020,10 +7023,10 @@ func TestBuildDesiredState_RigPoolIgnoresAssignedWorkInUnreachableStore(t *testi
 		}},
 	}
 
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"riga": rigStore}, sessionSnapshot, nil, io.Discard,
-	)
+		cityStore, map[string]beads.Store{"riga": rigStore}, sessionSnapshot, nil, io.Discard)
+
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "riga/worker" {
 			t.Fatalf("unreachable city-store work should not resume rig pool session: %+v", tp)
@@ -7048,7 +7051,7 @@ func TestBuildDesiredState_AlwaysNamedSession_MaterializesWithoutWorkBeads(t *te
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	found := false
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "mayor" {
@@ -7085,7 +7088,7 @@ func TestBuildDesiredState_SuspendedNamedSession_DoesNotMaterialize(t *testing.T
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "mayor" {
 			t.Fatalf("suspended named session should not materialize: %+v", tp)
@@ -7117,7 +7120,7 @@ func TestBuildDesiredState_ProductionDemandSkipsSuspendedAgentScaleCheck(t *test
 	}
 
 	var stderr strings.Builder
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	assertMarkerExists(t, liveMarker)
 	assertMarkerAbsent(t, parkedMarker)
@@ -7160,7 +7163,7 @@ func TestBuildDesiredState_ProductionDemandSkipsSuspendedRigScaleCheck(t *testin
 	}
 
 	var stderr strings.Builder
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	assertMarkerExists(t, liveMarker)
 	assertMarkerAbsent(t, parkedMarker)
@@ -7182,7 +7185,7 @@ func TestBuildDesiredState_ProductionDemandSkipsAllScaleChecksWhenCitySuspended(
 	}
 
 	var stderr strings.Builder
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 
 	assertMarkerAbsent(t, marker)
 	if len(dsResult.State) != 0 {
@@ -7253,7 +7256,7 @@ func TestBuildDesiredState_OnDemandNamedSession_NoPhantomPoolInstance(t *testing
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	refineryEntries := []TemplateParams{}
 	for _, tp := range dsResult.State {
@@ -7304,7 +7307,7 @@ func TestRealizePoolDesiredSessions_NamedSessionBeadRefusedAsPoolInstance(t *tes
 		},
 	}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), nil, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), nil, &stderr)
 	bp.sessionBeads = newSessionBeadSnapshot([]beads.Bead{namedBead})
 
 	poolState := PoolDesiredState{
@@ -7366,7 +7369,7 @@ func TestBuildDesiredState_OnDemandNamedSession_InProgressAssigneeMaterializes(t
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	found := false
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "mayor" {
@@ -7404,7 +7407,7 @@ func TestBuildDesiredState_OnDemandNamedSession_AssigneeDemandSignalsPoolDesired
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if !dsResult.NamedSessionDemand["mayor"] {
 		t.Fatal("NamedSessionDemand should include 'mayor' when assignee-only demand exists")
 	}
@@ -7447,7 +7450,7 @@ func TestBuildDesiredState_PlainTemplateMaxOneDoesNotMaterializeWithoutDemand(t 
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if len(dsResult.State) != 0 {
 		t.Fatalf("plain max=1 template should not auto-materialize without demand: %+v", dsResult.State)
 	}
@@ -7466,7 +7469,7 @@ func TestBuildDesiredState_PlainTemplateMaxOneScaleCheckCreatesEphemeralDemand(t
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if len(dsResult.State) != 1 {
 		t.Fatalf("desired session count = %d, want 1", len(dsResult.State))
 	}
@@ -7504,7 +7507,7 @@ func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckCreatesEphemeralDemand
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	dogCount := 0
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "dog" {
@@ -7546,7 +7549,7 @@ func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckZeroDoesNotMaterialize
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "dog" {
 			t.Fatalf("scale_check=0 should not materialize on-demand named session: %+v", tp)
@@ -7596,7 +7599,7 @@ func TestBuildDesiredState_OnDemandNamedSession_ColdCustomScaleCheckWakesOnRoute
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if dsResult.ScaleCheckCounts["dog"] != 1 {
 		t.Fatalf("ScaleCheckCounts[dog] = %d, want 1 (cold-wake probe should surface routed demand the custom scale_check can't see while asleep)", dsResult.ScaleCheckCounts["dog"])
 	}
@@ -7646,7 +7649,7 @@ func TestBuildDesiredState_AlwaysNamedSession_ColdCustomScaleCheckDoesNotAddPool
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if dsResult.ScaleCheckCounts["dog"] != 0 {
 		t.Fatalf("ScaleCheckCounts[dog] = %d, want 0 (always-mode guard should suppress the cold-wake probe)", dsResult.ScaleCheckCounts["dog"])
 	}
@@ -7676,7 +7679,7 @@ func TestBuildDesiredState_OnDemandNamedSession_NoExplicitScaleCheckUsesWorkQuer
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "mayor" {
 			t.Fatalf("work_query should not materialize on-demand named session: %+v", tp)
@@ -7708,7 +7711,7 @@ func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckCreatesEphemeralSessio
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	dogCount := 0
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "dog" {
@@ -7744,7 +7747,7 @@ func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckErrorDoesNotFallToWork
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "dog" {
 			t.Fatalf("on-demand named session materialized from work_query fallback after scale_check error: %+v", tp)
@@ -7776,7 +7779,7 @@ func TestBuildDesiredState_OnDemandNamedSession_ScaleCheckNonIntegerDoesNotFallT
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "dog" {
 			t.Fatalf("on-demand named session materialized from work_query fallback after scale_check parse error: %+v", tp)
@@ -7843,7 +7846,7 @@ func TestBuildDesiredState_OnDemandNamedSession_RigWorkQueryDoesNotMaterialize(t
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	found := false
 	for _, tp := range dsResult.State {
 		if tp.TemplateName == "demo/worker" {
@@ -7872,7 +7875,7 @@ func TestBuildDesiredState_SingletonTemplateDoesNotRealizeDependencyPoolFloorWit
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	desired := dsResult.State
 	dbSlots := 0
 	for _, tp := range desired {
@@ -7902,7 +7905,7 @@ func TestBuildDesiredState_DoesNotRealizeDependencyFloorForZeroScaledDependentPo
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	desired := dsResult.State
 	for _, tp := range desired {
 		if tp.TemplateName == "db" {
@@ -7928,7 +7931,7 @@ func TestBuildDesiredState_DoesNotRealizeDependencyFloorForSuspendedDependent(t 
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	desired := dsResult.State
 	for _, tp := range desired {
 		if tp.TemplateName == "db" {
@@ -7958,7 +7961,7 @@ func TestBuildDesiredState_SingletonTemplatesDoNotRealizeTransitiveDependencyPoo
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	desired := dsResult.State
 	apiSlots := 0
 	dbSlots := 0
@@ -8011,7 +8014,7 @@ func TestBuildDesiredState_DiscoveredSessionRootGetsDependencyPoolFloor(t *testi
 	}
 
 	var stderr bytes.Buffer
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 	desired := dsResult.State
 	if _, ok := desired["s-gc-100"]; !ok {
 		t.Fatalf("expected discovered helper session in desired state, got keys %v", desired)
@@ -8060,7 +8063,7 @@ func TestBuildDesiredState_ManualZeroScaledPoolSessionStaysDesiredAndKeepsDepend
 	}
 
 	var stderr bytes.Buffer
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, &stderr)
 	desired := dsResult.State
 	if _, ok := desired["s-gc-200"]; !ok {
 		t.Fatalf("expected manual pool session in desired state, got keys %v", desired)
@@ -8105,7 +8108,7 @@ func TestRefreshDesiredStateWithSessionBeadsIncludesManualCreatedDuringBuild(t *
 		}},
 	}
 
-	result := buildDesiredStateWithSessionBeads("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, nil, staleSnapshot, nil, io.Discard)
+	result := buildDesiredStateWithSessionBeads(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, nil, staleSnapshot, nil, io.Discard)
 	if _, ok := result.State["s-gc-late"]; ok {
 		t.Fatalf("stale session snapshot unexpectedly included late manual session")
 	}
@@ -8113,7 +8116,7 @@ func TestRefreshDesiredStateWithSessionBeadsIncludesManualCreatedDuringBuild(t *
 	if err != nil {
 		t.Fatalf("load latest snapshot: %v", err)
 	}
-	refreshed := refreshDesiredStateWithSessionBeads(result, "test-city", cityPath, cfg, runtime.NewFake(), store, latestSnapshot, io.Discard)
+	refreshed := refreshDesiredStateWithSessionBeads(context.Background(), result, "test-city", cityPath, cfg, runtime.NewFake(), store, latestSnapshot, io.Discard)
 	tp, ok := refreshed.State["s-gc-late"]
 	if !ok {
 		t.Fatalf("expected refreshed desired state to include late manual session, got keys %v", mapKeys(refreshed.State))
@@ -8188,7 +8191,7 @@ func TestBuildDesiredState_ManualImplicitPoolSessionsStayDesired(t *testing.T) {
 		},
 	}
 
-	dsResult := buildDesiredState("my-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "my-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	desired := dsResult.State
 	for _, sn := range []string{"s-real-world-app-4wq", "s-real-world-app-bmr"} {
 		tp, ok := desired[sn]
@@ -8260,7 +8263,7 @@ func TestBuildDesiredState_ScaleCheckErrorRetainsOnlyAffectedPoolSessions(t *tes
 	}
 
 	var stderr strings.Builder
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city",
 		cityPath,
 		time.Now().UTC(),
@@ -8270,8 +8273,7 @@ func TestBuildDesiredState_ScaleCheckErrorRetainsOnlyAffectedPoolSessions(t *tes
 		nil,
 		newSessionBeadSnapshot([]beads.Bead{workerSession, helperSession}),
 		nil,
-		&stderr,
-	)
+		&stderr)
 
 	if result.StoreQueryPartial {
 		t.Fatalf("StoreQueryPartial = true, want false for scoped scale_check failure; stderr=%s", stderr.String())
@@ -8350,7 +8352,7 @@ func TestBuildDesiredState_ScaleCheckErrorPreservesDormantAffectedPoolSessionWit
 	snapshot := newSessionBeadSnapshot([]beads.Bead{workerSession, helperSession})
 
 	var stderr strings.Builder
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city",
 		cityPath,
 		time.Now().UTC(),
@@ -8360,8 +8362,7 @@ func TestBuildDesiredState_ScaleCheckErrorPreservesDormantAffectedPoolSessionWit
 		nil,
 		snapshot,
 		nil,
-		&stderr,
-	)
+		&stderr)
 
 	if result.StoreQueryPartial {
 		t.Fatalf("StoreQueryPartial = true, want false for scoped scale_check failure; stderr=%s", stderr.String())
@@ -8418,7 +8419,7 @@ func TestBuildDesiredState_NamedBackedPoolPartialRetainsGenericPoolSession(t *te
 	}
 
 	var stderr strings.Builder
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city",
 		cityPath,
 		time.Now().UTC(),
@@ -8428,8 +8429,7 @@ func TestBuildDesiredState_NamedBackedPoolPartialRetainsGenericPoolSession(t *te
 		nil,
 		newSessionBeadSnapshot([]beads.Bead{poolSession}),
 		nil,
-		&stderr,
-	)
+		&stderr)
 
 	// The demand phase now shares one full ready read per store across the
 	// assigned-work, scale-check, and named-session probes (readyDemandCache),
@@ -8483,7 +8483,7 @@ func TestBuildDesiredState_DrainedPoolManagedSessionIsNotRediscovered(t *testing
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	desired := dsResult.State
 
 	if _, ok := desired["s-gc-drained"]; ok {
@@ -8526,7 +8526,7 @@ func TestBuildDesiredState_LegacyNamepoolPoolSessionWithoutMetadataDoesNotBypass
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	desired := dsResult.State
 
 	if _, ok := desired["worker-live"]; ok {
@@ -8558,7 +8558,7 @@ func TestBuildDesiredState_UsesBeadNamedPoolSessionsForScaleCheckDemand(t *testi
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	desired := dsResult.State
 	if len(desired) != 1 {
 		t.Fatalf("desired sessions = %d, want 1", len(desired))
@@ -8609,7 +8609,7 @@ func TestBuildDesiredState_PoolSessionCoreFingerprintStableAcrossTicks(t *testin
 		}},
 	}
 
-	first := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	first := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	var (
 		sessionName string
 		firstTP     TemplateParams
@@ -8626,7 +8626,7 @@ func TestBuildDesiredState_PoolSessionCoreFingerprintStableAcrossTicks(t *testin
 	}
 	startedHash := runtime.CoreFingerprint(templateParamsToConfig(firstTP))
 
-	second := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	second := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	secondTP, ok := second.State[sessionName]
 	if !ok {
 		t.Fatalf("second desired state missing existing session %q: %#v", sessionName, second.State)
@@ -8652,7 +8652,7 @@ func TestBuildDesiredState_BlocksFreshPoolDemandWhenSessionListFails(t *testing.
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if len(dsResult.State) != 0 {
 		t.Fatalf("desired sessions = %#v, want no fresh row from a partial session census", dsResult.State)
 	}
@@ -8714,7 +8714,7 @@ func TestBuildDesiredState_DependencyFloorDoesNotReuseRegularPoolWorkerBead(t *t
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	desired := dsResult.State
 	if _, ok := desired["worker-existing"]; ok {
 		t.Fatalf("dependency floor reused regular worker bead: keys=%v", mapKeys(desired))
@@ -8749,7 +8749,7 @@ func TestBuildDesiredState_StoreBackedPoolUsesLogicalInstanceIdentity(t *testing
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if len(dsResult.State) != 2 {
 		t.Fatalf("desired session count = %d, want 2", len(dsResult.State))
 	}
@@ -8814,7 +8814,7 @@ func TestBuildDesiredState_StoreBackedPoolUsesQualifiedInstanceNameForBindings(t
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	var got TemplateParams
 	found := false
 	for _, tp := range dsResult.State {
@@ -8878,7 +8878,7 @@ func TestBuildDesiredState_RecoversPoolTemplateFromAliasOnlyBindingIdentity(t *t
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	got, ok := dsResult.State["ops-furiosa-session"]
 	if !ok {
 		t.Fatalf("desired state missing alias-only pool session: keys=%v", mapKeys(dsResult.State))
@@ -8936,7 +8936,7 @@ func TestBuildDesiredState_PendingCreatePoolSessionUsesConcreteBeadIdentity(t *t
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	got, ok := dsResult.State["ant-adhoc-abc123"]
 	if !ok {
 		t.Fatalf("desired state missing pending create session: keys=%v", mapKeys(dsResult.State))
@@ -8994,7 +8994,7 @@ func TestBuildDesiredState_PendingCreatePoolSessionDropsWithoutScaleDemand(t *te
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if got := dsResult.ScaleCheckCounts["gascity/workflows.codex-max"]; got != 0 {
 		t.Fatalf("ScaleCheckCounts[gascity/workflows.codex-max] = %d, want 0", got)
 	}
@@ -9053,10 +9053,10 @@ func TestBuildDesiredState_PendingCreatePoolSessionCountsTowardScaleDemand(t *te
 
 	trace := newPoolDesiredStateTestTrace(template)
 	var stderr strings.Builder
-	dsResult := buildDesiredStateWithSessionBeads(
+	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		store, nil, sessionSnapshot, trace, &stderr,
-	)
+		store, nil, sessionSnapshot, trace, &stderr)
+
 	if got := dsResult.ScaleCheckCounts[template]; got != 2 {
 		t.Fatalf("ScaleCheckCounts[%s] = %d, want 2", template, got)
 	}
@@ -9144,7 +9144,7 @@ func TestBuildDesiredState_LegacyAliaslessEphemeralPoolSessionFallsBackToSession
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	got, ok := dsResult.State["s-gc-legacy"]
 	if !ok {
 		t.Fatalf("desired state missing legacy session: keys=%v", mapKeys(dsResult.State))
@@ -9180,7 +9180,7 @@ func TestBuildDesiredState_RediscoveriesUniqueLegacyLocalPoolTemplate(t *testing
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	got, ok := dsResult.State["worker-5"]
 	if !ok {
 		t.Fatalf("desired state missing legacy local session: keys=%v", mapKeys(dsResult.State))
@@ -9212,7 +9212,7 @@ func TestBuildDesiredState_DoesNotRediscoverAmbiguousLegacyLocalPoolTemplate(t *
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if _, ok := dsResult.State["worker-5"]; ok {
 		t.Fatalf("desired state %#v unexpectedly rediscovered ambiguous local pool template", dsResult.State["worker-5"])
 	}
@@ -9240,7 +9240,7 @@ func TestBuildDesiredState_RecoversPoolTemplateFromAgentNameOnlyLegacyLocalIdent
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	got, ok := dsResult.State["worker-5"]
 	if !ok {
 		t.Fatalf("desired state missing agent_name-only legacy session: keys=%v", mapKeys(dsResult.State))
@@ -9272,7 +9272,7 @@ func TestBuildDesiredState_DoesNotRecoverPoolTemplateFromAmbiguousLegacyLocalAli
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if _, ok := dsResult.State["worker-5"]; ok {
 		t.Fatalf("desired state %#v unexpectedly recovered ambiguous local alias identity", dsResult.State["worker-5"])
 	}
@@ -9300,7 +9300,7 @@ func TestBuildDesiredState_RediscoveriesLegacyCommonNamePoolTemplate(t *testing.
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	got, ok := dsResult.State["worker-5"]
 	if !ok {
 		t.Fatalf("desired state missing legacy common_name session: keys=%v", mapKeys(dsResult.State))
@@ -9331,7 +9331,7 @@ func TestBuildDesiredState_DoesNotRediscoverFreshCreatingOutOfBoundsQualifiedPoo
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if _, ok := dsResult.State["custom-worker-7"]; ok {
 		t.Fatalf("desired state %#v unexpectedly kept fresh out-of-bounds qualified pool identity", dsResult.State["custom-worker-7"])
 	}
@@ -9358,7 +9358,7 @@ func TestBuildDesiredState_DoesNotRediscoverZeroCapacityQualifiedPoolIdentity(t 
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if _, ok := dsResult.State["custom-worker-1"]; ok {
 		t.Fatalf("desired state %#v unexpectedly kept zero-capacity qualified pool identity", dsResult.State["custom-worker-1"])
 	}
@@ -9387,7 +9387,7 @@ func TestBuildDesiredState_DoesNotRediscoverStaleCreatingLegacyPoolTemplate(t *t
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if _, ok := dsResult.State["worker-7"]; ok {
 		t.Fatalf("desired state %#v unexpectedly kept stale creating legacy pool bead", dsResult.State["worker-7"])
 	}
@@ -9454,7 +9454,7 @@ func TestBuildDesiredState_DoesNotRecoverOutOfBoundsAliasOnlyBoundedPoolSlot(t *
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	if _, ok := dsResult.State["custom-worker-7"]; ok {
 		t.Fatalf("desired state %#v unexpectedly preserved out-of-bounds alias-only pool identity", dsResult.State["custom-worker-7"])
 	}
@@ -9477,6 +9477,7 @@ func TestExistingPoolSlot_PreservesStampedOutOfBoundsLiveIdentity(t *testing.T) 
 
 func TestValidateAgentSessionTransportForBuild_ProductionShapeRunsTransportValidation(t *testing.T) {
 	bp := &agentBuildParams{
+		ctx:       context.Background(),
 		workspace: &config.Workspace{},
 		providers: map[string]config.ProviderSpec{
 			"test-agent": {
@@ -9527,7 +9528,7 @@ func TestBuildDesiredState_DoesNotCreateDuplicatePoolBeadForDiscoveredSession(t 
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	desired := dsResult.State
 	if _, ok := desired["worker-gc-existing"]; !ok {
 		t.Fatalf("desired state missing discovered pool session: keys=%v", mapKeys(desired))
@@ -9574,7 +9575,7 @@ func TestBuildDesiredState_ZeroScaledPoolSessionKeepsDependencyFloorWhileDrainin
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	desired := dsResult.State
 	if _, ok := desired["api-1"]; ok {
 		t.Fatalf("did not expect zero-scaled pool bead to re-enter desired state: %+v", desired["api-1"])
@@ -9617,7 +9618,7 @@ func TestBuildDesiredState_PoolCheckInjectsDoltPortForRigScopedAgent(t *testing.
 		},
 	}
 
-	desired := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	desired := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	workerSlots := 0
 	for _, tp := range desired.State {
 		if tp.TemplateName == "myrig/worker" {
@@ -9663,7 +9664,7 @@ func TestBuildDesiredState_PoolCheckUsesCityDoltPortForCityScopedAgent(t *testin
 		},
 	}
 
-	desired := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	desired := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	workerSlots := 0
 	for _, tp := range desired.State {
 		if tp.TemplateName == "worker" {
@@ -9720,7 +9721,7 @@ func TestBuildDesiredState_PoolCheckUsesExplicitRigPassword(t *testing.T) {
 		}},
 	}
 
-	desired := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	desired := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	workerSlots := 0
 	for _, tp := range desired.State {
 		if tp.TemplateName == "demo/worker" {
@@ -9778,7 +9779,7 @@ func TestBuildDesiredState_PoolCheckUsesManagedCityDoltPortWhenRigHasNoOverride(
 		},
 	}
 
-	queryEnv, err := controllerQueryRuntimeEnv(cityPath, cfg, &cfg.Agents[0])
+	queryEnv, err := controllerQueryRuntimeEnv(context.Background(), cityPath, cfg, &cfg.Agents[0])
 	if err != nil {
 		t.Fatalf("controllerQueryRuntimeEnv: %v", err)
 	}
@@ -9790,7 +9791,7 @@ func TestBuildDesiredState_PoolCheckUsesManagedCityDoltPortWhenRigHasNoOverride(
 			currentManagedDoltPort(cityPath), currentResolvableManagedDoltPort(cityPath))
 	}
 
-	desired := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
+	desired := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), nil, io.Discard)
 	workerSlots := 0
 	for _, tp := range desired.State {
 		if tp.TemplateName == "myrig/worker" {
@@ -9844,7 +9845,7 @@ func TestBuildDesiredState_ManualPoolSessionInSuspendedRigStaysStopped(t *testin
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 	desired := dsResult.State
 	if _, ok := desired["s-gc-300"]; ok {
 		t.Fatalf("manual pool session in suspended rig should not enter desired state: %+v", desired["s-gc-300"])
@@ -9877,6 +9878,7 @@ func TestSelectOrCreatePoolSessionBead_SkipsDrained(t *testing.T) {
 	snapshot.addInfo(sessiontest.SeedBead(t, drained))
 	cfgAgent := config.Agent{Name: "claude", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(5)}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -9920,6 +9922,7 @@ func TestSelectOrCreatePoolSessionBead_PrefersConcreteAgentSlotOverStalePoolMeta
 	}}
 	cfgAgent := &cfg.Agents[0]
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		city:         cfg,
 		beadStore:    store,
 		sessionBeads: newSessionBeadSnapshot([]beads.Bead{poisoned}),
@@ -9969,6 +9972,7 @@ func TestSelectOrCreatePoolSessionBead_PreservesPreferredNamepoolSlotAboveReduce
 	}}}
 	cfgAgent := &cfg.Agents[0]
 	bp := &agentBuildParams{
+		ctx:               context.Background(),
 		city:              cfg,
 		beadStore:         store,
 		sessionBeads:      newSessionBeadSnapshot([]beads.Bead{nux}),
@@ -10049,6 +10053,7 @@ func TestSelectOrCreatePoolSessionBead_PreservesPreferredSlotViaAliasHistory(t *
 	}}}
 	cfgAgent := &cfg.Agents[0]
 	bp := &agentBuildParams{
+		ctx:               context.Background(),
 		city:              cfg,
 		beadStore:         store,
 		sessionBeads:      newSessionBeadSnapshot([]beads.Bead{nux}),
@@ -10146,6 +10151,7 @@ func TestSelectOrPlanPoolSessionBead_PreservesTwoAssignedSlotsAcrossCapShrink(t 
 	}}}
 	cfgAgent := &cfg.Agents[0]
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		city:         cfg,
 		beadStore:    store,
 		sessionBeads: newSessionBeadSnapshot([]beads.Bead{nux, rictus}),
@@ -10234,6 +10240,7 @@ func TestSelectOrPlanPoolSessionBead_DoesNotPreserveInFlightNewAboveReducedCapac
 	}}}
 	cfgAgent := &cfg.Agents[0]
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		city:         cfg,
 		beadStore:    store,
 		sessionBeads: newSessionBeadSnapshot([]beads.Bead{nux}),
@@ -10368,6 +10375,7 @@ func TestSelectOrCreatePoolSessionBead_DoesNotRetagDuplicateConcreteSlot(t *test
 		{Name: "kimi", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(20)},
 	}}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		city:         cfg,
 		beadStore:    store,
 		sessionBeads: newSessionBeadSnapshot([]beads.Bead{duplicate}),
@@ -10390,6 +10398,7 @@ func TestSelectOrCreatePoolSessionBead_DoesNotReserveFreshSlotOnCreateError(t *t
 	cfgAgent := config.Agent{Name: "claude", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(5)}
 	usedSlots := map[int]bool{}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -10427,6 +10436,7 @@ func TestSelectOrCreatePoolSessionBead_UsesFreshCreateTimeNotBeaconTime(t *testi
 	oldBeacon := anchor.Add(-2 * staleCreatingStateTimeout)
 	beforeCreate := anchor.Add(-time.Second)
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -10475,6 +10485,7 @@ func TestSelectOrCreatePoolSessionBead_ReusesPreferredDrained(t *testing.T) {
 	snapshot.addInfo(sessiontest.SeedBead(t, drained))
 	cfgAgent := config.Agent{Name: "claude", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(5)}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -10516,6 +10527,7 @@ func TestSelectOrCreateDependencyPoolSessionBead_SkipsDrained(t *testing.T) {
 	snapshot.addInfo(sessiontest.SeedBead(t, drained))
 	cfgAgent := config.Agent{Name: "claude", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(5)}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -10556,6 +10568,7 @@ func TestSelectOrCreateDependencyPoolSessionBead_MaxOneUsesCanonicalIdentity(t *
 		MaxActiveSessions: intPtr(1),
 	}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		cityPath:     t.TempDir(),
 		beadStore:    store,
 		sessionBeads: &sessionBeadSnapshot{},
@@ -10618,6 +10631,7 @@ func TestSelectOrCreateDependencyPoolSessionBead_MaxOneNormalizesExistingStaleId
 		MaxActiveSessions: intPtr(1),
 	}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		cityPath:     t.TempDir(),
 		beadStore:    store,
 		sessionBeads: snapshot,
@@ -10714,6 +10728,7 @@ func TestSelectOrCreateDependencyPoolSessionBead_MaxOnePrefersCanonicalDependenc
 		MaxActiveSessions: intPtr(1),
 	}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		cityPath:     t.TempDir(),
 		beadStore:    store,
 		sessionBeads: snapshot,
@@ -10778,6 +10793,7 @@ func TestSelectOrCreateDependencyPoolSessionBead_MaxOnePicksEarliestCanonicalDup
 		MaxActiveSessions: intPtr(1),
 	}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		sessionBeads: newSessionBeadSnapshot([]beads.Bead{later, earliest}),
 		agents:       []config.Agent{cfgAgent},
 	}
@@ -10841,7 +10857,7 @@ func TestSelectOrCreatePoolSessionBeadPicksEarliestReusableSingletonCandidate(t 
 		}},
 	}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), store, &stderr)
 	bp.sessionBeads = snapshot
 
 	result, _, err := selectOrCreatePoolSessionBead(bp, &cfg.Agents[0], "cashmaster/refinery", nil, map[string]bool{}, map[int]bool{})
@@ -10879,6 +10895,7 @@ func TestSelectOrCreateDependencyPoolSessionBead_BlocksWhenConcreteAliasTaken(t 
 	}
 	cfgAgent := config.Agent{Name: "claude", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(5)}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		cityPath:     t.TempDir(),
 		beadStore:    store,
 		sessionBeads: &sessionBeadSnapshot{},
@@ -10924,6 +10941,7 @@ func TestSelectOrCreateDependencyPoolSessionBead_ReusesLegacyUnqualifiedTemplate
 		MaxActiveSessions: intPtr(3),
 	}}}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		city:         cfg,
 		cityPath:     t.TempDir(),
 		beadStore:    store,
@@ -10965,6 +10983,7 @@ func TestSelectOrCreatePoolSessionBead_ReusesAvailableForNewTier(t *testing.T) {
 	snapshot.addInfo(sessiontest.SeedBead(t, awake))
 	cfgAgent := config.Agent{Name: "claude", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(5)}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -11007,6 +11026,7 @@ func TestSelectOrCreatePoolSessionBead_ReusesLegacyUnqualifiedTemplateWithFullCo
 		MaxActiveSessions: intPtr(3),
 	}}}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		city:         cfg,
 		beadStore:    store,
 		sessionBeads: snapshot,
@@ -11043,6 +11063,7 @@ func TestSelectOrCreatePoolSessionBead_SkipsAssignedForNewTier(t *testing.T) {
 	snapshot.addInfo(sessiontest.SeedBead(t, assigned))
 	cfgAgent := config.Agent{Name: "claude", MinActiveSessions: intPtr(0), MaxActiveSessions: intPtr(5)}
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -11088,6 +11109,7 @@ func TestSelectOrCreatePoolSessionBead_SkipsAsleepBeads(t *testing.T) {
 
 	snapshot := newSessionBeadSnapshot([]beads.Bead{asleep})
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -11124,6 +11146,7 @@ func TestSelectOrCreatePoolSessionBead_ReusesActiveBeforeCreatingNew(t *testing.
 
 	snapshot := newSessionBeadSnapshot([]beads.Bead{active})
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -11160,6 +11183,7 @@ func TestSelectOrCreatePoolSessionBead_ReusesCreatingBeforeCreatingNew(t *testin
 
 	snapshot := newSessionBeadSnapshot([]beads.Bead{creating})
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -11211,6 +11235,7 @@ func TestSelectOrCreatePoolSessionBead_SkipsAsleepButReusesActive(t *testing.T) 
 
 	snapshot := newSessionBeadSnapshot([]beads.Bead{asleep, active})
 	bp := &agentBuildParams{
+		ctx:          context.Background(),
 		beadStore:    store,
 		sessionBeads: snapshot,
 		agents:       []config.Agent{cfgAgent},
@@ -11456,7 +11481,7 @@ func TestEnsureDependencyOnlyTemplate_StoreBackedUsesInstanceIdentity(t *testing
 		t.Fatalf("seed api root bead: %v", err)
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	var tp TemplateParams
 	var found bool
@@ -11529,7 +11554,7 @@ func TestEnsureDependencyOnlyTemplate_StoreBackedMaxOneUsesCanonicalIdentity(t *
 		t.Fatalf("seed api root bead: %v", err)
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	var tp TemplateParams
 	var found bool
@@ -11647,7 +11672,7 @@ func TestBuildDesiredState_DependencyFloorSkipsFailedCreate(t *testing.T) {
 		t.Fatalf("seed failed-create dependency bead: %v", err)
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	var tp TemplateParams
 	var found bool
@@ -11725,7 +11750,7 @@ func TestBuildDesiredState_DependencyFloorIgnoresConfigBlindLegacySlotRecovery(t
 		t.Fatalf("seed dependency-only db bead: %v", err)
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	var tp TemplateParams
 	var found bool
@@ -11792,7 +11817,7 @@ func TestBuildDesiredState_PoolBeadIdentityAgreesAcrossRealizeAndCanonicalHelper
 		t.Fatalf("seed pool bead: %v", err)
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	// realize should have claimed our seeded bead (slot 1) and produced a
 	// desired entry keyed by session_name.
@@ -11903,7 +11928,7 @@ func TestBuildDesiredState_RigScopedScaleCheckExpandsRigTemplate(t *testing.T) {
 		},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	alphaCount, ok := dsResult.ScaleCheckCounts["alpha/ant"]
 	if !ok {
@@ -11946,7 +11971,7 @@ func TestBuildDesiredState_NamedSessionWorkQueryDoesNotDriveControllerDemand(t *
 		}},
 	}
 
-	dsResult := buildDesiredState("test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	if dsResult.NamedSessionDemand["alpha/dog"] {
 		t.Fatal("NamedSessionDemand[alpha/dog] came from controller-side work_query")
@@ -11990,7 +12015,7 @@ func TestBuildDesiredState_OpenBlockedControlDispatcherWorkRetainsDemand(t *test
 			MaxActiveSessions: &maxActive,
 		}},
 	}
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city",
 		cityPath,
 		time.Now().UTC(),
@@ -12000,8 +12025,7 @@ func TestBuildDesiredState_OpenBlockedControlDispatcherWorkRetainsDemand(t *test
 		nil,
 		newSessionBeadSnapshot(nil),
 		nil,
-		io.Discard,
-	)
+		io.Discard)
 
 	if got := result.ScaleCheckCounts["core.control-dispatcher"]; got != 1 {
 		t.Fatalf("ScaleCheckCounts[core.control-dispatcher] = %d, want 1", got)
@@ -12066,7 +12090,7 @@ func TestBuildDesiredState_RepairsCityRoutedRigControlWork(t *testing.T) {
 			},
 		},
 	}
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city",
 		cityPath,
 		time.Now().UTC(),
@@ -12076,8 +12100,7 @@ func TestBuildDesiredState_RepairsCityRoutedRigControlWork(t *testing.T) {
 		map[string]beads.Store{"fixture": rigStore},
 		newSessionBeadSnapshot(nil),
 		nil,
-		io.Discard,
-	)
+		io.Discard)
 
 	stored, err := rigStore.Get(control.ID)
 	if err != nil {
@@ -12161,7 +12184,7 @@ func TestBuildDesiredState_RepairsAliasedRigControlWorkOnlyOnce(t *testing.T) {
 		},
 	}
 
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city",
 		cityPath,
 		time.Now().UTC(),
@@ -12171,8 +12194,7 @@ func TestBuildDesiredState_RepairsAliasedRigControlWorkOnlyOnce(t *testing.T) {
 		map[string]beads.Store{"fixture": rigStore, "other": rigStore},
 		newSessionBeadSnapshot(nil),
 		nil,
-		io.Discard,
-	)
+		io.Discard)
 
 	verificationStore, err := openScopeLocalFileStore(cityPath)
 	if err != nil {
@@ -12279,10 +12301,9 @@ func TestBuildDesiredState_RepairsRigRoutedCityControlWork(t *testing.T) {
 			},
 		},
 	}
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), cityStore,
-		map[string]beads.Store{"fixture": rigStore}, newSessionBeadSnapshot(nil), nil, io.Discard,
-	)
+		map[string]beads.Store{"fixture": rigStore}, newSessionBeadSnapshot(nil), nil, io.Discard)
 
 	stored, err := cityStore.Get(control.ID)
 	if err != nil {
@@ -12340,10 +12361,9 @@ func TestBuildDesiredState_DoesNotWakeRigDispatcherWhenCityRouteRepairFails(t *t
 		},
 	}
 	var stderr bytes.Buffer
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), cityStore,
-		map[string]beads.Store{"fixture": rigStore}, newSessionBeadSnapshot(nil), nil, &stderr,
-	)
+		map[string]beads.Store{"fixture": rigStore}, newSessionBeadSnapshot(nil), nil, &stderr)
 
 	stored, err := cityBase.Get(control.ID)
 	if err != nil {
@@ -12389,7 +12409,7 @@ func TestBuildDesiredState_DoesNotWakeCityDispatcherForUnrepairableRigControlWor
 		}},
 	}
 	var stderr bytes.Buffer
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city",
 		t.TempDir(),
 		time.Now().UTC(),
@@ -12399,8 +12419,7 @@ func TestBuildDesiredState_DoesNotWakeCityDispatcherForUnrepairableRigControlWor
 		map[string]beads.Store{"fixture": rigStore},
 		newSessionBeadSnapshot(nil),
 		nil,
-		&stderr,
-	)
+		&stderr)
 
 	stored, err := rigStore.Get(control.ID)
 	if err != nil {
@@ -12836,12 +12855,11 @@ func TestBuildDesiredState_ScaleCheckPartialPoolBlocksNewCreates(t *testing.T) {
 		activeSession := makeSessionBead("session-worker-active", "worker-active-1", "active", "1")
 
 		var stderr strings.Builder
-		result := buildDesiredStateWithSessionBeads(
+		result := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), store, nil,
 			newSessionBeadSnapshot([]beads.Bead{activeSession}),
-			nil, &stderr,
-		)
+			nil, &stderr)
 
 		if !result.PoolScaleCheckPartialTemplates["worker"] {
 			t.Fatalf("PoolScaleCheckPartialTemplates[worker] = false, want true; stderr=%s", stderr.String())
@@ -12877,12 +12895,11 @@ func TestBuildDesiredState_ScaleCheckPartialPoolBlocksNewCreates(t *testing.T) {
 		awakeSession := makeSessionBead("session-worker-awake", "worker-awake-1", "awake", "1")
 
 		var stderr strings.Builder
-		result := buildDesiredStateWithSessionBeads(
+		result := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), store, nil,
 			newSessionBeadSnapshot([]beads.Bead{awakeSession}),
-			nil, &stderr,
-		)
+			nil, &stderr)
 
 		if !result.PoolScaleCheckPartialTemplates["worker"] {
 			t.Fatalf("PoolScaleCheckPartialTemplates[worker] = false, want true; stderr=%s", stderr.String())
@@ -12916,12 +12933,11 @@ func TestBuildDesiredState_ScaleCheckPartialPoolBlocksNewCreates(t *testing.T) {
 		store := &controllerDemandPartialStore{MemStore: beads.NewMemStore()}
 
 		var stderr strings.Builder
-		result := buildDesiredStateWithSessionBeads(
+		result := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), store, nil,
 			newSessionBeadSnapshot([]beads.Bead{}),
-			nil, &stderr,
-		)
+			nil, &stderr)
 
 		if !result.PoolScaleCheckPartialTemplates["worker"] {
 			t.Fatalf("PoolScaleCheckPartialTemplates[worker] = false, want true; stderr=%s", stderr.String())
@@ -12952,12 +12968,11 @@ func TestBuildDesiredState_ScaleCheckPartialPoolBlocksNewCreates(t *testing.T) {
 		creatingSession := makeSessionBead("session-worker-creating", "worker-creating-2", "creating", "2")
 
 		var stderr strings.Builder
-		result := buildDesiredStateWithSessionBeads(
+		result := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), store, nil,
 			newSessionBeadSnapshot([]beads.Bead{activeSession, creatingSession}),
-			nil, &stderr,
-		)
+			nil, &stderr)
 
 		if !result.PoolScaleCheckPartialTemplates["worker"] {
 			t.Fatalf("PoolScaleCheckPartialTemplates[worker] = false, want true; stderr=%s", stderr.String())
@@ -12994,11 +13009,11 @@ func TestBuildDesiredState_ScaleCheckPartialPoolBlocksNewCreates(t *testing.T) {
 		// Partial tick: the narrow pool-create guard (poolPartialCreate) does NOT
 		// shield a stale creating bead (no pending_create_claim), so it rolls back now.
 		var pStderr strings.Builder
-		partialResult := buildDesiredStateWithSessionBeads(
+		partialResult := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), partialStore, nil,
-			snapshot, nil, &pStderr,
-		)
+			snapshot, nil, &pStderr)
+
 		if !partialResult.PoolScaleCheckPartialTemplates["worker"] {
 			t.Fatalf("partial tick: PoolScaleCheckPartialTemplates[worker] = false; stderr=%s", pStderr.String())
 		}
@@ -13031,11 +13046,11 @@ func TestBuildDesiredState_ScaleCheckPartialPoolBlocksNewCreates(t *testing.T) {
 		snapshot := newSessionBeadSnapshot([]beads.Bead{freshCreate})
 
 		var pStderr strings.Builder
-		partialResult := buildDesiredStateWithSessionBeads(
+		partialResult := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), partialStore, nil,
-			snapshot, nil, &pStderr,
-		)
+			snapshot, nil, &pStderr)
+
 		if !partialResult.PoolScaleCheckPartialTemplates["worker"] {
 			t.Fatalf("partial tick: PoolScaleCheckPartialTemplates[worker] = false; stderr=%s", pStderr.String())
 		}
@@ -13063,12 +13078,12 @@ func TestBuildDesiredState_ScaleCheckPartialPoolBlocksNewCreates(t *testing.T) {
 				store := &controllerDemandPartialStore{MemStore: beads.NewMemStore()}
 				b := makeSessionBead("session-worker-"+state, "worker-"+state+"-1", state, "1")
 				var pStderr strings.Builder
-				result := buildDesiredStateWithSessionBeads(
+				result := buildDesiredStateWithSessionBeads(context.Background(),
 					"test-city", cityPath, time.Now().UTC(),
 					cfg, runtime.NewFake(), store, nil,
 					newSessionBeadSnapshot([]beads.Bead{b}),
-					nil, &pStderr,
-				)
+					nil, &pStderr)
+
 				if _, ok := result.State["worker-"+state+"-1"]; ok {
 					t.Fatalf("state=%s bead must NOT be preserved in desired during partial tick (would interrupt drain); keys=%v stderr=%s",
 						state, mapKeys(result.State), pStderr.String())
@@ -13131,12 +13146,12 @@ func TestBuildDesiredState_ProviderRedBlocksNewPoolSessionCreate(t *testing.T) {
 		cfg := makeCfg()
 		store := beads.NewMemStore()
 		var stderr strings.Builder
-		result := buildDesiredStateWithSessionBeads(
+		result := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), store, nil,
 			newSessionBeadSnapshot(nil),
-			nil, &stderr,
-		)
+			nil, &stderr)
+
 		for _, tp := range result.State {
 			if tp.TemplateName == "worker" {
 				t.Fatalf("expected no worker creates when provider is red; got entry %q; stderr=%s", tp.SessionName, stderr.String())
@@ -13154,12 +13169,12 @@ func TestBuildDesiredState_ProviderRedBlocksNewPoolSessionCreate(t *testing.T) {
 		cfg := makeCfg()
 		store := beads.NewMemStore()
 		var stderr strings.Builder
-		result := buildDesiredStateWithSessionBeads(
+		result := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), store, nil,
 			newSessionBeadSnapshot(nil),
-			nil, &stderr,
-		)
+			nil, &stderr)
+
 		workerCreates := 0
 		for _, tp := range result.State {
 			if tp.TemplateName == "worker" {
@@ -13178,12 +13193,12 @@ func TestBuildDesiredState_ProviderRedBlocksNewPoolSessionCreate(t *testing.T) {
 		cfg := makeCfg()
 		store := beads.NewMemStore()
 		var stderr strings.Builder
-		result := buildDesiredStateWithSessionBeads(
+		result := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), store, nil,
 			newSessionBeadSnapshot(nil),
-			nil, &stderr,
-		)
+			nil, &stderr)
+
 		workerCreates := 0
 		for _, tp := range result.State {
 			if tp.TemplateName == "worker" {
@@ -13204,12 +13219,12 @@ func TestBuildDesiredState_ProviderRedBlocksNewPoolSessionCreate(t *testing.T) {
 		active := makeSessionBead("session-worker-1", "worker-1", "active", "1")
 		store := beads.NewMemStore()
 		var stderr strings.Builder
-		result := buildDesiredStateWithSessionBeads(
+		result := buildDesiredStateWithSessionBeads(context.Background(),
 			"test-city", cityPath, time.Now().UTC(),
 			cfg, runtime.NewFake(), store, nil,
 			newSessionBeadSnapshot([]beads.Bead{active}),
-			nil, &stderr,
-		)
+			nil, &stderr)
+
 		if _, ok := result.State["worker-1"]; !ok {
 			t.Fatalf("active session must be reused even when provider is red; keys=%v stderr=%s", mapKeys(result.State), stderr.String())
 		}
@@ -13325,7 +13340,7 @@ func TestBuildDesiredState_NamedAliasHolderSuppressesPoolStandby(t *testing.T) {
 		}},
 	}
 
-	dsResult := buildDesiredState("gchq", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "gchq", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	var mayorEntries []TemplateParams
 	for _, tp := range dsResult.State {
@@ -13421,7 +13436,7 @@ func TestBuildDesiredState_AsleepNamedAliasHolderStaysSingle(t *testing.T) {
 		}},
 	}
 
-	dsResult := buildDesiredState("gchq", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
+	dsResult := buildDesiredState(context.Background(), "gchq", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, io.Discard)
 
 	var mayorEntries []TemplateParams
 	for _, tp := range dsResult.State {
@@ -13469,10 +13484,9 @@ func TestBuildDesiredStateRecordsDemandSubPhases(t *testing.T) {
 		t.Fatalf("load session snapshot: %v", err)
 	}
 	var stderr strings.Builder
-	buildDesiredStateWithSessionBeads(
+	buildDesiredStateWithSessionBeads(context.Background(),
 		"trace-town", cityDir, time.Now().UTC(), &config.City{}, runtime.NewFake(),
-		store, nil, sessionSnapshot, cycle, &stderr,
-	)
+		store, nil, sessionSnapshot, cycle, &stderr)
 
 	if err := cycle.End(TraceCompletionCompleted, map[string]any{}); err != nil {
 		t.Fatalf("End: %v", err)

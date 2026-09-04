@@ -513,13 +513,13 @@ var cliStoreCache struct {
 // have a store open. Caches the bead store per cityPath so loops over
 // agents don't open the store repeatedly. Silently falls back to legacy
 // naming if the store is unavailable.
-func cliSessionName(cityPath, cityName, agentName, sessionTemplate string) string {
+func cliSessionName(ctx context.Context, cityPath, cityName, agentName, sessionTemplate string) string {
 	if strings.TrimSpace(cityPath) == "" {
 		return sessionName(nil, cityName, agentName, sessionTemplate)
 	}
 	cliStoreCache.mu.Lock()
 	if cliStoreCache.path != cityPath {
-		cliStoreCache.store, _ = openCityStoreAt(cityPath)
+		cliStoreCache.store, _ = openCityStoreAt(ctx, cityPath)
 		cliStoreCache.path = cityPath
 	}
 	store := cliStoreCache.store
@@ -1445,20 +1445,20 @@ func eventActor() string {
 // openCityStore locates the city root from the current directory and opens a
 // Store using the configured provider. On error it writes to stderr and returns
 // nil plus an exit code.
-func openCityStore(stderr io.Writer, cmdName string) (beads.Store, int) {
-	store, _, code := openCityStoreWithPath(stderr, cmdName)
+func openCityStore(ctx context.Context, stderr io.Writer, cmdName string) (beads.Store, int) {
+	store, _, code := openCityStoreWithPath(ctx, stderr, cmdName)
 	return store, code
 }
 
 // openCityStoreWithPath locates the city root and opens its Store, returning
 // the resolved city path used for the store.
-func openCityStoreWithPath(stderr io.Writer, cmdName string) (beads.Store, string, int) {
+func openCityStoreWithPath(ctx context.Context, stderr io.Writer, cmdName string) (beads.Store, string, int) {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", cmdName, err) //nolint:errcheck // best-effort stderr
 		return nil, "", 1
 	}
-	store, err := openCityStoreAt(cityPath)
+	store, err := openCityStoreAt(ctx, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", cmdName, err)                   //nolint:errcheck // best-effort stderr
 		fmt.Fprintln(stderr, "hint: run \"gc doctor\" for diagnostics") //nolint:errcheck // best-effort stderr
@@ -1472,16 +1472,16 @@ func openCityStoreWithPath(stderr io.Writer, cmdName string) (beads.Store, strin
 // openCityStore (which resolves the path first). Keep the passed city path
 // authoritative; rerouting through cityForStoreDir would let inherited
 // GC_CITY override an explicit --city resolution.
-func openCityStoreAt(cityPath string) (beads.Store, error) {
-	result, err := openCityStoreResultAt(cityPath)
+func openCityStoreAt(ctx context.Context, cityPath string) (beads.Store, error) {
+	result, err := openCityStoreResultAt(ctx, cityPath)
 	if err != nil {
 		return nil, err
 	}
 	return result.Store, nil
 }
 
-func openCityStoreResultAt(cityPath string) (beads.StoreOpenResult, error) {
-	return openStoreResultAtForCity(cityPath, cityPath)
+func openCityStoreResultAt(ctx context.Context, cityPath string) (beads.StoreOpenResult, error) {
+	return openStoreResultAtForCity(ctx, cityPath, cityPath)
 }
 
 const fileStoreLayoutScopedV1 = "scope-local-v1"
@@ -1547,8 +1547,8 @@ func openCompatibleFileStore(scopeRoot, cityPath string) (*beads.FileStore, erro
 	return openScopeLocalFileStore(cityPath)
 }
 
-func openStoreAtForCity(storePath, cityPath string) (beads.Store, error) {
-	return openStoreAtForCityWithAuthority(storePath, cityPath, false)
+func openStoreAtForCity(ctx context.Context, storePath, cityPath string) (beads.Store, error) {
+	return openStoreAtForCityWithAuthority(ctx, storePath, cityPath, false)
 }
 
 // openStoreAtForCityWithConfig is openStoreAtForCity for a caller that already
@@ -1556,28 +1556,28 @@ func openStoreAtForCity(storePath, cityPath string) (beads.Store, error) {
 // mode from config, which otherwise means loading the whole city config —
 // builtin-cache readiness and pack expansion included — again inside the open.
 // A nil config keeps the loading behavior, matching nativeDoltOpenEnvForScope.
-func openStoreAtForCityWithConfig(storePath, cityPath string, cfg *config.City) (beads.Store, error) {
-	result, err := openStoreResultAtForCityWithConfig(storePath, cityPath, cfg, gate.ModeUnset, false, false)
+func openStoreAtForCityWithConfig(ctx context.Context, storePath, cityPath string, cfg *config.City) (beads.Store, error) {
+	result, err := openStoreResultAtForCityWithConfig(ctx, storePath, cityPath, cfg, gate.ModeUnset, false, false)
 	if err != nil {
 		return nil, err
 	}
 	return result.Store, nil
 }
 
-func openAuthoritativeStoreAtForCity(storePath, cityPath string) (beads.Store, error) {
-	return openStoreAtForCityWithAuthority(storePath, cityPath, true)
+func openAuthoritativeStoreAtForCity(ctx context.Context, storePath, cityPath string) (beads.Store, error) {
+	return openStoreAtForCityWithAuthority(ctx, storePath, cityPath, true)
 }
 
-func openStoreAtForCityWithAuthority(storePath, cityPath string, authoritative bool) (beads.Store, error) {
-	result, err := openStoreResultAtForCityWithAuthority(storePath, cityPath, gate.ModeUnset, false, authoritative)
+func openStoreAtForCityWithAuthority(ctx context.Context, storePath, cityPath string, authoritative bool) (beads.Store, error) {
+	result, err := openStoreResultAtForCityWithAuthority(ctx, storePath, cityPath, gate.ModeUnset, false, authoritative)
 	if err != nil {
 		return nil, err
 	}
 	return result.Store, nil
 }
 
-func openStoreResultAtForCity(storePath, cityPath string) (beads.StoreOpenResult, error) {
-	return openStoreResultAtForCityWithMode(storePath, cityPath, gate.ModeUnset, false)
+func openStoreResultAtForCity(ctx context.Context, storePath, cityPath string) (beads.StoreOpenResult, error) {
+	return openStoreResultAtForCityWithMode(ctx, storePath, cityPath, gate.ModeUnset, false)
 }
 
 // openStoreResultAtForCityWithMode is openStoreResultAtForCity with the
@@ -1586,19 +1586,19 @@ func openStoreResultAtForCity(storePath, cityPath string) (beads.StoreOpenResult
 // boot-latched mode: re-resolving from disk on a reload would flip the city
 // store's write discipline mid-process while rig stores keep the boot mode —
 // exactly the mixed-writer state the process latch exists to prevent.
-func openStoreResultAtForCityWithMode(storePath, cityPath string, modeOverride gate.Mode, haveMode bool) (beads.StoreOpenResult, error) {
-	return openStoreResultAtForCityWithAuthority(storePath, cityPath, modeOverride, haveMode, false)
+func openStoreResultAtForCityWithMode(ctx context.Context, storePath, cityPath string, modeOverride gate.Mode, haveMode bool) (beads.StoreOpenResult, error) {
+	return openStoreResultAtForCityWithAuthority(ctx, storePath, cityPath, modeOverride, haveMode, false)
 }
 
-func openStoreResultAtForCityWithAuthority(storePath, cityPath string, modeOverride gate.Mode, haveMode, authoritative bool) (beads.StoreOpenResult, error) {
-	return openStoreResultAtForCityWithConfig(storePath, cityPath, nil, modeOverride, haveMode, authoritative)
+func openStoreResultAtForCityWithAuthority(ctx context.Context, storePath, cityPath string, modeOverride gate.Mode, haveMode, authoritative bool) (beads.StoreOpenResult, error) {
+	return openStoreResultAtForCityWithConfig(ctx, storePath, cityPath, nil, modeOverride, haveMode, authoritative)
 }
 
 // openStoreResultAtForCityWithConfig is openStoreResultAtForCityWithAuthority
 // with the city config supplied by a caller that already loaded it. A nil
 // config is loaded here, which is what every caller outside the bd scope
 // resolution path passes.
-func openStoreResultAtForCityWithConfig(storePath, cityPath string, cfg *config.City, modeOverride gate.Mode, haveMode, authoritative bool) (beads.StoreOpenResult, error) {
+func openStoreResultAtForCityWithConfig(ctx context.Context, storePath, cityPath string, cfg *config.City, modeOverride gate.Mode, haveMode, authoritative bool) (beads.StoreOpenResult, error) {
 	runtimeCityPath := cityPath
 	if runtimeCityPath == "" {
 		runtimeCityPath = cityForStoreDir(storePath)
@@ -1627,11 +1627,11 @@ func openStoreResultAtForCityWithConfig(storePath, cityPath string, cfg *config.
 	if haveMode {
 		mode = modeOverride
 	}
-	result, err := beads.OpenStoreAtForCity(context.Background(), beads.StoreOpenOptions{
+	result, err := beads.OpenStoreAtForCity(ctx, beads.StoreOpenOptions{
 		ScopeRoot:         scopeRoot,
 		CityPath:          runtimeCityPath,
 		Provider:          provider,
-		PreflightChecker:  newBeadsPreflightChecker(runtimeCityPath, provider),
+		PreflightChecker:  newBeadsPreflightChecker(ctx, runtimeCityPath, provider),
 		Logger:            slog.Default(),
 		ConditionalWrites: mode,
 		OnConditionalWritesDegraded: func() func(beads.ConditionalWritesDegrade) {
@@ -1646,10 +1646,10 @@ func openStoreResultAtForCityWithConfig(storePath, cityPath string, cfg *config.
 			if err := requireBdBinaryForCity(runtimeCityPath); err != nil {
 				return nil, err
 			}
-			return openBdStoreAtWithConfig(scopeRoot, runtimeCityPath, cfg)
+			return openBdStoreAtWithConfig(ctx, scopeRoot, runtimeCityPath, cfg)
 		},
 		OpenExecStore: func() (beads.Store, error) {
-			return openExecStoreAtForCityWithConfig(provider, scopeRoot, runtimeCityPath, cfg)
+			return openExecStoreAtForCityWithConfig(ctx, provider, scopeRoot, runtimeCityPath, cfg)
 		},
 		OpenNativeStore: func() (beads.Store, error) {
 			// Reuse the config this call already loaded. Passing nil made the
@@ -1657,27 +1657,26 @@ func openStoreResultAtForCityWithConfig(storePath, cityPath string, cfg *config.
 			// pack expansion included, for the same city at the same moment.
 			// The reopen hook below deliberately keeps re-loading: it fires long
 			// after this open, where re-reading current state is the point.
-			env, err := nativeDoltOpenEnvForScope(runtimeCityPath, cfg, scopeRoot)
+			env, err := nativeDoltOpenEnvForScope(ctx, runtimeCityPath, cfg, scopeRoot)
 			if err != nil {
 				return nil, fmt.Errorf("project native store env %s: %w", scopeRoot, err)
 			}
 			// Reopen hook for the native read-path reconnect: the store's cached
 			// open env pins the managed Dolt port as of open time, which is dead
 			// after a hard-kill/rebind. Re-resolve the CURRENT env on every
-			// reconnect — nativeDoltOpenEnvForScope re-reads the live port and
-			// triggers managed-Dolt recovery/restart when the server is down
-			// (allowRecovery=true), mirroring how each bd subprocess re-resolves
-			// the port per command — then re-open against the live server via the
-			// direct native path (which bypasses the factory preflight/identity
-			// gate, so an absent scope project_id cannot block the reconnect).
+			// reconnect. nativeDoltOpenEnvForScope re-reads the live port and
+			// propagates the first unresolved-runtime error, then re-opens via
+			// the direct native path when resolution succeeds. This bypasses the
+			// factory preflight/identity gate, so an absent scope project_id
+			// cannot block a reconnect that already has a live endpoint.
 			reopen := func(ctx context.Context) (beads.NativeStorage, error) {
-				freshEnv, rerr := nativeDoltOpenEnvForScopeContext(ctx, runtimeCityPath, nil, scopeRoot)
+				freshEnv, rerr := nativeDoltOpenEnvForScope(ctx, runtimeCityPath, nil, scopeRoot)
 				if rerr != nil {
 					return nil, fmt.Errorf("re-resolve native store env %s: %w", scopeRoot, rerr)
 				}
 				return beads.OpenNativeStorage(ctx, scopeRoot, freshEnv)
 			}
-			return beads.OpenNativeDoltStoreAt(context.Background(), scopeRoot, env, beads.WithNativeReopen(reopen))
+			return beads.OpenNativeDoltStoreAt(ctx, scopeRoot, env, beads.WithNativeReopen(reopen))
 		},
 	})
 	if err != nil {
@@ -1702,7 +1701,7 @@ func requireBdBinaryForCity(cityPath string) error {
 // openExecStoreAtForCityWithConfig opens the exec-provider store for a city.
 // A caller that already holds this city's config passes it to avoid reloading
 // it; a nil config is loaded here.
-func openExecStoreAtForCityWithConfig(provider, scopeRoot, runtimeCityPath string, cfg *config.City) (beads.Store, error) {
+func openExecStoreAtForCityWithConfig(ctx context.Context, provider, scopeRoot, runtimeCityPath string, cfg *config.City) (beads.Store, error) {
 	target, err := resolveConfiguredExecStoreTargetWithConfig(runtimeCityPath, scopeRoot, cfg)
 	if err != nil {
 		return nil, err
@@ -1718,13 +1717,13 @@ func openExecStoreAtForCityWithConfig(provider, scopeRoot, runtimeCityPath strin
 				}
 				rigCfg = loaded
 			}
-			projected, err := bdRuntimeEnvForRigWithError(runtimeCityPath, rigCfg, target.ScopeRoot)
+			projected, err := bdRuntimeEnvForRigWithError(ctx, runtimeCityPath, rigCfg, target.ScopeRoot)
 			if err != nil {
 				return nil, err
 			}
 			copyExecProjectedBackendEnv(env, projected)
 		} else {
-			projected, err := bdRuntimeEnvWithError(runtimeCityPath)
+			projected, err := bdRuntimeEnvWithError(ctx, runtimeCityPath)
 			if err != nil {
 				return nil, err
 			}
@@ -1770,9 +1769,9 @@ func resolveStoreScopeRoot(cityPath, storePath string) string {
 // openBdStoreAtWithConfig opens the bd-backed store at storePath for a city.
 // A caller that already holds this city's config passes it to avoid reloading
 // it; a nil config is loaded here.
-func openBdStoreAtWithConfig(storePath, cityPath string, cfg *config.City) (beads.Store, error) {
+func openBdStoreAtWithConfig(ctx context.Context, storePath, cityPath string, cfg *config.City) (beads.Store, error) {
 	if filepath.Clean(storePath) == filepath.Clean(cityPath) {
-		store := bdStoreForCity(storePath, cityPath)
+		store := bdStoreForCity(ctx, storePath, cityPath)
 		if optimized, ok := openOptimizedDoltliteStore(storePath, store); ok {
 			return optimized, nil
 		}
@@ -1785,7 +1784,7 @@ func openBdStoreAtWithConfig(storePath, cityPath string, cfg *config.City) (bead
 		}
 		cfg = loaded
 	}
-	store := bdStoreForRig(storePath, cityPath, cfg)
+	store := bdStoreForRig(ctx, storePath, cityPath, cfg)
 	if optimized, ok := openOptimizedDoltliteStore(storePath, store); ok {
 		return optimized, nil
 	}

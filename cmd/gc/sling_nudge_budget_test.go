@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -186,7 +187,7 @@ func TestSlingNudgeEnqueueBudgetPreservesQueuedItems(t *testing.T) {
 	})
 
 	start := fakeClock.Now()
-	if err := enqueueQueuedNudgeWithStoreAndClock(cityPath, beads.NudgesStore{Store: store}, item, fakeClock); err != nil {
+	if err := enqueueQueuedNudgeWithStoreAndClock(context.Background(), cityPath, beads.NudgesStore{Store: store}, item, fakeClock); err != nil {
 		t.Fatalf("enqueueQueuedNudgeWithStoreAndClock: %v", err)
 	}
 	virtualElapsed := fakeClock.Now().Sub(start)
@@ -245,7 +246,7 @@ func TestSlingNudgeEnqueueEmptyBacklogFast(t *testing.T) {
 	})
 
 	start := time.Now()
-	if err := enqueueQueuedNudgeWithStore(cityPath, beads.NudgesStore{Store: store}, item); err != nil {
+	if err := enqueueQueuedNudgeWithStore(context.Background(), cityPath, beads.NudgesStore{Store: store}, item); err != nil {
 		t.Fatalf("enqueueQueuedNudgeWithStore: %v", err)
 	}
 	elapsed := time.Since(start)

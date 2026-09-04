@@ -957,7 +957,7 @@ func TestNudgeStalledPoolContinuations_RevalidationBypassesPrimedCache(t *testin
 			root, step := continuationCandidateBeads("step-a", sessionName)
 			workBacking := beads.NewMemStoreFrom(0, []beads.Bead{root, step}, nil)
 			cache := beads.NewCachingStoreForTest(workBacking, nil)
-			if err := cache.PrimeActive(); err != nil {
+			if err := cache.PrimeActive(context.Background()); err != nil {
 				t.Fatalf("prime work cache: %v", err)
 			}
 			candidate := ContinuationClaimCandidate{
@@ -1026,7 +1026,7 @@ func TestNudgeStalledPoolContinuations_RevalidationBypassesPrimedCache(t *testin
 		workBacking := beads.NewMemStoreFrom(0, []beads.Bead{root, step}, nil)
 		failingBacking := &continuationGetErrorStore{Store: workBacking}
 		cache := beads.NewCachingStoreForTest(failingBacking, nil)
-		if err := cache.PrimeActive(); err != nil {
+		if err := cache.PrimeActive(context.Background()); err != nil {
 			t.Fatalf("prime work cache: %v", err)
 		}
 		if _, err := cache.Get(root.ID); err != nil {

@@ -471,18 +471,22 @@ type poolOnBootHook struct {
 // the no-recovery variants exist to bound (ga-cdmx6x). Template expansion also
 // reports malformed commands to the shared stderr. So the impure half stays on
 // one goroutine, and only the subprocesses fan out.
-func runPoolOnBoot(cfg *config.City, cityPath string, runner ScaleCheckRunner, stderr io.Writer) {
-	runPoolOnBootHooks(planPoolOnBootHooks(cfg, cityPath, stderr), runner, stderr)
+func runPoolOnBoot(ctx context.Context, cfg *config.City, cityPath string, runner ScaleCheckRunner, stderr io.Writer) {
+	runPoolOnBootHooks(planPoolOnBootHooks(ctx, cfg, cityPath, stderr), runner, stderr)
 }
 
 // planPoolOnBootHooks resolves every eligible pool agent's on_boot command,
 // working directory and environment, in config order. An agent whose
 // environment cannot be resolved is reported and dropped, exactly as the serial
 // loop did.
-func planPoolOnBootHooks(cfg *config.City, cityPath string, stderr io.Writer) []poolOnBootHook {
+func planPoolOnBootHooks(ctx context.Context, cfg *config.City, cityPath string, stderr io.Writer) []poolOnBootHook {
 	cityName := workdirutil.CityName(cityPath, cfg)
 	var hooks []poolOnBootHook
 	for _, a := range cfg.Agents {
+		if err := ctx.Err(); err != nil {
+			fmt.Fprintf(stderr, "on_boot: supervisor context canceled: %v\n", err) //nolint:errcheck // best-effort stderr
+			return hooks
+		}
 		if !a.SupportsInstanceExpansion() || a.Implicit {
 			continue
 		}
@@ -491,7 +495,7 @@ func planPoolOnBootHooks(cfg *config.City, cityPath string, stderr io.Writer) []
 			continue
 		}
 		cmd = expandAgentCommandTemplate(cityPath, cityName, &a, cfg.Rigs, "on_boot", cmd, stderr)
-		env, err := controllerQueryRuntimeEnv(cityPath, cfg, &a)
+		env, err := controllerQueryRuntimeEnv(ctx, cityPath, cfg, &a)
 		if err != nil {
 			fmt.Fprintf(stderr, "on_boot %s env: %v\n", a.QualifiedName(), err) //nolint:errcheck // best-effort stderr
 			continue

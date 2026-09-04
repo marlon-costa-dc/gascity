@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"testing"
 	"time"
@@ -57,10 +58,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_CrossStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if got := result.ScaleCheckCounts[qualified]; got != 1 {
 		t.Errorf("cross-store cold-wake demand = %d, want 1 (city-store routed bead must wake the cold no-scale_check pool)", got)
@@ -84,10 +84,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_OwnRigStillWakes(t *testin
 		t.Fatal(err)
 	}
 
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if got := result.ScaleCheckCounts[qualified]; got != 1 {
 		t.Errorf("own-rig cold-wake demand = %d, want 1", got)
@@ -100,10 +99,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_OwnRigStillWakes(t *testin
 func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_NoDemandNoWake(t *testing.T) {
 	cfg, cityStore, rigStores, qualified := newNoScaleCheckRigPoolCity(t)
 
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if got := result.ScaleCheckCounts[qualified]; got != 0 {
 		t.Errorf("no-demand cold pool demand = %d, want 0 (must not spuriously wake)", got)
@@ -133,10 +131,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_ScalesToCrossStoreWant(t *
 		}
 	}
 
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if got := result.ScaleCheckCounts[qualified]; got != 3 {
 		t.Errorf("cross-store demand = %d, want 3 (scale-to-want, bounded by max_active=5)", got)
@@ -162,10 +159,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_MissingRigStoreNoCrossWake
 	}
 
 	// Rig store absent (nil map): the own-rig target is unavailable.
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, nil, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, nil, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if got := result.ScaleCheckCounts[qualified]; got != 0 {
 		t.Errorf("demand = %d, want 0 (missing rig store must not cross-store-wake)", got)
@@ -194,10 +190,9 @@ func TestBuildDesiredState_ScaleFromZero_NoScaleCheck_AliasedRigStoreNoDoubleCou
 
 	// Rig store IS the city store (aliased).
 	aliased := map[string]beads.Store{"rig-A": cityStore}
-	result := buildDesiredStateWithSessionBeads(
+	result := buildDesiredStateWithSessionBeads(context.Background(),
 		"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-		cityStore, aliased, &sessionBeadSnapshot{}, nil, os.Stderr,
-	)
+		cityStore, aliased, &sessionBeadSnapshot{}, nil, os.Stderr)
 
 	if got := result.ScaleCheckCounts[qualified]; got != 1 {
 		t.Errorf("aliased-store demand = %d, want 1 (must not double-count the same bead)", got)

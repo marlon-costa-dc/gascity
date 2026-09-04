@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -674,7 +675,7 @@ store, copy them into the binding with
 			if err != nil {
 				return formulaCommandError(stderr, "gc formula cook", jsonOutput, err)
 			}
-			store, err := openStoreAtForCity(scope.storeRoot, cityPath)
+			store, err := openStoreAtForCity(cmd.Context(), scope.storeRoot, cityPath)
 			if err != nil {
 				return formulaCommandError(stderr, "gc formula cook", jsonOutput, err)
 			}
@@ -815,7 +816,7 @@ store, copy them into the binding with
 							return fmt.Errorf("validate runtime vars: %w", err)
 						}
 						graphRootKey := stampFormulaCookGraphV2Root(recipe, args[0], inv.InputConvoy, cookVars)
-						if err := decorateFormulaCookGraphV2Recipe(recipe, cookVars, storeRef, scope.rig, store, loadedCityName(cfg, cityPath), cityPath, cfg); err != nil {
+						if err := decorateFormulaCookGraphV2Recipe(cmd.Context(), recipe, cookVars, storeRef, scope.rig, store, loadedCityName(cfg, cityPath), cityPath, cfg); err != nil {
 							return fmt.Errorf("decorate formulas v2 recipe: %w", err)
 						}
 						if graphRootKey != "" {
@@ -1004,7 +1005,7 @@ store, copy them into the binding with
 				// written where the root lands.
 				rootStore = moleculeClassStore(recipe, store, graphStore)
 				graphRootKey := stampFormulaCookGraphV2Root(recipe, args[0], inv.InputConvoy, cookVars)
-				if err := decorateFormulaCookGraphV2Recipe(recipe, cookVars, storeRef, scope.rig, rootStore, loadedCityName(cfg, cityPath), cityPath, cfg); err != nil {
+				if err := decorateFormulaCookGraphV2Recipe(cmd.Context(), recipe, cookVars, storeRef, scope.rig, rootStore, loadedCityName(cfg, cityPath), cityPath, cfg); err != nil {
 					return formulaCommandError(stderr, "gc formula cook", jsonOutput, fmt.Errorf("decorate formulas v2 recipe: %w", err))
 				}
 				if graphRootKey != "" {
@@ -1137,7 +1138,7 @@ func stampFormulaCookGraphV2Root(recipe *formula.Recipe, formulaName, inputConvo
 	return rootKey
 }
 
-func decorateFormulaCookGraphV2Recipe(recipe *formula.Recipe, vars map[string]string, storeRef, rigContext string, store beads.Store, cityName, cityPath string, cfg *config.City) error {
+func decorateFormulaCookGraphV2Recipe(ctx context.Context, recipe *formula.Recipe, vars map[string]string, storeRef, rigContext string, store beads.Store, cityName, cityPath string, cfg *config.City) error {
 	// cook does not route the workflow root to an agent, but rig-scoped step
 	// targets still need the invocation's rig context to resolve — the same
 	// context sling derives from its entry agent's qualified name. A rig-scoped
@@ -1148,7 +1149,7 @@ func decorateFormulaCookGraphV2Recipe(recipe *formula.Recipe, vars map[string]st
 	// store-ref encoding (empty QualifiedName so the root stays unrouted;
 	// MetadataOnly mirrors the no-session default binding).
 	defaultRoute := graphroute.GraphRouteBinding{RigContext: strings.TrimSpace(rigContext), MetadataOnly: true}
-	return graphroute.DecorateGraphWorkflowRecipeWithDefaultBinding(recipe, graphroute.GraphWorkflowRouteVars(recipe, vars), "", "formula-cook", "", storeRef, defaultRoute, store, cityName, cfg, cliGraphrouteDeps(cityPath))
+	return graphroute.DecorateGraphWorkflowRecipeWithDefaultBinding(ctx, recipe, graphroute.GraphWorkflowRouteVars(recipe, vars), "", "formula-cook", "", storeRef, defaultRoute, store, cityName, cfg, cliGraphrouteDeps(cityPath))
 }
 
 func ensureFormulaCookAttachDep(store beads.Store, attachBeadID, rootID string) error {
@@ -1454,7 +1455,7 @@ since it was spawned.`,
 				return err
 			}
 
-			store, err := openStoreAtForCity(scope.storeRoot, cityPath)
+			store, err := openStoreAtForCity(cmd.Context(), scope.storeRoot, cityPath)
 			if err != nil {
 				return err
 			}

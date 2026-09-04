@@ -18,19 +18,19 @@ import (
 // store the front door wraps via sessFront.Store().Store — the same underlying
 // store, so behavior is unchanged.
 
-func resolveStoredSessionLogSource(cityPath string, cfg *config.City, sessFront *sessionpkg.Store, identifier string, searchPaths []string) (string, string, bool, string) {
+func resolveStoredSessionLogSource(ctx context.Context, cityPath string, cfg *config.City, sessFront *sessionpkg.Store, identifier string, searchPaths []string) (string, string, bool, string) {
 	logCtx, ok := resolveSessionLogContext(cityPath, cfg, sessFront, identifier)
 	if !ok {
 		return "", "", false, ""
 	}
 	if logCtx.sessionID != "" {
-		sp, err := newSessionProvider()
+		sp, err := newSessionProvider(ctx)
 		if err != nil {
 			return "", logCtx.provider, true, err.Error()
 		}
 		handle, err := workerHandleForSessionWithConfig(cityPath, sessFront.Store().Store, sp, cfg, logCtx.sessionID)
 		if err == nil {
-			if path, pathErr := handle.TranscriptPath(context.Background()); pathErr == nil && strings.TrimSpace(path) != "" {
+			if path, pathErr := handle.TranscriptPath(ctx); pathErr == nil && strings.TrimSpace(path) != "" {
 				return path, logCtx.provider, true, ""
 			}
 		}

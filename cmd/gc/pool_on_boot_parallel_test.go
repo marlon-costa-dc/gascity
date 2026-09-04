@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -58,7 +59,7 @@ func TestPlanPoolOnBootHooksSelectsExactlyThePoolAgents(t *testing.T) {
 		},
 	}
 
-	hooks := planPoolOnBootHooks(cfg, t.TempDir(), io.Discard)
+	hooks := planPoolOnBootHooks(context.Background(), cfg, t.TempDir(), io.Discard)
 	// Planned in config order, so the pool submits work in a stable order.
 	var planned []string
 	for _, hook := range hooks {

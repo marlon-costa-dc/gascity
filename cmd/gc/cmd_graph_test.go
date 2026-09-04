@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -470,7 +471,7 @@ func TestOpenRigAwareStoreUsesProviderAwareRigStore(t *testing.T) {
 	setCwd(t, cityDir)
 	t.Setenv("GC_CITY_PATH", cityDir)
 	var stderr bytes.Buffer
-	store, code := openRigAwareStore([]string{"fe-1"}, &stderr)
+	store, code := openRigAwareStore(context.Background(), []string{"fe-1"}, &stderr)
 	if code != 0 {
 		t.Fatalf("openRigAwareStore() = %d, stderr = %s", code, stderr.String())
 	}
@@ -501,7 +502,7 @@ func TestOpenRigAwareStoreLegacyFileCityUsesSharedCityStore(t *testing.T) {
 	setCwd(t, cityDir)
 	t.Setenv("GC_CITY_PATH", cityDir)
 	var stderr bytes.Buffer
-	store, code := openRigAwareStore([]string{"fe-1"}, &stderr)
+	store, code := openRigAwareStore(context.Background(), []string{"fe-1"}, &stderr)
 	if code != 0 {
 		t.Fatalf("openRigAwareStore() = %d, stderr = %s", code, stderr.String())
 	}

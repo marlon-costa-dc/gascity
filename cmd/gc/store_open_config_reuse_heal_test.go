@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -45,7 +46,7 @@ func TestSuppliedConfigStillHealsACityThisProcessNeverReadied(t *testing.T) {
 	// The open itself may fail in this bare city; the readiness pass is what
 	// this pins, and it runs before the store is touched.
 	_, _ = openStoreResultAtForCityWithConfig(
-		filepath.Join(cityPath, ".beads"), cityPath, cfg, gate.ModeUnset, false, false)
+		context.Background(), filepath.Join(cityPath, ".beads"), cityPath, cfg, gate.ModeUnset, false, false)
 
 	if !builtinRuntimeReadied(cityPath) {
 		t.Fatal("a store open handed a config skipped the builtin readiness pass; " +
