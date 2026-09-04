@@ -55,7 +55,11 @@ func ExtractCodexTailMeta(path string) (*TailMeta, error) {
 	if err != nil {
 		return nil, err
 	}
-	return extractCodexTailMetaFromLines(splitLines(data), startsMidLine, truncated), nil
+	lines, err := splitLines(data)
+	if err != nil {
+		return nil, err
+	}
+	return extractCodexTailMetaFromLines(lines, startsMidLine, truncated), nil
 }
 
 // ExtractCodexTailMetaFromSearchPaths reads Codex tail metadata only after
@@ -241,17 +245,16 @@ func boundedContextPercentage(inputTokens, contextWindow int) int {
 //   - CacheCreationTokens = 0 (codex reports no cache-write tokens)
 //
 // Model comes from the latest preceding turn_context payload.model; when no
-// turn_context falls inside the tail window it is seeded from the session's
-// first turn_context via a bounded head scan (codexHeadModel). A codex rollout
-// normally re-announces one model on every turn_context, so that first model
-// prices the tail — this keeps long-lived sessions, whose turn_context has long
-// scrolled past the tail window, from minting model facts with an empty (and
-// therefore unpriced) model. When the head scan instead observes two distinct
-// models it declines to guess and seeds empty, so a genuine mid-rollout switch
-// falls back to the honest unpriced floor rather than a possibly-wrong price
-// (see codexHeadModel and the mid-switch duplicate-collapse handling below). The
-// seed is empty when no turn_context exists within the head-scan cap
-// (token_count itself carries no model). MessageID is the cumulative-total identity
+// turn_context falls inside the tail window it is recovered from the nearest
+// turn_context preceding that window by a bounded backward scan
+// (codexPrecedingModel). That nearest preceding announcement is the model in
+// effect for the tail, so it prices the tail — this keeps long-lived sessions,
+// whose turn_context has long scrolled past the tail window, from minting model
+// facts with an empty (and therefore unpriced) model, and it honors a
+// mid-rollout model switch wherever it happened. The recovered model is empty
+// when no turn_context is in reach of that scan or the scan cannot complete —
+// an unpriced model fact is a truer report than a stale one, and token_count
+// itself carries no model. MessageID is the cumulative-total identity
 // ("total:<total_tokens>") so the exact-duplicate token_count emissions the
 // CLI produces collapse to a single entry (the last observed wins, except a
 // first-observed non-empty Model is kept — a duplicate re-emitted after a
@@ -268,17 +271,29 @@ func ExtractCodexTailUsage(path string) ([]TailUsage, error) {
 	}
 	defer f.Close() //nolint:errcheck // best-effort close on read-only file
 
-	// Seed the model from the session's first turn_context before scanning the
-	// tail: in a long-lived session the turn_context has scrolled out of the
-	// tail window, so without this seed every recent invocation records an empty
-	// model. Runs before readTail because readTail leaves the read offset at the
-	// tail; codexHeadModel re-seeks to the start itself.
-	seedModel, err := codexHeadModel(f)
+	// One size snapshot feeds both windows. The seed and the tail read are
+	// adjacent halves of the same file, so deriving them from separate SeekEnd
+	// calls would leave the bytes appended in between — these rollouts are
+	// appended to while they are read — inside neither.
+	size, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
 
-	data, _, err := readTail(f, tailChunkSize)
+	// Recover the model in effect for the tail before scanning it: in a
+	// long-lived session the turn_context has scrolled out of the tail window,
+	// so without this seed every recent invocation records an empty model.
+	seedModel, err := codexPrecedingModel(f, size-tailChunkSize)
+	if err != nil {
+		return nil, err
+	}
+
+	data, _, err := readTailAt(f, size, tailChunkSize)
+	if err != nil {
+		return nil, err
+	}
+
+	lines, err := splitLines(data)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +303,7 @@ func ExtractCodexTailUsage(path string) ([]TailUsage, error) {
 	// duplicate token_count emissions collapse to a single entry.
 	byMessageID := make(map[string]int)
 	turnModel := seedModel
-	for _, line := range splitLines(data) {
+	for _, line := range lines {
 		var entry codexRawEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
 			continue
@@ -303,29 +318,8 @@ func ExtractCodexTailUsage(path string) ([]TailUsage, error) {
 			}
 			continue
 		}
-		if entry.Type != "event_msg" || payload.Type != "token_count" || payload.Info == nil {
-			continue
-		}
-		last := payload.Info.LastTokenUsage
-		input := last.InputTokens - last.CachedInputTokens
-		if input < 0 {
-			input = 0
-		}
-		contextWindowTokens := 0
-		if payload.Info.ModelContextWindow != nil {
-			contextWindowTokens = *payload.Info.ModelContextWindow
-		}
-		u := TailUsage{
-			EntryUUID:           entry.Timestamp,
-			MessageID:           fmt.Sprintf("total:%d", payload.Info.TotalTokenUsage.TotalTokens),
-			Model:               turnModel,
-			InputTokens:         input,
-			OutputTokens:        last.OutputTokens,
-			ReasoningTokens:     last.ReasoningOutputTokens,
-			CacheReadTokens:     last.CachedInputTokens,
-			ContextWindowTokens: contextWindowTokens,
-		}
-		if u.InputTokens <= 0 && u.OutputTokens <= 0 && u.ReasoningTokens <= 0 && u.CacheReadTokens <= 0 {
+		u, ok := codexTokenCountUsage(entry, payload, turnModel)
+		if !ok {
 			continue
 		}
 		if i, seen := byMessageID[u.MessageID]; seen {
@@ -345,68 +339,168 @@ func ExtractCodexTailUsage(path string) ([]TailUsage, error) {
 	return usages, nil
 }
 
-// codexModelSeedScanCap bounds how far into a rollout codexHeadModel scans for
-// the session's model. The first turn_context sits within the first ~60 KiB of
-// real rollouts (session_meta plus the opening turn's context); 1 MiB is
-// generous headroom while keeping the scan bounded for multi-MB transcripts. A
-// model not found within the cap falls back to empty — no worse than before the
-// seed existed.
-const codexModelSeedScanCap = 1 << 20 // 1 MiB
+// codexTokenCountUsage converts a token_count entry into a TailUsage labeled
+// with model, the model in effect when the invocation ran. It reports false for
+// an entry that carries no usable per-call usage: a different entry type, a
+// rate-limit-only refresh (null info), or an all-zero per-call usage.
+func codexTokenCountUsage(entry codexRawEntry, payload codexUsagePayload, model string) (TailUsage, bool) {
+	if entry.Type != "event_msg" || payload.Type != "token_count" || payload.Info == nil {
+		return TailUsage{}, false
+	}
+	last := payload.Info.LastTokenUsage
+	input := last.InputTokens - last.CachedInputTokens
+	if input < 0 {
+		input = 0
+	}
+	contextWindowTokens := 0
+	if payload.Info.ModelContextWindow != nil {
+		contextWindowTokens = *payload.Info.ModelContextWindow
+	}
+	u := TailUsage{
+		EntryUUID:           entry.Timestamp,
+		MessageID:           fmt.Sprintf("total:%d", payload.Info.TotalTokenUsage.TotalTokens),
+		Model:               model,
+		InputTokens:         input,
+		OutputTokens:        last.OutputTokens,
+		ReasoningTokens:     last.ReasoningOutputTokens,
+		CacheReadTokens:     last.CachedInputTokens,
+		ContextWindowTokens: contextWindowTokens,
+	}
+	if u.InputTokens <= 0 && u.OutputTokens <= 0 && u.ReasoningTokens <= 0 && u.CacheReadTokens <= 0 {
+		return TailUsage{}, false
+	}
+	return u, true
+}
 
-// codexHeadModel scans from the start of the rollout for the session model,
-// returning "" when none is found within codexModelSeedScanCap bytes. A codex
-// rollout normally re-announces the same model on every turn_context, so the
-// first occurrence names the session's model; it seeds ExtractCodexTailUsage for
-// the common case where the turn_context has scrolled out of the tail window. To
-// avoid mispricing a rollout that DID switch models before the tail, the scan
-// keeps reading within the cap and returns "" as soon as it observes a second,
-// distinct turn_context.model: an ambiguous head cannot safely name one model,
-// so it falls back to the honest unpriced floor rather than guessing the first.
-// The scan is bounded by codexModelSeedScanCap, so a long session never re-reads
-// its whole transcript; a switch that occurs after the cap but before the tail
-// window is not observable here and remains seeded with the first model.
-func codexHeadModel(r io.ReadSeeker) (string, error) {
-	if _, err := r.Seek(0, io.SeekStart); err != nil {
+// codexModelSeedScanBudget bounds how far back from the tail window
+// codexPrecedingModel scans for the model in effect there. Real rollouts
+// re-announce the model on every turn_context, so the nearest preceding one
+// normally sits within a few KiB of the window; 1 MiB is generous headroom
+// while keeping the backward scan bounded for multi-MB transcripts. A model not
+// found within the budget falls back to empty — no worse than before the seed
+// existed.
+const codexModelSeedScanBudget = 1 << 20 // 1 MiB
+
+// codexSeedScanLineMax bounds the longest JSONL line codexPrecedingModel can
+// read, matching the line budget splitLines uses for the tail window.
+const codexSeedScanLineMax = 256 * 1024
+
+// codexPrecedingModel returns the model named by the last turn_context starting
+// before windowStart, the offset the tail window begins at. That is the model in
+// effect for the tail when no turn_context falls inside the window itself. The
+// caller passes windowStart rather than letting this re-derive it, so the seed
+// and the tail read are two views of one size snapshot: on a rollout being
+// appended to, two independent snapshots leave the bytes written in between in
+// neither window.
+//
+// It returns "" when the tail window already covers the whole file (the
+// in-window scan then sees every turn_context and needs no seed), when no
+// turn_context appears within codexModelSeedScanBudget bytes before the window,
+// and when an over-long line truncates the scan mid-range.
+//
+// A seek or read failure is not degraded that way: it is returned as an error
+// and so fails the whole extraction. That is stricter than readTailWindowAt,
+// whose preceding-byte peek swallows the same two errors and defaults to false.
+// Which contract both should keep is tracked as ga-8gku9.
+//
+// Taking the NEAREST preceding announcement rather than the session's first
+// keeps a mid-rollout model switch honored: the tail is not labeled with a model
+// the session had already switched away from by the time the window starts.
+func codexPrecedingModel(r io.ReadSeeker, windowStart int64) (string, error) {
+	if windowStart <= 0 {
+		return "", nil
+	}
+	rangeStart := windowStart - codexModelSeedScanBudget
+	if rangeStart < 0 {
+		rangeStart = 0
+	}
+	// The budget cut can land either inside a line or exactly on a line start,
+	// so peek the preceding byte the way readTailWindow does instead of assuming
+	// a partial line whenever the range is truncated. Only the decision is
+	// shared: readTailWindow swallows a failed peek, this returns it (ga-8gku9).
+	skipPartialFirst, err := codexStartsMidLine(r, rangeStart)
+	if err != nil {
 		return "", err
 	}
-	scanner := bufio.NewScanner(io.LimitReader(r, codexModelSeedScanCap))
-	scanner.Buffer(make([]byte, 256*1024), 256*1024)
-	seed := ""
+	if _, err := r.Seek(rangeStart, io.SeekStart); err != nil {
+		return "", err
+	}
+	// Read one max-line allowance past windowStart so the line straddling the
+	// boundary is consumed whole here. readTail starts at exactly windowStart
+	// with no line-boundary snapping, so the in-window scan sees only that
+	// line's suffix and cannot parse it. Lines that start at or after
+	// windowStart belong to the in-window scan and end this one.
+	scanner := bufio.NewScanner(io.LimitReader(r, windowStart-rangeStart+codexSeedScanLineMax))
+	scanner.Buffer(make([]byte, codexSeedScanLineMax), codexSeedScanLineMax)
+	consumed := int64(0)
+	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		advance, token, err := bufio.ScanLines(data, atEOF)
+		consumed += int64(advance)
+		return advance, token, err
+	})
+
+	model := ""
+	lineStart := int64(0)
 	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
+		start := rangeStart + lineStart
+		lineStart = consumed
+		if start >= windowStart {
+			break
+		}
+		if skipPartialFirst {
+			skipPartialFirst = false
 			continue
 		}
-		var entry codexRawEntry
-		if err := json.Unmarshal(line, &entry); err != nil {
-			continue
-		}
-		if entry.Type != "turn_context" {
-			continue
-		}
-		var payload codexUsagePayload
-		if err := json.Unmarshal(entry.Payload, &payload); err != nil {
-			continue
-		}
-		if payload.Model == "" {
-			continue
-		}
-		if seed == "" {
-			seed = payload.Model
-			continue
-		}
-		if payload.Model != seed {
-			// A genuine mid-rollout switch within the head window: the head cannot
-			// name a single session model, so seed empty and let pricing fall back
-			// to the unpriced floor instead of a possibly-wrong first model.
-			return "", nil
+		if m := codexTurnContextModel(scanner.Bytes()); m != "" {
+			model = m
 		}
 	}
-	// A truncated final line at the cap boundary is expected and tolerated (same
-	// posture as splitLines); an oversized pre-turn_context line likewise stops
-	// the scan early and degrades to an empty seed (the pre-seed behavior).
-	// scanner.Err() is intentionally ignored.
-	return seed, nil
+	if scanner.Err() != nil {
+		// A line past codexSeedScanLineMax aborts the scan mid-range, so a
+		// switch announced after it is unseen. Reporting the model found before
+		// it would replace an honest unpriced $0 with a plausible wrong price
+		// that no later sweep corrects, so degrade to the empty seed instead.
+		return "", nil
+	}
+	return model, nil
+}
+
+// codexStartsMidLine reports whether offset falls inside a line rather than on a
+// line start, by peeking the byte before it.
+func codexStartsMidLine(r io.ReadSeeker, offset int64) (bool, error) {
+	if offset <= 0 {
+		return false, nil
+	}
+	if _, err := r.Seek(offset-1, io.SeekStart); err != nil {
+		return false, err
+	}
+	var prev [1]byte
+	if _, err := io.ReadFull(r, prev[:]); err != nil {
+		return false, err
+	}
+	return prev[0] != '\n', nil
+}
+
+// codexTurnContextModel returns the model a turn_context line announces, or ""
+// when the line is not a turn_context or names no model. Malformed lines are
+// tolerated silently: a scan bounded by byte offsets can begin or end inside a
+// line, matching splitLines.
+func codexTurnContextModel(line []byte) string {
+	if len(line) == 0 {
+		return ""
+	}
+	var entry codexRawEntry
+	if err := json.Unmarshal(line, &entry); err != nil {
+		return ""
+	}
+	if entry.Type != "turn_context" {
+		return ""
+	}
+	var payload codexUsagePayload
+	if err := json.Unmarshal(entry.Payload, &payload); err != nil {
+		return ""
+	}
+	return payload.Model
 }
 
 // ExtractCodexTailUsageFromSearchPaths reads codex tail usage only after
