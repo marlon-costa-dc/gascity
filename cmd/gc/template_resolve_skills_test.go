@@ -11,7 +11,6 @@ import (
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/materialize"
-	"github.com/gastownhall/gascity/internal/runtime"
 )
 
 // TestResolveTemplateSkillsIntegration is the end-to-end regression for
@@ -19,14 +18,19 @@ import (
 // resolveTemplate end-to-end and asserts that:
 //
 //  1. Stage-2 eligible agent (tmux session, non-ACP) with
-//     WorkDir == scope root → FPExtra contains skills:<name>; no
-//     materialize-skills PreStart entry.
-//  2. Stage-2 eligible agent with WorkDir != scope root →
-//     FPExtra contains skills:<name>; PreStart ends with the
-//     materialize-skills command.
-//  3. ACP agent → FPExtra has no skills:*; no PreStart materialize-skills.
-//  4. K8s session → FPExtra has no skills:*; no PreStart materialize-skills.
+//     WorkDir == scope root → PreStart ends with the `agentsctl sync`
+//     entry for that workdir.
+//  2. Stage-2 eligible agent with WorkDir != scope root → PreStart ends
+//     with the `agentsctl sync` entry for the session workdir.
+//  3. ACP agent → no `agentsctl sync` PreStart.
+//  4. K8s session → no `agentsctl sync` PreStart.
 //
+// No case carries a skills:<name> fingerprint entry any more: gc does not
+// project skills into session workdirs itself (agentsctl owns that sink),
+// so a catalog edit is not a gc runtime-fingerprint change.
+//
+// agentsctl is the sole owner of agent governance projections (skills
+// included); gc no longer materializes skills into session workdirs itself.
 // Without this test, a refactor could drop or invert step 11b and the
 // helper-level tests would still pass.
 func TestResolveTemplateSkillsIntegration(t *testing.T) {
@@ -83,14 +87,14 @@ func TestResolveTemplateSkillsIntegration(t *testing.T) {
 		sessionProvider    string
 		agent              *config.Agent
 		wantSkillsKey      bool // expect FPExtra["skills:plan"] populated
-		wantMaterializeCmd bool // expect PreStart ends with materialize-skills invocation
+		wantMaterializeCmd bool // expect PreStart ends with the agentsctl sync entry
 	}{
 		{
 			name:               "tmux + workdir == scope root",
 			sessionProvider:    "tmux",
 			agent:              &config.Agent{Name: "mayor", Scope: "city", Provider: "claude"},
-			wantSkillsKey:      true,
-			wantMaterializeCmd: false,
+			wantSkillsKey:      false,
+			wantMaterializeCmd: true,
 		},
 		{
 			name:            "tmux + workdir != scope root",
@@ -101,7 +105,7 @@ func TestResolveTemplateSkillsIntegration(t *testing.T) {
 				Provider: "claude",
 				WorkDir:  ".gc/worktrees/polecat-1",
 			},
-			wantSkillsKey:      true,
+			wantSkillsKey:      false,
 			wantMaterializeCmd: true,
 		},
 		{
@@ -147,277 +151,19 @@ func TestResolveTemplateSkillsIntegration(t *testing.T) {
 
 			foundCmd := false
 			for _, entry := range tp.Hints.PreStart {
-				if strings.Contains(entry, "internal materialize-skills") {
+				if entry == appendAgentsctlSyncPreStart(nil, tp.WorkDir)[0] {
 					foundCmd = true
 					break
 				}
 			}
 			if foundCmd != c.wantMaterializeCmd {
-				t.Errorf("PreStart materialize-skills present = %v, want %v; PreStart=%v",
-					foundCmd, c.wantMaterializeCmd, tp.Hints.PreStart)
+				t.Errorf("PreStart agentsctl sync entry for %q present = %v, want %v; PreStart=%v",
+					tp.WorkDir, foundCmd, c.wantMaterializeCmd, tp.Hints.PreStart)
 			}
 		})
 	}
 }
 
-// TestResolveTemplateSharedCatalogSnapshotFlowsThroughFile asserts that
-// resolveTemplate stages the shared skill catalog snapshot to a
-// deterministic file in the workdir while leaving the materialize-skills
-// PreStart command on its legacy shape. This fixes tmux env/argv
-// overflow without changing the runtime fingerprint for already-running
-// sessions during upgrade.
-func TestResolveTemplateSharedCatalogSnapshotFlowsThroughFile(t *testing.T) {
-	cityPath := t.TempDir()
-	writeTemplateResolveCityConfig(t, cityPath, "file")
-	sharedCat := materialize.CityCatalog{
-		Entries: []materialize.SkillEntry{{
-			Name:   "plan",
-			Source: filepath.Join(cityPath, "skills", "plan"),
-			Origin: "city",
-		}},
-		OwnedRoots: []string{filepath.Join(cityPath, "skills")},
-	}
-	params := &agentBuildParams{
-		cityName:              "city",
-		cityPath:              cityPath,
-		workspace:             &config.Workspace{Provider: "claude"},
-		providers:             map[string]config.ProviderSpec{"claude": {Command: "echo", PromptMode: "none", SupportsACP: boolPtr(true)}},
-		lookPath:              func(string) (string, error) { return "/bin/echo", nil },
-		fs:                    fsys.OSFS{},
-		rigs:                  []config.Rig{},
-		beaconTime:            time.Unix(0, 0),
-		beadNames:             make(map[string]string),
-		stderr:                io.Discard,
-		skillCatalog:          &sharedCat,
-		skillCatalogFromCache: true,
-		sessionProvider:       "tmux",
-	}
-	agent := &config.Agent{
-		Name:     "polecat",
-		Scope:    "city",
-		Provider: "claude",
-		WorkDir:  ".gc/worktrees/polecat-1",
-	}
-
-	tp, err := resolveTemplate(params, agent, agent.QualifiedName(), nil)
-	if err != nil {
-		t.Fatalf("resolveTemplate: %v", err)
-	}
-
-	var materializeEntry string
-	for _, entry := range tp.Hints.PreStart {
-		if strings.Contains(entry, "internal materialize-skills") {
-			materializeEntry = entry
-			break
-		}
-	}
-	if materializeEntry == "" {
-		t.Fatalf("expected stage-2 PreStart materialize command, got %v", tp.Hints.PreStart)
-	}
-	// The snapshot must flow through a file, not the env or inline argv,
-	// and the materialize-skills command must keep its pre-upgrade shape.
-	if strings.Contains(materializeEntry, "--shared-catalog-snapshot ") {
-		t.Errorf("materialize-skills must NOT pass snapshot inline — argv would re-inflate via shell expansion and argv limits would reappear: %q", materializeEntry)
-	}
-	if strings.Contains(materializeEntry, "--shared-catalog-snapshot-file") {
-		t.Fatalf("materialize-skills PreStart must keep its legacy shape to avoid CoreFingerprint drift, got: %q", materializeEntry)
-	}
-	// Env MUST NOT carry the snapshot — that's the tmux-imsg-overflow path.
-	if got := strings.TrimSpace(tp.Env[sharedSkillCatalogSnapshotEnvVar]); got != "" {
-		t.Fatalf("env must not carry snapshot (causes tmux imsg overflow for large catalogs); got %d bytes", len(got))
-	}
-	// Verify the deterministic snapshot file was staged and round-trips.
-	snapshotPath := skillSnapshotFilePath(tp.WorkDir, templateNameFor(agent, agent.QualifiedName()))
-	data, err := os.ReadFile(snapshotPath)
-	if err != nil {
-		t.Fatalf("reading snapshot file %q: %v", snapshotPath, err)
-	}
-	decoded, err := decodeSharedCatalogSnapshot(string(data))
-	if err != nil {
-		t.Fatalf("decodeSharedCatalogSnapshot: %v", err)
-	}
-	if len(decoded.Entries) != 1 || decoded.Entries[0].Name != "plan" {
-		t.Fatalf("decoded snapshot = %+v, want plan entry", decoded)
-	}
-}
-
-func TestResolveTemplateSharedCatalogSnapshotKeepsConfigHashStableAcrossCacheTransitions(t *testing.T) {
-	cityPath := t.TempDir()
-	writeTemplateResolveCityConfig(t, cityPath, "file")
-	sharedCat := materialize.CityCatalog{
-		Entries: []materialize.SkillEntry{{
-			Name:   "plan",
-			Source: filepath.Join(cityPath, "skills", "plan"),
-			Origin: "city",
-		}},
-		OwnedRoots: []string{filepath.Join(cityPath, "skills")},
-	}
-	makeParams := func(fromCache bool) *agentBuildParams {
-		return &agentBuildParams{
-			cityName:              "city",
-			cityPath:              cityPath,
-			workspace:             &config.Workspace{Provider: "claude"},
-			providers:             map[string]config.ProviderSpec{"claude": {Command: "echo", PromptMode: "none", SupportsACP: boolPtr(true)}},
-			lookPath:              func(string) (string, error) { return "/bin/echo", nil },
-			fs:                    fsys.OSFS{},
-			rigs:                  []config.Rig{},
-			beaconTime:            time.Unix(0, 0),
-			beadNames:             make(map[string]string),
-			stderr:                io.Discard,
-			skillCatalog:          &sharedCat,
-			skillCatalogFromCache: fromCache,
-			sessionProvider:       "tmux",
-		}
-	}
-	agent := &config.Agent{
-		Name:     "polecat",
-		Scope:    "city",
-		Provider: "claude",
-		WorkDir:  ".gc/worktrees/polecat-1",
-	}
-
-	tpFresh, err := resolveTemplate(makeParams(false), agent, agent.QualifiedName(), nil)
-	if err != nil {
-		t.Fatalf("resolveTemplate fresh: %v", err)
-	}
-	tpCached, err := resolveTemplate(makeParams(true), agent, agent.QualifiedName(), nil)
-	if err != nil {
-		t.Fatalf("resolveTemplate cached: %v", err)
-	}
-
-	if got, want := canonicalConfigHash(tpCached, nil), canonicalConfigHash(tpFresh, nil); got != want {
-		t.Fatalf("canonicalConfigHash differs across fresh/cache transitions: fresh=%s cached=%s\nfresh prestart=%v\ncached prestart=%v", want, got, tpFresh.Hints.PreStart, tpCached.Hints.PreStart)
-	}
-}
-
-// TestResolveTemplateSharedCatalogSnapshotEnvIsAbsent verifies the
-// post-fix invariant: the GC_SHARED_SKILL_CATALOG_SNAPSHOT env var is
-// NEVER populated by resolveTemplate. The replacement path writes the
-// snapshot to a workdir-local file while leaving the materialize-skills
-// PreStart command unchanged.
-func TestResolveTemplateSharedCatalogSnapshotEnvIsAbsent(t *testing.T) {
-	cityPath := t.TempDir()
-	writeTemplateResolveCityConfig(t, cityPath, "file")
-	sharedCat := materialize.CityCatalog{
-		Entries: []materialize.SkillEntry{{
-			Name:   "plan",
-			Source: filepath.Join(cityPath, "skills", "plan"),
-			Origin: "city",
-		}},
-		OwnedRoots: []string{filepath.Join(cityPath, "skills")},
-	}
-	params := &agentBuildParams{
-		cityName:        "city",
-		cityPath:        cityPath,
-		workspace:       &config.Workspace{Provider: "claude"},
-		providers:       map[string]config.ProviderSpec{"claude": {Command: "echo", PromptMode: "none", SupportsACP: boolPtr(true)}},
-		lookPath:        func(string) (string, error) { return "/bin/echo", nil },
-		fs:              fsys.OSFS{},
-		rigs:            []config.Rig{},
-		beaconTime:      time.Unix(0, 0),
-		beadNames:       make(map[string]string),
-		stderr:          io.Discard,
-		skillCatalog:    &sharedCat,
-		sessionProvider: "tmux",
-	}
-	agent := &config.Agent{
-		Name:     "polecat",
-		Scope:    "city",
-		Provider: "claude",
-		WorkDir:  ".gc/worktrees/polecat-1",
-	}
-
-	tp, err := resolveTemplate(params, agent, agent.QualifiedName(), nil)
-	if err != nil {
-		t.Fatalf("resolveTemplate: %v", err)
-	}
-	if got := strings.TrimSpace(tp.Env[sharedSkillCatalogSnapshotEnvVar]); got != "" {
-		t.Fatalf("env var %s must be empty (blob flows via file, not env): got %d bytes", sharedSkillCatalogSnapshotEnvVar, len(got))
-	}
-	for _, entry := range tp.Hints.PreStart {
-		if strings.Contains(entry, "--shared-catalog-snapshot-file") {
-			t.Fatalf("prestart must not grow a snapshot-file flag: %q", entry)
-		}
-	}
-	// CoreFingerprint comparison becomes trivial once the env var is always
-	// absent and the pre-start command shape is stable — keep a smoke check
-	// that resolveTemplate produces a deterministic fingerprint.
-	fp1 := runtime.CoreFingerprint(templateParamsToConfig(tp))
-	fp2 := runtime.CoreFingerprint(templateParamsToConfig(tp))
-	if fp1 != fp2 {
-		t.Fatalf("CoreFingerprint non-deterministic: %s vs %s", fp1, fp2)
-	}
-}
-
-func TestResolveTemplateRemovesStaleSharedCatalogSnapshotFileWhenCatalogUnavailable(t *testing.T) {
-	cityPath := t.TempDir()
-	writeTemplateResolveCityConfig(t, cityPath, "file")
-	agentSkillsDir := filepath.Join(cityPath, "agent-skills")
-	writeSkillSource(t, filepath.Join(agentSkillsDir, "private"))
-	sharedCat := materialize.CityCatalog{
-		Entries: []materialize.SkillEntry{{
-			Name:   "plan",
-			Source: filepath.Join(cityPath, "skills", "plan"),
-			Origin: "city",
-		}},
-		OwnedRoots: []string{filepath.Join(cityPath, "skills")},
-	}
-	makeParams := func(cat *materialize.CityCatalog) *agentBuildParams {
-		return &agentBuildParams{
-			cityName:        "city",
-			cityPath:        cityPath,
-			workspace:       &config.Workspace{Provider: "claude"},
-			providers:       map[string]config.ProviderSpec{"claude": {Command: "echo", PromptMode: "none", SupportsACP: boolPtr(true)}},
-			lookPath:        func(string) (string, error) { return "/bin/echo", nil },
-			fs:              fsys.OSFS{},
-			rigs:            []config.Rig{},
-			beaconTime:      time.Unix(0, 0),
-			beadNames:       make(map[string]string),
-			stderr:          io.Discard,
-			skillCatalog:    cat,
-			sessionProvider: "tmux",
-		}
-	}
-	agent := &config.Agent{
-		Name:      "polecat",
-		Scope:     "city",
-		Provider:  "claude",
-		WorkDir:   ".gc/worktrees/polecat-1",
-		SkillsDir: agentSkillsDir,
-	}
-
-	tp, err := resolveTemplate(makeParams(&sharedCat), agent, agent.QualifiedName(), nil)
-	if err != nil {
-		t.Fatalf("resolveTemplate initial: %v", err)
-	}
-	snapshotPath := skillSnapshotFilePath(tp.WorkDir, templateNameFor(agent, agent.QualifiedName()))
-	if _, err := os.Stat(snapshotPath); err != nil {
-		t.Fatalf("expected staged snapshot file at %q: %v", snapshotPath, err)
-	}
-
-	tp2, err := resolveTemplate(makeParams(nil), agent, agent.QualifiedName(), nil)
-	if err != nil {
-		t.Fatalf("resolveTemplate without catalog: %v", err)
-	}
-	if _, err := os.Stat(snapshotPath); !os.IsNotExist(err) {
-		t.Fatalf("expected stale snapshot file to be removed, stat err=%v", err)
-	}
-	foundCmd := false
-	for _, entry := range tp2.Hints.PreStart {
-		if strings.Contains(entry, "internal materialize-skills") {
-			foundCmd = true
-			break
-		}
-	}
-	if !foundCmd {
-		t.Fatalf("expected materialize-skills prestart to remain for agent-local skills, got %v", tp2.Hints.PreStart)
-	}
-}
-
-// TestResolveTemplateAppendsAssignedSkillsPrompt verifies that the
-// assigned-skills appendix lands at the tail of the rendered prompt
-// for every stage-1-eligible agent with a vendor sink (by default).
-// Opt-out via InjectAssignedSkills = &false is honored.
 func TestResolveTemplateAppendsAssignedSkillsPrompt(t *testing.T) {
 	cityPath := t.TempDir()
 	writeTemplateResolveCityConfig(t, cityPath, "file")
@@ -570,197 +316,4 @@ func TestResolveTemplateAppendsAssignedSkillsPrompt(t *testing.T) {
 			t.Errorf("subprocess@scope-root should get the appendix:\n%s", tp.Prompt)
 		}
 	})
-}
-
-// TestResolveTemplatePoolInstanceMaterializeUsesTemplateName is the
-// v0.15.1-rc1 → rc2 regression. Pool instances (especially namepool-
-// themed ones like polecat → furiosa) must route the stage-2 PreStart
-// `gc internal materialize-skills --agent` flag at the TEMPLATE's
-// qualified name, not the instance's. The materialize-skills command
-// resolves the agent via resolveAgentIdentity, which cannot map a
-// namepool member (`rig/furiosa`) back to its template (`rig/polecat`)
-// — it treats `rig/furiosa` as an unknown agent and exits with code 1,
-// failing pre_start[1] on every polecat start in tier C. See
-// TestGastown_PolecatImplementsRefineryMerges.
-func TestResolveTemplatePoolInstanceMaterializeUsesTemplateName(t *testing.T) {
-	cityPath := t.TempDir()
-	writeTemplateResolveCityConfig(t, cityPath, "file")
-	if err := os.WriteFile(filepath.Join(cityPath, "pack.toml"),
-		[]byte("[pack]\nname = \"s\"\nversion = \"0.1.0\"\nschema = 2\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	skillDir := filepath.Join(cityPath, "skills", "plan")
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
-		[]byte("---\nname: plan\ndescription: test\n---\nbody\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	sharedCat, err := materialize.LoadCityCatalog(filepath.Join(cityPath, "skills"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Namepool-themed instance: template is "rig/polecat" (PoolName),
-	// concrete instance name is "furiosa", Dir="rig".
-	// WorkDir != scope root so stage-2 PreStart injection fires.
-	instance := &config.Agent{
-		Name:     "furiosa",
-		Dir:      "rig",
-		Scope:    "rig",
-		Provider: "claude",
-		WorkDir:  ".gc/worktrees/rig/polecats/furiosa",
-		PoolName: "rig/polecat",
-	}
-
-	params := &agentBuildParams{
-		cityName:  "city",
-		cityPath:  cityPath,
-		workspace: &config.Workspace{Provider: "claude"},
-		providers: map[string]config.ProviderSpec{
-			"claude": {Command: "echo", PromptMode: "none"},
-		},
-		lookPath:        func(string) (string, error) { return "/bin/echo", nil },
-		fs:              fsys.OSFS{},
-		rigs:            []config.Rig{{Name: "rig", Path: filepath.Join(cityPath, "rig")}},
-		beaconTime:      time.Unix(0, 0),
-		beadNames:       make(map[string]string),
-		stderr:          io.Discard,
-		skillCatalog:    &sharedCat,
-		sessionProvider: "tmux",
-	}
-
-	tp, err := resolveTemplate(params, instance, instance.QualifiedName(), nil)
-	if err != nil {
-		t.Fatalf("resolveTemplate: %v", err)
-	}
-
-	var materializeCmd string
-	for _, entry := range tp.Hints.PreStart {
-		if strings.Contains(entry, "internal materialize-skills") {
-			materializeCmd = entry
-			break
-		}
-	}
-	if materializeCmd == "" {
-		t.Fatalf("expected stage-2 materialize-skills PreStart entry; PreStart=%v", tp.Hints.PreStart)
-	}
-
-	// The --agent flag must carry the TEMPLATE qualified name, not the
-	// instance. `gc internal materialize-skills --agent rig/furiosa`
-	// exits 1 with "unknown agent" because resolveAgentIdentity can't
-	// walk a namepool member back to its pool template.
-	// shellquote.Join emits bare (unquoted) tokens when no escaping is
-	// needed, so match on the raw substring after --agent.
-	if !strings.Contains(materializeCmd, "--agent rig/polecat") {
-		t.Errorf("materialize-skills --agent flag should carry template name rig/polecat; got: %q", materializeCmd)
-	}
-	if strings.Contains(materializeCmd, "--agent rig/furiosa") {
-		t.Errorf("materialize-skills --agent flag must NOT carry namepool instance name rig/furiosa; got: %q", materializeCmd)
-	}
-
-	// Non-pool singleton: cfgAgent.PoolName is empty, so the cmd carries
-	// the agent's own qualified name. Guards against over-correction
-	// where templateNameFor's fallback breaks non-pool cases.
-	singleton := &config.Agent{
-		Name:     "mayor",
-		Scope:    "city",
-		Provider: "claude",
-		WorkDir:  ".gc/agents/mayor",
-	}
-	tp2, err := resolveTemplate(params, singleton, singleton.QualifiedName(), nil)
-	if err != nil {
-		t.Fatalf("resolveTemplate singleton: %v", err)
-	}
-	var singletonCmd string
-	for _, entry := range tp2.Hints.PreStart {
-		if strings.Contains(entry, "internal materialize-skills") {
-			singletonCmd = entry
-			break
-		}
-	}
-	if singletonCmd != "" && !strings.Contains(singletonCmd, "--agent mayor") {
-		t.Errorf("singleton materialize-skills should carry own qualified name mayor; got: %q", singletonCmd)
-	}
-}
-
-// TestResolveTemplateNamedSessionMaterializeUsesTemplateName mirrors the
-// pool-instance regression for [[named_session]] entries. A named_session
-// expands a template agent under a session-specific qualifiedName
-// (e.g. template "rig/crew" → session "rig/utz"). materialize-skills
-// resolves the template via resolveAgentIdentity, which has no mapping
-// from "rig/utz" back to "rig/crew" — so pre_start[1] fails on every
-// named-session start (utz/frito/dorito in city_hy). Skills are
-// per-template; all sessions sharing a template share the catalog.
-func TestResolveTemplateNamedSessionMaterializeUsesTemplateName(t *testing.T) {
-	cityPath := t.TempDir()
-	writeTemplateResolveCityConfig(t, cityPath, "file")
-	if err := os.WriteFile(filepath.Join(cityPath, "pack.toml"),
-		[]byte("[pack]\nname = \"s\"\nversion = \"0.1.0\"\nschema = 2\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	skillDir := filepath.Join(cityPath, "skills", "plan")
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
-		[]byte("---\nname: plan\ndescription: test\n---\nbody\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	sharedCat, err := materialize.LoadCityCatalog(filepath.Join(cityPath, "skills"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Template agent — Name="crew", Dir="rig". The named_session shares
-	// this config under qualifiedName "rig/utz". WorkDir != scope root
-	// so the stage-2 PreStart entry fires.
-	template := &config.Agent{
-		Name:     "crew",
-		Dir:      "rig",
-		Scope:    "rig",
-		Provider: "claude",
-		WorkDir:  ".gc/worktrees/rig/utz",
-	}
-
-	params := &agentBuildParams{
-		cityName:  "city",
-		cityPath:  cityPath,
-		workspace: &config.Workspace{Provider: "claude"},
-		providers: map[string]config.ProviderSpec{
-			"claude": {Command: "echo", PromptMode: "none"},
-		},
-		lookPath:        func(string) (string, error) { return "/bin/echo", nil },
-		fs:              fsys.OSFS{},
-		rigs:            []config.Rig{{Name: "rig", Path: filepath.Join(cityPath, "rig")}},
-		beaconTime:      time.Unix(0, 0),
-		beadNames:       make(map[string]string),
-		stderr:          io.Discard,
-		skillCatalog:    &sharedCat,
-		sessionProvider: "tmux",
-	}
-
-	tp, err := resolveTemplate(params, template, "rig/utz", nil)
-	if err != nil {
-		t.Fatalf("resolveTemplate: %v", err)
-	}
-
-	var materializeCmd string
-	for _, entry := range tp.Hints.PreStart {
-		if strings.Contains(entry, "internal materialize-skills") {
-			materializeCmd = entry
-			break
-		}
-	}
-	if materializeCmd == "" {
-		t.Fatalf("expected stage-2 materialize-skills PreStart entry; PreStart=%v", tp.Hints.PreStart)
-	}
-
-	if !strings.Contains(materializeCmd, "--agent rig/crew") {
-		t.Errorf("materialize-skills --agent flag should carry template name rig/crew; got: %q", materializeCmd)
-	}
-	if strings.Contains(materializeCmd, "--agent rig/utz") {
-		t.Errorf("materialize-skills --agent flag must NOT carry named_session identity rig/utz; got: %q", materializeCmd)
-	}
 }

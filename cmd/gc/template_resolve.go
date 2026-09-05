@@ -416,8 +416,9 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	//   - Stage-1-eligible runtime + workdir == scope root: stage 1
 	//     wrote the sink into the scope root the agent sees.
 	//   - Stage-2-eligible runtime (regardless of workdir): the
-	//     session PreStart invokes `gc internal materialize-skills`
-	//     into the session workdir before the agent starts.
+	//     session PreStart runs `agentsctl sync` in the session workdir
+	//     before the agent starts (step 11b), so the projection owner
+	//     reconciles the provider skill sink there.
 	//
 	// Agents for which neither path delivers (ACP, k8s, hybrid,
 	// subprocess with WorkDir ≠ scope root — because subprocess
@@ -561,48 +562,12 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	expandedPreStart := expandSessionSetup(cfgAgent.PreStart, setupCtx)
 	expandedLive := expandSessionSetup(cfgAgent.SessionLive, setupCtx)
 
-	// Step 11b: Skill materialization integration (per engdocs
-	// skill-materialization.md § "When FingerprintExtra[\"skills:*\"]
-	// is populated" and § "Stage 2 runtime gate"). Stage-2 eligible
-	// runtimes (tmux for v0.15.1) get a PreStart entry for per-session
-	// materialization into non-scope-root workdirs, and every eligible
-	// agent gets per-skill fingerprint entries so catalog edits drain.
-	// Stage-2 ineligible runtimes (subprocess/acp/k8s/hybrid/...) get
-	// neither — the materializer cannot reach them, so spurious
-	// fingerprint drift would cause pointless drain-restart cycles.
+	// Step 11b: agentsctl is the sole owner of agent governance projections.
+	// Host sessions reconcile the actual session workdir before launch; a
+	// missing command, invalid project association, or projection error aborts
+	// PreStart instead of leaving stale governance in place.
 	if isStage2EligibleSession(p.sessionProvider, cfgAgent) {
-		scopeRoot := agentScopeRoot(cfgAgent, p.cityPath, p.rigs)
-		canonWorkDir := canonicaliseFilePath(workDir, p.cityPath)
-		wsProvider := ""
-		if p.workspace != nil {
-			wsProvider = p.workspace.Provider
-		}
-		sharedCatalog := p.sharedSkillCatalogSnapshotForAgent(cfgAgent)
-		desired := effectiveSkillsForAgent(sharedCatalog, cfgAgent, wsProvider, p.providers, p.stderr)
-		if len(desired) > 0 {
-			fpExtra = mergeSkillFingerprintEntries(fpExtra, desired)
-			if canonWorkDir != scopeRoot {
-				// Pool instances inherit their skill catalog from the
-				// template, not the instance — namepool members (e.g.
-				// repo/furiosa from polecat) are not resolvable as
-				// standalone agents by `gc internal materialize-skills`.
-				// templateNameFor returns cfgAgent.PoolName for pool
-				// instances and qualifiedName for singletons.
-				materializeAgent := templateNameFor(cfgAgent, qualifiedName)
-				if sharedCatalog != nil {
-					if snapshot, err := encodeSharedCatalogSnapshot(*sharedCatalog); err == nil {
-						if writeSkillSnapshotFile(workDir, materializeAgent, snapshot) == "" {
-							removeSkillSnapshotFile(workDir, materializeAgent)
-						}
-					} else {
-						removeSkillSnapshotFile(workDir, materializeAgent)
-					}
-				} else {
-					removeSkillSnapshotFile(workDir, materializeAgent)
-				}
-				expandedPreStart = appendMaterializeSkillsPreStart(expandedPreStart, materializeAgent, workDir)
-			}
-		}
+		expandedPreStart = appendAgentsctlSyncPreStart(expandedPreStart, workDir)
 	}
 
 	// Step 11c: MCP projection integration. Provider-native MCP config is

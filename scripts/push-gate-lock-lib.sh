@@ -183,7 +183,9 @@ push_gate_city_root() {
             return 0
         fi
         if [[ -z "$_pgc_legacy" && -d "$_pgc_dir/.gc" ]]; then
-            _pgc_legacy="$_pgc_dir"
+            if [[ -z "$_pgc_home" || "$_pgc_dir" == "$_pgc_home" || "$_pgc_dir" == "$_pgc_home"/* ]]; then
+                _pgc_legacy="$_pgc_dir"
+            fi
         fi
         if [[ -n "$_pgc_home" && "$_pgc_dir" == "$_pgc_home" ]]; then
             break

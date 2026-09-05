@@ -79,7 +79,7 @@ func TestPrepareStartCandidateStagesScaffoldInResolvedTaskWorkDirWhenCWDIsShared
 				ProviderName:        "codex",
 				ProviderOverlayName: "codex",
 				PackOverlayDirs:     []string{packOverlay},
-				PreStart:            appendMaterializeSkillsPreStart(nil, "gascity/builder", leakedWorkDir),
+				PreStart:            appendAgentsctlSyncPreStart(nil, leakedWorkDir),
 			},
 		},
 		order: 0,
@@ -104,13 +104,13 @@ func TestPrepareStartCandidateStagesScaffoldInResolvedTaskWorkDirWhenCWDIsShared
 		t.Errorf("prepared.cfg.Env[GC_DIR] = %q, want %q", prepared.cfg.Env["GC_DIR"], targetWorkDir)
 	}
 	if len(prepared.cfg.PreStart) != 1 {
-		t.Fatalf("PreStart = %v, want materialize-skills entry", prepared.cfg.PreStart)
+		t.Fatalf("PreStart = %v, want agentsctl sync entry", prepared.cfg.PreStart)
 	}
-	if !strings.Contains(prepared.cfg.PreStart[0], "--workdir "+targetWorkDir) {
-		t.Errorf("materialize-skills PreStart = %q, want resolved target workdir %q", prepared.cfg.PreStart[0], targetWorkDir)
+	if want := appendAgentsctlSyncPreStart(nil, targetWorkDir)[0]; prepared.cfg.PreStart[0] != want {
+		t.Errorf("agentsctl sync PreStart = %q, want resolved target workdir entry %q", prepared.cfg.PreStart[0], want)
 	}
 	if strings.Contains(prepared.cfg.PreStart[0], leakedWorkDir) {
-		t.Errorf("materialize-skills PreStart still targets shared-cwd bead slug %q: %q", leakedWorkDir, prepared.cfg.PreStart[0])
+		t.Errorf("agentsctl sync PreStart still targets shared-cwd bead slug %q: %q", leakedWorkDir, prepared.cfg.PreStart[0])
 	}
 
 	if err := runtime.StageSessionWorkDir(prepared.cfg); err != nil {
@@ -175,9 +175,9 @@ func TestRetargetPreStartWorkDirPreservesShellQuoting(t *testing.T) {
 		preStart func(workDir string) []string
 	}{
 		{
-			label: "materialize-skills",
+			label: "agentsctl-sync",
 			preStart: func(workDir string) []string {
-				return appendMaterializeSkillsPreStart(nil, agentName, workDir)
+				return appendAgentsctlSyncPreStart(nil, workDir)
 			},
 		},
 		{
@@ -210,15 +210,14 @@ func TestRetargetPreStartWorkDirPreservesShellQuoting(t *testing.T) {
 				// Structural: the new value must be embedded shell-quoted, exactly as
 				// a from-scratch generation would emit it. This catches metacharacter
 				// injection even when no whitespace forces a re-split.
-				wantToken := "--workdir " + shellquote.Join([]string{tc.newWorkDir})
-				if !strings.Contains(cmd, wantToken) {
-					t.Errorf("retargeted command missing shell-quoted workdir token %q:\n%s", wantToken, cmd)
+				if want := g.preStart(tc.newWorkDir)[0]; cmd != want {
+					t.Errorf("retargeted command differs from a fresh generation:\n got:  %s\n want: %s", cmd, want)
 				}
 
 				// Behavioral: parsing the command with the same quoting rules the
 				// generator used must recover the intended workdir as a single arg.
 				if got := workdirArgFromCommand(t, cmd); got != tc.newWorkDir {
-					t.Errorf("parsed --workdir = %q, want %q\ncommand: %s", got, tc.newWorkDir, cmd)
+					t.Errorf("parsed workdir = %q, want %q\ncommand: %s", got, tc.newWorkDir, cmd)
 				}
 
 				// The stale pre-override path must be gone entirely.
@@ -248,7 +247,7 @@ func TestRetargetPreStartWorkDirPreservesUserAuthoredLiterals(t *testing.T) {
 	userCmd := "worktree-setup.sh " + oldWorkDir + " \"$GC_DIR\" gc-worker --sync"
 
 	preStart := []string{userCmd}
-	preStart = appendMaterializeSkillsPreStart(preStart, "gascity/builder", oldWorkDir)
+	preStart = appendAgentsctlSyncPreStart(preStart, oldWorkDir)
 
 	retargeted := retargetPreStartWorkDir(preStart, oldWorkDir, newWorkDir)
 	if len(retargeted) != 2 {
@@ -263,9 +262,9 @@ func TestRetargetPreStartWorkDirPreservesUserAuthoredLiterals(t *testing.T) {
 	// strings.Contains(retargeted[1], oldWorkDir) check would pass
 	// spuriously even on a correctly-retargeted value. Compare against
 	// what a fresh generation against newWorkDir produces instead.
-	want := appendMaterializeSkillsPreStart(nil, "gascity/builder", newWorkDir)[0]
+	want := appendAgentsctlSyncPreStart(nil, newWorkDir)[0]
 	if retargeted[1] != want {
-		t.Errorf("generated materialize-skills entry not retargeted:\n got:  %s\n want: %s", retargeted[1], want)
+		t.Errorf("generated agentsctl sync entry not retargeted:\n got:  %s\n want: %s", retargeted[1], want)
 	}
 }
 
@@ -274,6 +273,17 @@ func TestRetargetPreStartWorkDirPreservesUserAuthoredLiterals(t *testing.T) {
 // final --workdir flag.
 func workdirArgFromCommand(t *testing.T, command string) string {
 	t.Helper()
+	// `cd <quoted workdir> && agentsctl sync` — the workdir is the sole
+	// argument of the leading cd; split only that segment so the `&&`
+	// operator never reaches the quote parser.
+	if head, _, ok := strings.Cut(command, agentsctlSyncPreStartSuffix); ok {
+		args := shellquote.Split(head)
+		if len(args) == 2 && args[0] == "cd" {
+			return args[1]
+		}
+		t.Fatalf("malformed agentsctl sync command: %s", command)
+		return ""
+	}
 	args := shellquote.Split(command)
 	for i := len(args) - 1; i > 0; i-- {
 		if args[i-1] == "--workdir" {

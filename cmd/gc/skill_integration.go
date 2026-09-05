@@ -2,18 +2,19 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/materialize"
-	"github.com/gastownhall/gascity/internal/runtime"
 	"github.com/gastownhall/gascity/internal/shellquote"
 )
 
-const sharedSkillCatalogSnapshotEnvVar = "GC_SHARED_SKILL_CATALOG_SNAPSHOT"
+// agentsctlSyncPreStartSuffix is the fixed tail of the PreStart command
+// appendAgentsctlSyncPreStart emits; isGeneratedPreStartCommand recognizes
+// the generated entry by it so retargeting never touches user-authored
+// commands that merely begin with `cd`.
+const agentsctlSyncPreStartSuffix = " && agentsctl sync"
 
 // canStage1Materialize reports whether stage-1 skill materialization
 // (supervisor-tick-level writes into the agent's scope root) should
@@ -213,71 +214,6 @@ func effectiveAgentProviderFamily(agent *config.Agent, workspaceProvider string,
 	return raw
 }
 
-// effectiveSkillsForAgent returns the post-precedence desired skill set
-// for one agent. Returns nil when the agent's effective provider has
-// no vendor sink, when no catalog produced any entries, or when the
-// agent is nil.
-//
-// Agent-catalog load failures are logged to stderr (matching the
-// city-catalog pattern in newAgentBuildParams) so a permissions
-// glitch on an agent's skills_dir is observable rather than silently
-// dropping agent-local skills.
-func effectiveSkillsForAgent(city *materialize.CityCatalog, agent *config.Agent, workspaceProvider string, cityProviders map[string]config.ProviderSpec, stderr io.Writer) []materialize.SkillEntry {
-	if agent == nil {
-		return nil
-	}
-	provider := effectiveAgentProviderFamily(agent, workspaceProvider, cityProviders)
-	if _, ok := materialize.VendorSink(provider); !ok {
-		return nil
-	}
-
-	var agentCat materialize.AgentCatalog
-	if agent.SkillsDir != "" {
-		c, err := materialize.LoadAgentCatalog(agent.SkillsDir)
-		switch {
-		case err != nil:
-			if stderr != nil {
-				fmt.Fprintf(stderr, "buildDesiredState: LoadAgentCatalog %q for agent %q: %v (agent-local skills will not contribute to fingerprints this tick)\n", //nolint:errcheck // best-effort stderr
-					agent.SkillsDir, agent.QualifiedName(), err)
-			}
-		default:
-			agentCat = c
-		}
-	}
-
-	sharedCatalog := materialize.CityCatalog{}
-	if city != nil {
-		sharedCatalog = *city
-	}
-	desired := materialize.EffectiveSet(sharedCatalog, agentCat)
-	if len(desired) == 0 {
-		return nil
-	}
-	return desired
-}
-
-// mergeSkillFingerprintEntries adds one "skills:<name>" → content-hash
-// entry to fpExtra for each desired skill. Hashes use
-// runtime.HashPathContent so any byte-level change to a skill's source
-// directory triggers a config-fingerprint drift and drains the agent.
-//
-// Nil-map safe: allocates fpExtra if the caller passed nil. Returns
-// the (possibly new) map. The "skills:" prefix partitions the key
-// space so entries cannot collide with other fpExtra keys
-// (pool.min/pool.max/wake_mode/etc.).
-func mergeSkillFingerprintEntries(fpExtra map[string]string, desired []materialize.SkillEntry) map[string]string {
-	if len(desired) == 0 {
-		return fpExtra
-	}
-	if fpExtra == nil {
-		fpExtra = make(map[string]string, len(desired))
-	}
-	for _, e := range desired {
-		fpExtra["skills:"+e.Name] = runtime.HashPathContent(e.Source)
-	}
-	return fpExtra
-}
-
 // effectiveInjectAssignedSkills resolves the agent's prompt-appendix
 // preference. Returns true by default (nil pointer → inject) so the
 // feature is opt-out rather than opt-in. An explicit agent-level
@@ -380,96 +316,10 @@ func writeSkillBullets(b *strings.Builder, entries []materialize.SkillEntry, ori
 	}
 }
 
-// appendMaterializeSkillsPreStart appends a PreStart command that
-// invokes `gc internal materialize-skills --agent <name> --workdir
-// <path>` for per-session-worktree materialization.
-//
-// The shared-catalog snapshot itself is staged to a deterministic file
-// under the workdir (see writeSkillSnapshotFile) and materialize-skills
-// re-discovers that path at runtime. Keeping the command shape stable
-// avoids flipping the runtime fingerprint for already-running sessions
-// during upgrade while still moving the large catalog blob off tmux's
-// env/argv paths.
-//
-// The gc binary path comes from $GC_BIN (populated by the runtime env
-// setup) with "gc" as a fallback if the env var isn't available at
-// PreStart expansion time. Argument values are shell-quoted.
-func appendMaterializeSkillsPreStart(prestart []string, qualifiedName, workDir string) []string {
-	cmd := `"${GC_BIN:-gc}" internal materialize-skills --best-effort --agent ` +
-		shellquote.Join([]string{qualifiedName}) + ` --workdir ` + shellquote.Join([]string{workDir})
+// appendAgentsctlSyncPreStart makes the canonical projection owner reconcile
+// the exact session workdir. The shell resolves agentsctl directly and
+// propagates every failure.
+func appendAgentsctlSyncPreStart(prestart []string, workDir string) []string {
+	cmd := "cd " + shellquote.Join([]string{workDir}) + agentsctlSyncPreStartSuffix
 	return append(prestart, cmd)
-}
-
-// skillSnapshotFilePath returns the deterministic path used to persist
-// the shared skill catalog snapshot for one agent/workdir pair.
-func skillSnapshotFilePath(workDir, qualifiedName string) string {
-	if workDir == "" || qualifiedName == "" {
-		return ""
-	}
-	safeName := strings.ReplaceAll(qualifiedName, string(filepath.Separator), "_")
-	safeName = strings.ReplaceAll(safeName, "/", "_")
-	return filepath.Join(workDir, ".gc", "tmp", "skill-catalog-"+safeName+".b64")
-}
-
-// removeSkillSnapshotFile clears the deterministic staged snapshot path
-// so stage-2 materialize-skills falls back to live catalog loading
-// instead of consuming stale shared-catalog data.
-func removeSkillSnapshotFile(workDir, qualifiedName string) {
-	path := skillSnapshotFilePath(workDir, qualifiedName)
-	if path == "" {
-		return
-	}
-	_ = os.Remove(path)
-}
-
-// writeSkillSnapshotFile persists a base64-encoded shared skill catalog
-// snapshot to a file under <workDir>/.gc/tmp so the PreStart materialize
-// command can read it back without forcing the catalog through tmux's
-// new-session protocol buffer or argv. Returns the absolute path on
-// success, "" on any failure (caller falls back to letting
-// materialize-skills load the live catalog from disk).
-//
-// The filename is keyed by agent so repeat spawns of the same agent
-// reuse one file rather than littering .gc/tmp with one snapshot per
-// reconciler tick. The blob itself is overwritten each call because the
-// catalog can drift between ticks.
-func writeSkillSnapshotFile(workDir, qualifiedName, snapshot string) string {
-	path := skillSnapshotFilePath(workDir, qualifiedName)
-	if path == "" || snapshot == "" {
-		return ""
-	}
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		removeSkillSnapshotFile(workDir, qualifiedName)
-		return ""
-	}
-	tmp, err := os.CreateTemp(dir, "skill-catalog-*.tmp")
-	if err != nil {
-		removeSkillSnapshotFile(workDir, qualifiedName)
-		return ""
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write([]byte(snapshot)); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-		removeSkillSnapshotFile(workDir, qualifiedName)
-		return ""
-	}
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-		removeSkillSnapshotFile(workDir, qualifiedName)
-		return ""
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		removeSkillSnapshotFile(workDir, qualifiedName)
-		return ""
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		_ = os.Remove(tmpPath)
-		removeSkillSnapshotFile(workDir, qualifiedName)
-		return ""
-	}
-	return path
 }

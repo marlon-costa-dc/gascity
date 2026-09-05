@@ -25,56 +25,6 @@ import (
 	helpers "github.com/gastownhall/gascity/test/acceptance/helpers"
 )
 
-// TestSkillMaterializeCLI runs `gc internal materialize-skills` with
-// a non-default workdir and asserts the expected symlinks appear.
-// Exercises the Phase 3A + the full config-load-plus-vendor-sink
-// lookup path through the real binary.
-func TestSkillMaterializeCLI(t *testing.T) {
-	c := helpers.NewCity(t, testEnv)
-	c.InitNoStart("claude")
-
-	// Add a skill to the city pack's skills directory.
-	skillDir := filepath.Join(c.Dir, "skills", "plan")
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(skillDir, "SKILL.md"),
-		[]byte("---\nname: plan\ndescription: test\n---\nbody\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile SKILL.md: %v", err)
-	}
-
-	// Invoke the internal materializer against a fresh workdir.
-	// `gc init --provider claude` creates an agent named "mayor"
-	// that inherits provider=claude from the workspace.
-	workdir := t.TempDir()
-	out, err := helpers.RunGC(testEnv, c.Dir,
-		"internal", "materialize-skills",
-		"--agent", "mayor",
-		"--workdir", workdir,
-	)
-	if err != nil {
-		t.Fatalf("gc internal materialize-skills: %v\n%s", err, out)
-	}
-	if !strings.Contains(out, "materialized") {
-		t.Errorf("expected 'materialized' in output: %s", out)
-	}
-
-	// Assert the symlink landed at the expected path.
-	link := filepath.Join(workdir, ".claude", "skills", "plan")
-	info, err := os.Lstat(link)
-	if err != nil {
-		t.Fatalf("lstat %q: %v", link, err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("%q is not a symlink", link)
-	}
-	tgt, _ := os.Readlink(link)
-	if !strings.HasSuffix(tgt, filepath.Join("skills", "plan")) {
-		t.Errorf("symlink target = %q, want suffix skills/plan", tgt)
-	}
-}
-
 // TestSkillDoctorFlagsCollision creates two convention-discovered
 // agents whose agent-local skills directories both contribute a
 // skill with the same name. `gc doctor` must surface the collision.

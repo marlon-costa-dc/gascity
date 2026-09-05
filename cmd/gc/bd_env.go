@@ -1517,6 +1517,13 @@ func bdRuntimeEnvForRigWithErrorRecoveryContext(ctx context.Context, cityPath st
 		}
 		return env, err
 	}
+	database, pinned, err := contract.ReadDoltDatabase(fsys.OSFS{}, filepath.Join(rigPath, ".beads", "metadata.json"))
+	if err != nil {
+		return env, err
+	}
+	if pinned {
+		env["BEADS_DOLT_SERVER_DATABASE"] = database
+	}
 	if cityErr != nil {
 		return env, cityErr
 	}

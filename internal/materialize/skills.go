@@ -4,16 +4,14 @@
 // previously received pack skills, despite the v0.15.0 catalog walk
 // surfacing them in `gc skill list`.
 //
-// Two callers are expected:
+// One caller is expected: the supervisor (gc start, every supervisor
+// tick) walks all agents and materializes into each agent's scope-root
+// sink. Per-session worktrees are not materialized by gc — the session
+// PreStart runs `agentsctl sync` in the workdir and agentsctl owns that
+// projection.
 //
-//   - The supervisor (gc start, every supervisor tick) walks all agents
-//     and materializes into each agent's scope-root sink.
-//   - `gc internal materialize-skills`, injected as a PreStart entry for
-//     stage-2-eligible runtimes whose session WorkDir differs from the
-//     scope root, materializes into the per-session worktree sink.
-//
-// Both callers funnel through MaterializeAgent. Materialization is
-// idempotent — repeated passes converge on the same on-disk shape.
+// Materialization is idempotent — repeated passes converge on the same
+// on-disk shape.
 //
 // The package owns three responsibilities:
 //

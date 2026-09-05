@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 )
+
 // same three-signal safety contract as the all-orphans path: identifier
 // validation, registered-owner (rig protection) check, and live-session probe
 // (FAIL-CLOSED). It bypasses the stale-prefix scan entirely — the operator has

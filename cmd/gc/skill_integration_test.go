@@ -3,13 +3,13 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/materialize"
+	"github.com/gastownhall/gascity/internal/shellquote"
 )
 
 func TestIsStage2EligibleSession(t *testing.T) {
@@ -106,114 +106,6 @@ func TestAgentRigScopeName(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestEffectiveSkillsForAgentFourBranches(t *testing.T) {
-	t.Parallel()
-
-	// Build a tiny catalog with one shared entry.
-	tmp := t.TempDir()
-	sharedSkill := filepath.Join(tmp, "shared", "plan")
-	mustCreateSkill(t, sharedSkill)
-	shared := materialize.CityCatalog{
-		Entries:    []materialize.SkillEntry{{Name: "plan", Source: sharedSkill, Origin: "city"}},
-		OwnedRoots: []string{filepath.Dir(sharedSkill)},
-	}
-
-	// Branch 1: eligible + shared catalog.
-	t.Run("claude eligible shared catalog", func(t *testing.T) {
-		t.Parallel()
-		a := &config.Agent{Provider: "claude"}
-		desired := effectiveSkillsForAgent(&shared, a, "", nil, nil)
-		if len(desired) != 1 || desired[0].Name != "plan" {
-			t.Fatalf("desired = %+v", desired)
-		}
-	})
-
-	// Branch 2: ineligible provider (copilot) returns nothing — no sink.
-	t.Run("copilot provider has no sink", func(t *testing.T) {
-		t.Parallel()
-		a := &config.Agent{Provider: "copilot"}
-		desired := effectiveSkillsForAgent(&shared, a, "", nil, nil)
-		if desired != nil {
-			t.Fatalf("want nil, got %+v", desired)
-		}
-	})
-
-	// Branch 3: eligible provider + per-agent local skills overlay.
-	t.Run("agent-local catalog overlay", func(t *testing.T) {
-		t.Parallel()
-		agentDir := filepath.Join(tmp, "agents", "mayor", "skills")
-		mustCreateSkill(t, filepath.Join(agentDir, "private"))
-		a := &config.Agent{Provider: "codex", SkillsDir: agentDir}
-		desired := effectiveSkillsForAgent(&shared, a, "", nil, nil)
-		names := namesOf(desired)
-		if !reflect.DeepEqual(names, []string{"plan", "private"}) {
-			t.Fatalf("names = %v", names)
-		}
-	})
-
-	// Branch 4: city catalog nil (load failed) — agent-local skills still work.
-	t.Run("nil city catalog + agent-local only", func(t *testing.T) {
-		t.Parallel()
-		agentDir := filepath.Join(tmp, "agents", "solo", "skills")
-		mustCreateSkill(t, filepath.Join(agentDir, "only"))
-		a := &config.Agent{Provider: "gemini", SkillsDir: agentDir}
-		desired := effectiveSkillsForAgent(nil, a, "", nil, nil)
-		if len(desired) != 1 || desired[0].Name != "only" {
-			t.Fatalf("desired = %+v", desired)
-		}
-	})
-
-	// Empty catalog + no agent skills → nothing.
-	t.Run("no skills anywhere", func(t *testing.T) {
-		t.Parallel()
-		a := &config.Agent{Provider: "claude"}
-		empty := materialize.CityCatalog{}
-		desired := effectiveSkillsForAgent(&empty, a, "", nil, nil)
-		if desired != nil {
-			t.Fatalf("want nil, got %+v", desired)
-		}
-	})
-
-	// Workspace-provider fallback: agent without explicit provider
-	// inherits from workspace. Regression for the latent bug found
-	// during Phase 4B acceptance testing.
-	t.Run("agent inherits workspace provider", func(t *testing.T) {
-		t.Parallel()
-		a := &config.Agent{Name: "mayor"} // Provider="" — inherits.
-		desired := effectiveSkillsForAgent(&shared, a, "claude", nil, nil)
-		if len(desired) != 1 || desired[0].Name != "plan" {
-			t.Fatalf("desired = %+v (workspace-provider fallback broken)", desired)
-		}
-	})
-
-	// Agent-catalog load error surfaces on stderr — regression for
-	// Phase 3 pass-1 Claude finding #4. Use a directory with
-	// no-read permissions so os.ReadDir fails with an error that
-	// is NOT ErrNotExist (which readSkillDir handles specially).
-	t.Run("agent catalog load error logs to stderr", func(t *testing.T) {
-		t.Parallel()
-		unreadable := filepath.Join(tmp, "unreadable-skills")
-		if err := os.Mkdir(unreadable, 0o000); err != nil {
-			t.Fatal(err)
-		}
-		// Restore perms at cleanup so t.TempDir can remove the tree.
-		t.Cleanup(func() { _ = os.Chmod(unreadable, 0o755) })
-
-		// Running as root would bypass the permissions check. Skip if
-		// the unreadable dir is actually readable (e.g., in CI root).
-		if _, err := os.ReadDir(unreadable); err == nil {
-			t.Skip("environment ignores chmod 000 (likely running as root)")
-		}
-
-		a := &config.Agent{Name: "mayor", Provider: "claude", SkillsDir: unreadable}
-		var buf strings.Builder
-		_ = effectiveSkillsForAgent(&shared, a, "", nil, &buf)
-		if !strings.Contains(buf.String(), "LoadAgentCatalog") {
-			t.Errorf("expected stderr to mention LoadAgentCatalog, got %q", buf.String())
-		}
-	})
 }
 
 func TestSharedSkillCatalogForAgentDoesNotFallBackWhenRigCatalogFails(t *testing.T) {
@@ -329,63 +221,6 @@ func TestNewAgentBuildParams_EmptyRigCatalogClearsLastGoodCatalog(t *testing.T) 
 	}
 	if len(got.Entries) != 0 {
 		t.Fatalf("empty successful rig catalog reused stale cache with %d entries", len(got.Entries))
-	}
-}
-
-func TestMergeSkillFingerprintEntries(t *testing.T) {
-	t.Parallel()
-
-	tmp := t.TempDir()
-	mustCreateSkill(t, filepath.Join(tmp, "alpha"))
-	mustCreateSkill(t, filepath.Join(tmp, "beta"))
-	desired := []materialize.SkillEntry{
-		{Name: "alpha", Source: filepath.Join(tmp, "alpha")},
-		{Name: "beta", Source: filepath.Join(tmp, "beta")},
-	}
-
-	// Nil fpExtra: allocates and populates.
-	got := mergeSkillFingerprintEntries(nil, desired)
-	if len(got) != 2 {
-		t.Fatalf("len = %d, want 2; %+v", len(got), got)
-	}
-	for _, name := range []string{"skills:alpha", "skills:beta"} {
-		if got[name] == "" {
-			t.Errorf("missing or empty %q in %+v", name, got)
-		}
-	}
-
-	// Non-nil fpExtra: preserves existing keys.
-	base := map[string]string{"pool.max": "3"}
-	got = mergeSkillFingerprintEntries(base, desired)
-	if got["pool.max"] != "3" {
-		t.Errorf("existing key dropped: %+v", got)
-	}
-	if got["skills:alpha"] == "" {
-		t.Errorf("skills:alpha missing: %+v", got)
-	}
-
-	// Empty desired: returns input unchanged.
-	orig := map[string]string{"x": "y"}
-	got = mergeSkillFingerprintEntries(orig, nil)
-	if !reflect.DeepEqual(got, orig) {
-		t.Errorf("empty desired modified map: got %+v, want %+v", got, orig)
-	}
-}
-
-// TestMergeSkillFingerprintEntriesPrefixPartitioning asserts that the
-// "skills:" prefix keeps entries from colliding with other
-// fpExtra keys like "skills_dir" that might conceivably be added later.
-func TestMergeSkillFingerprintEntriesPrefixPartitioning(t *testing.T) {
-	t.Parallel()
-	tmp := t.TempDir()
-	mustCreateSkill(t, filepath.Join(tmp, "x"))
-	desired := []materialize.SkillEntry{{Name: "x", Source: filepath.Join(tmp, "x")}}
-
-	got := mergeSkillFingerprintEntries(nil, desired)
-	for k := range got {
-		if !strings.HasPrefix(k, "skills:") {
-			t.Errorf("non-prefix key present: %q", k)
-		}
 	}
 }
 
@@ -519,52 +354,44 @@ func TestBuildAssignedSkillsPromptFragmentOmitsDescriptionWhenMissing(t *testing
 	}
 }
 
-func TestAppendMaterializeSkillsPreStart(t *testing.T) {
+func TestAppendAgentsctlSyncPreStart(t *testing.T) {
 	t.Parallel()
 	existing := []string{"mkdir -p .cache", "./setup.sh"}
-	got := appendMaterializeSkillsPreStart(existing, "hello-world/polecat", "/worktrees/polecat-1")
+	workDir := "/worktrees/pole cat-1"
+	got := appendAgentsctlSyncPreStart(existing, workDir)
 	if len(got) != 3 {
 		t.Fatalf("want 3 entries, got %d (%v)", len(got), got)
 	}
-	// User-configured entries come first (per spec: "appended ... user
-	// setup runs first, materialize-skills runs last").
+	// User-configured entries run first; the projection owner reconciles
+	// the session workdir last, immediately before the agent starts.
 	if got[0] != "mkdir -p .cache" || got[1] != "./setup.sh" {
 		t.Errorf("user entries reordered: %v", got)
 	}
-	// Final entry is the materialize-skills command with both flags
-	// properly quoted.
+	// The generated entry is exactly `cd <quoted workdir> && agentsctl sync`:
+	// the workdir is shell-quoted (spaces survive) and the command carries
+	// no gc binary, agent identity, or catalog snapshot — agentsctl is the
+	// sole owner of the projection and resolves everything from the cwd.
 	last := got[2]
-	if !strings.Contains(last, "internal materialize-skills") {
-		t.Errorf("materialize-skills command missing: %q", last)
+	want := "cd " + shellquote.Join([]string{workDir}) + agentsctlSyncPreStartSuffix
+	if last != want {
+		t.Errorf("generated entry = %q, want %q", last, want)
 	}
-	if !strings.Contains(last, "--agent") || !strings.Contains(last, "hello-world/polecat") {
-		t.Errorf("--agent flag missing: %q", last)
+	if strings.Contains(last, "GC_BIN") || strings.Contains(last, "materialize-skills") {
+		t.Errorf("agentsctl sync entry must not reference the retired gc materializer: %q", last)
 	}
-	if !strings.Contains(last, "--workdir") || !strings.Contains(last, "/worktrees/polecat-1") {
-		t.Errorf("--workdir flag missing: %q", last)
+	if !isGeneratedPreStartCommand(last) {
+		t.Errorf("generated entry must be recognized for retargeting: %q", last)
 	}
-	if strings.Contains(last, "--shared-catalog-snapshot") {
-		t.Errorf("materialize-skills command should not carry snapshot flags: %q", last)
-	}
-	// gc binary reference must go through ${GC_BIN:-gc} so the runtime
-	// env provides the authoritative binary path.
-	if !strings.Contains(last, "${GC_BIN:-gc}") {
-		t.Errorf("GC_BIN reference missing: %q", last)
-	}
-}
-
-func TestSkillSnapshotFilePath(t *testing.T) {
-	t.Parallel()
-	got := skillSnapshotFilePath("/tmp/worktree", "repo/polecat")
-	want := filepath.Join("/tmp/worktree", ".gc", "tmp", "skill-catalog-repo_polecat.b64")
-	if got != want {
-		t.Fatalf("skillSnapshotFilePath() = %q, want %q", got, want)
+	if isGeneratedPreStartCommand("cd /somewhere && ./setup.sh") {
+		t.Errorf("user-authored cd command must not be treated as generated")
 	}
 }
 
 // helpers
 
-func mustCreateSkill(t *testing.T, dir string) {
+// writeSkillSource creates a minimal skill source directory (SKILL.md with
+// name derived from the directory) for stage-1 materialization tests.
+func writeSkillSource(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -573,12 +400,4 @@ func mustCreateSkill(t *testing.T, dir string) {
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func namesOf(entries []materialize.SkillEntry) []string {
-	out := make([]string, len(entries))
-	for i, e := range entries {
-		out[i] = e.Name
-	}
-	return out
 }

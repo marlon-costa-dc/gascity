@@ -854,24 +854,6 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		return 1
 	}
 
-	// Skill collision validator — hard gate. Two agents sharing a
-	// (scope-root, vendor) sink cannot both provide an agent-local
-	// skill under the same name; the materialiser below would write
-	// conflicting symlinks. Block start so the operator fixes the
-	// collision before any half-written sink state lands. Per
-	// engdocs/proposals/skill-materialization.md § "Collision
-	// validation (startup validator)".
-	if err := checkSkillCollisions(cfg, cityPath); err != nil {
-		fmt.Fprintf(stderr, "gc start: %v\n", err) //nolint:errcheck // best-effort stderr
-		return 1
-	}
-
-	// Stage-1 skill materialization — runs for every eligible agent
-	// at its scope root before sessions spawn. Non-fatal: per-agent
-	// errors are logged inline by runStage1SkillMaterialization
-	// itself; it never returns a non-nil error to its caller.
-	_ = runStage1SkillMaterialization(cityPath, cfg, stderr)
-
 	// Stage-1 MCP projection is a hard gate because it mutates the provider's
 	// active runtime config surface. Conflicting shared targets or projection
 	// write failures must block startup before sessions launch against stale or

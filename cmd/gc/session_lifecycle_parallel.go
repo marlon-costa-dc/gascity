@@ -1314,11 +1314,11 @@ func resolvePreparedTaskWorkDir(
 }
 
 // generatedPreStartPrefixes are the exact command prefixes
-// appendMaterializeSkillsPreStart and appendProjectMCPPreStart emit. Only a
-// PreStart entry starting with one of these is eligible for retargeting —
+// appendProjectMCPPreStart emits. Only a PreStart entry starting with one of
+// these, or the agentsctl sync entry appendAgentsctlSyncPreStart emits
+// (`cd <quoted workdir> && agentsctl sync`), is eligible for retargeting —
 // see retargetPreStartWorkDir.
 var generatedPreStartPrefixes = []string{
-	`"${GC_BIN:-gc}" internal materialize-skills `,
 	`"${GC_BIN:-gc}" internal project-mcp `,
 }
 
@@ -1328,7 +1328,7 @@ func isGeneratedPreStartCommand(cmd string) bool {
 			return true
 		}
 	}
-	return false
+	return strings.HasPrefix(cmd, "cd ") && strings.HasSuffix(cmd, agentsctlSyncPreStartSuffix)
 }
 
 // retargetPreStartWorkDir rewrites the engine-generated PreStart command

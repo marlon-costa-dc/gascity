@@ -569,6 +569,42 @@ dolt.auto-start: false
 	}
 }
 
+func TestBdCommandEnvPinsSelectedRigDatabaseOverAmbientDatabase(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+	t.Setenv("GC_DOLT", "skip")
+	t.Setenv("BEADS_DOLT_SERVER_DATABASE", "agents")
+
+	cityDir := t.TempDir()
+	writeReachableManagedDoltState(t, cityDir)
+	rigDir := filepath.Join(t.TempDir(), "flext")
+	if err := os.MkdirAll(filepath.Join(rigDir, ".beads"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rigDir, ".beads", "metadata.json"), []byte(`{"dolt_database":"flext"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rigDir, ".beads", "config.yaml"), []byte(`issue_prefix: flext
+gc.endpoint_origin: inherited_city
+gc.endpoint_status: verified
+dolt.auto-start: false
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	envList, err := bdCommandEnv(cityDir, &config.City{Rigs: []config.Rig{{Name: "flext", Path: rigDir}}}, execStoreTarget{
+		ScopeRoot: rigDir,
+		ScopeKind: "rig",
+		Prefix:    "flext",
+		RigName:   "flext",
+	})
+	if err != nil {
+		t.Fatalf("bdCommandEnv: %v", err)
+	}
+	if got := listToMap(envList)["BEADS_DOLT_SERVER_DATABASE"]; got != "flext" {
+		t.Fatalf("BEADS_DOLT_SERVER_DATABASE = %q, want selected rig database %q", got, "flext")
+	}
+}
+
 func TestBdCommandEnvRefusesAnUnregisteredBackend(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 

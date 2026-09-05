@@ -119,9 +119,9 @@ func startupRuntimeConfigMaterializationResult(tc phase2ProviderCase, tp Templat
 	case !startupNudgeMatches(tc, cfg.Nudge):
 		return workertest.Fail(tc.profileID, workertest.RequirementStartupRuntimeConfigMaterialization,
 			fmt.Sprintf("cfg.Nudge = %q, want startup nudge plus %q", cfg.Nudge, "nudge-"+tc.family)).WithEvidence(evidence)
-	case !reflect.DeepEqual(cfg.PreStart, []string{"echo pre-" + tc.family}):
+	case !reflect.DeepEqual(cfg.PreStart, phase2WantPreStart(tc, cfg)):
 		return workertest.Fail(tc.profileID, workertest.RequirementStartupRuntimeConfigMaterialization,
-			fmt.Sprintf("cfg.PreStart = %v, want %v", cfg.PreStart, []string{"echo pre-" + tc.family})).WithEvidence(evidence)
+			fmt.Sprintf("cfg.PreStart = %v, want %v", cfg.PreStart, phase2WantPreStart(tc, cfg))).WithEvidence(evidence)
 	case !reflect.DeepEqual(cfg.SessionSetup, []string{"echo setup-" + tc.family}):
 		return workertest.Fail(tc.profileID, workertest.RequirementStartupRuntimeConfigMaterialization,
 			fmt.Sprintf("cfg.SessionSetup = %v, want %v", cfg.SessionSetup, []string{"echo setup-" + tc.family})).WithEvidence(evidence)
@@ -346,6 +346,17 @@ func phase2TemplateEvidence(tc phase2ProviderCase, tp TemplateParams) map[string
 		evidence["supports_hooks"] = strconv.FormatBool(tp.ResolvedProvider.SupportsHooks)
 	}
 	return evidence
+}
+
+// phase2WantPreStart is the PreStart list resolveTemplate materializes for a
+// phase-2 case: the user-authored entry first and, for stage-2-eligible (tmux)
+// sessions, the `agentsctl sync` reconciliation of the session workdir last.
+func phase2WantPreStart(tc phase2ProviderCase, cfg runtime.Config) []string {
+	want := []string{"echo pre-" + tc.family}
+	if strings.HasSuffix(string(tc.profileID), "/tmux-cli") {
+		want = appendAgentsctlSyncPreStart(want, cfg.WorkDir)
+	}
+	return want
 }
 
 func phase2ConfigEvidence(tc phase2ProviderCase, tp TemplateParams, cfg runtime.Config) map[string]string {

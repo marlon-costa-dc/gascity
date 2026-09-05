@@ -110,6 +110,10 @@ func (c *FormulaRequirementsCheck) WarmupEligible() bool { return false }
 
 // WarmupEligible returns false; this check is not part of the
 // `gc start` warm-up scan.
+func (c *HQPackCoverageCheck) WarmupEligible() bool { return false }
+
+// WarmupEligible returns false; this check is not part of the
+// `gc start` warm-up scan.
 func (c *ImplicitImportCacheCheck) WarmupEligible() bool { return false }
 
 // WarmupEligible returns false; this check is not part of the

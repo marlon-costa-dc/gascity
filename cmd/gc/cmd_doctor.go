@@ -223,6 +223,7 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 		register(doctor.NewOrderOutcomeHealthyCheck(cfg, cityPath))
 		register(newCodexHooksDriftCheck(cityPath, codexHookWorkDirs(cityPath, cfg)))
 		register(doctor.NewRigPackCoverageCheck(cfg, cityPath))
+		register(doctor.NewHQPackCoverageCheck(cfg))
 		register(newPackRuntimesDoctorCheck(cfg))
 		register(newMCPConfigDoctorCheck(cityPath, cfg, exec.LookPath))
 		register(newMCPSharedTargetDoctorCheck(cityPath, cfg, exec.LookPath))

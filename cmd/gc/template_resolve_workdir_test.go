@@ -256,12 +256,17 @@ func TestResolveTemplatePreStartResolvesRigRootForCityLevelRigScopedAgent(t *tes
 		t.Fatalf("resolveTemplate: %v", err)
 	}
 
-	if len(tp.Hints.PreStart) != 1 {
-		t.Fatalf("PreStart = %v, want one expanded command", tp.Hints.PreStart)
+	// The user-authored command expands first; the stage-2 runtime then appends
+	// the `agentsctl sync` reconciliation of the session workdir (step 11b).
+	if len(tp.Hints.PreStart) != 2 {
+		t.Fatalf("PreStart = %v, want the expanded command plus the agentsctl sync entry", tp.Hints.PreStart)
 	}
 	want := "echo rig=" + rigRoot + " base=my_impl"
 	if tp.Hints.PreStart[0] != want {
 		t.Fatalf("PreStart[0] = %q, want %q", tp.Hints.PreStart[0], want)
+	}
+	if wantSync := appendAgentsctlSyncPreStart(nil, tp.WorkDir)[0]; tp.Hints.PreStart[1] != wantSync {
+		t.Fatalf("PreStart[1] = %q, want %q", tp.Hints.PreStart[1], wantSync)
 	}
 }
 

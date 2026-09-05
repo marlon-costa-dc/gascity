@@ -293,8 +293,8 @@ func effectiveOverlayDirs(cityDirs []string, rigDirs map[string][]string, rigNam
 // For named_session expansions, the template name is cfgAgent's own
 // qualified name (e.g. "pringle/crew") — qualifiedName is the session
 // identity (e.g. "pringle/utz") and resolveAgentIdentity can't map it
-// back to the template, so `gc internal materialize-skills` exits 1.
-// For regular agents, qualifiedName already equals the template name.
+// back to the template. For regular agents, qualifiedName already equals
+// the template name.
 func templateNameFor(cfgAgent *config.Agent, qualifiedName string) string {
 	if t := agentutil.RoutedToIdentity(cfgAgent); t != "" && t != qualifiedName {
 		return t

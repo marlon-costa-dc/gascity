@@ -132,6 +132,17 @@ type rigAlwaysSession struct {
 }
 
 func rigAlwaysSessions(packDir string) ([]rigAlwaysSession, error) {
+	return namedSessionsByScope(packDir, "rig")
+}
+
+// namedSessionsByScope reads packDir/pack.toml and returns its
+// always-mode named_session declarations matching scope ("rig" or
+// "city"). Shared by RigPackCoverageCheck (scope="rig") and
+// HQPackCoverageCheck (scope="city") so the two checks — which flag the
+// same class of "declared but not imported where it's needed" gap at
+// different topology levels — read the pack manifest exactly the same
+// way (gc-o1u9e).
+func namedSessionsByScope(packDir, scope string) ([]rigAlwaysSession, error) {
 	tomlPath := filepath.Join(packDir, "pack.toml")
 	data, err := os.ReadFile(tomlPath)
 	if err != nil {
@@ -149,7 +160,7 @@ func rigAlwaysSessions(packDir string) ([]rigAlwaysSession, error) {
 	}
 	var sessions []rigAlwaysSession
 	for _, ns := range pc.NamedSessions {
-		if ns.Scope == "rig" && ns.ModeOrDefault() == "always" {
+		if ns.Scope == scope && ns.ModeOrDefault() == "always" {
 			sessions = append(sessions, rigAlwaysSession{
 				template: ns.Template,
 				packName: pc.Pack.Name,
