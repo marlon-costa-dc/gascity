@@ -122,7 +122,6 @@ func TestGoTestObservableWritesDeterministicNormalizedTiming(t *testing.T) {
 		t.Fatalf("normalized timing is not deterministic\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 	for _, want := range []string{
-		"2026-07-14T00:00:01Z run TestZulu\n",
 		"2026-07-14T00:00:02Z skip TestAlpha/case\n",
 		"2026-07-14T00:00:05Z pass github.com/gastownhall/gascity/internal/example\n",
 	} {
@@ -185,48 +184,44 @@ func TestGoTestObservableRecordsValidFailureWithoutChangingProductStatus(t *test
 	}
 }
 
-func TestGoTestObservableSkipsTimingWhenModuleIdentityIsUnavailable(t *testing.T) {
+func TestGoTestObservableFailsWhenModuleIdentityIsUnavailable(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
 	timingFile := filepath.Join(tmpDir, "timing.json")
 	events := `{"Action":"pass","Package":"github.com/gastownhall/gascity/internal/example","Test":"TestAlpha","Elapsed":0.3}` + "\n"
 	status, output := runObservableCommandWithModuleStatus(t, tmpDir, timingFile, events, 0, 23)
-	if status != 0 {
-		t.Fatalf("observable exit = %d, want product exit 0:\n%s", status, output)
+	if status != 23 {
+		t.Fatalf("observable exit = %d, want module probe exit 23:\n%s", status, output)
 	}
 	if _, err := os.Stat(timingFile); !os.IsNotExist(err) {
 		t.Fatalf("missing module identity left a timing artifact: err=%v", err)
 	}
-	if !strings.Contains(string(output), "module path unavailable; timing capture disabled") {
-		t.Fatalf("observable output did not explain disabled timing capture:\n%s", output)
-	}
 }
 
-func TestGoTestObservableCaptureFailureNeverChangesProductStatus(t *testing.T) {
+func TestGoTestObservableCaptureFailureRejectsFalseGreen(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
-		name                string
-		output              string
-		productRun          int
-		wantProgressWarning bool
+		name       string
+		output     string
+		productRun int
 	}{
-		{name: "malformed passing output", output: "{not-json\n", productRun: 0, wantProgressWarning: true},
-		{name: "truncated passing output", output: `{"Action":"pass"`, productRun: 0, wantProgressWarning: true},
+		{name: "malformed passing output", output: "{not-json\n", productRun: 0},
+		{name: "truncated passing output", output: `{"Action":"pass"`, productRun: 0},
 		{name: "missing passing output", output: "", productRun: 0},
 		{name: "terminal event missing elapsed", output: `{"Action":"pass","Package":"github.com/gastownhall/gascity/internal/example","Test":"TestIncomplete"}` + "\n", productRun: 0},
-		{name: "malformed failing output", output: "{not-json\n", productRun: 17, wantProgressWarning: true},
-		{name: "large malformed failing output", output: strings.Repeat("{not-json\n", 1<<18), productRun: 17, wantProgressWarning: true},
+		{name: "malformed failing output", output: "{not-json\n", productRun: 17},
+		{name: "large malformed failing output", output: strings.Repeat("{not-json\n", 1<<18), productRun: 17},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			timingFile, status, output := runObservableCaptureFailure(t, tt.output, tt.productRun)
-			if status != tt.productRun {
-				t.Fatalf("observable exit = %d, want product exit %d", status, tt.productRun)
+			if tt.productRun != 0 && status != tt.productRun {
+				t.Fatalf("observable exit = %d, want first product failure %d", status, tt.productRun)
 			}
-			if got := strings.Contains(string(output), "progress rendering failed; product result is unchanged"); got != tt.wantProgressWarning {
-				t.Fatalf("progress warning present = %t, want %t:\n%s", got, tt.wantProgressWarning, output)
+			if tt.productRun == 0 && status == 0 {
+				t.Fatalf("observable accepted invalid capture as green:\n%s", output)
 			}
 			if _, err := os.Stat(timingFile); !os.IsNotExist(err) {
 				t.Fatalf("invalid capture left a timing artifact: err=%v", err)

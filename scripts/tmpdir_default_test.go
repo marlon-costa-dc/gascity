@@ -9,7 +9,7 @@ import (
 
 // wantTestTMPDirDefault is the fallback TMPDIR the test-running wrappers
 // (Makefile TEST_ENV, and the shard scripts below) must use when the calling
-// shell has not already set TMPDIR itself. It must stay off the shared,
+// checkout has not selected TEST_TMPDIR itself. It must stay off the shared,
 // size-capped /tmp tmpfs (see AGENTS.md "Build Cache Conventions") and it
 // must stay short: internal/testutil.ShortTempDir roots test-owned socket
 // directories at os.TempDir() (== $TMPDIR on Linux), and Unix socket paths
@@ -30,16 +30,14 @@ func TestMakefileTestEnvDefaultsTMPDirOffSharedTmpTmpfs(t *testing.T) {
 	}
 }
 
-// TestMakefileTestEnvRespectsCallerSuppliedTMPDir guards the other half of
-// the same fallback expression: a caller (CI, a developer's shell, a deploy
-// gate) that already exports TMPDIR to somewhere sane must still have that
-// value win, not get silently overridden by the new default.
-func TestMakefileTestEnvRespectsCallerSuppliedTMPDir(t *testing.T) {
+// TestMakefileTestEnvRespectsSelectedTestTMPDir guards explicit checkout-local
+// test scratch selection without inheriting an unrelated caller's TMPDIR.
+func TestMakefileTestEnvRespectsSelectedTestTMPDir(t *testing.T) {
 	custom := filepath.Join(t.TempDir(), "caller-tmpdir")
 	if err := os.MkdirAll(custom, 0o755); err != nil {
 		t.Fatalf("mkdir custom TMPDIR: %v", err)
 	}
-	got := runMakefileTestEnvTMPDirPrintTarget(t, []string{"TMPDIR=" + custom})
+	got := runMakefileTestEnvTMPDirPrintTarget(t, []string{"TEST_TMPDIR=" + custom})
 	if got != custom {
 		t.Fatalf("TEST_ENV TMPDIR = %q, want caller-supplied %q", got, custom)
 	}
@@ -64,7 +62,7 @@ func TestMakefileTestEnvTMPDirDefaultLeavesSocketPathHeadroom(t *testing.T) {
 	}
 }
 
-func runMakefileTestEnvTMPDirPrintTarget(t *testing.T, extraEnv []string) string {
+func runMakefileTestEnvTMPDirPrintTarget(t *testing.T, extraMakeArgs []string) string {
 	t.Helper()
 	repoRoot := repoRoot(t)
 	makefile, err := os.ReadFile(filepath.Join(repoRoot, "Makefile"))
@@ -88,9 +86,10 @@ print-test-env-tmpdir:
 		"USER=" + os.Getenv("USER"),
 		"SHELL=/bin/sh",
 	}
-	env = append(env, extraEnv...)
-
-	cmd := makeCommand("--no-print-directory", "-f", testMakefile, "print-test-env-tmpdir")
+	args := []string{"--no-print-directory", "-f", testMakefile}
+	args = append(args, extraMakeArgs...)
+	args = append(args, "print-test-env-tmpdir")
+	cmd := makeCommand(args...)
 	cmd.Dir = repoRoot
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()

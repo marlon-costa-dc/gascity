@@ -2,7 +2,6 @@ package beads
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"sync"
 	"testing"
@@ -26,6 +25,7 @@ type nativeBlockedColumnStorage struct {
 	mu         sync.Mutex
 	batchCalls int
 	batchedIDs int
+	readyCalls int
 }
 
 // IsBlocked mirrors the stored column for one id.
@@ -71,6 +71,9 @@ func (s *nativeBlockedColumnStorage) rows() map[string]Bead {
 // the whole point of the column is that it already carries the transitive
 // answer the edge walk cannot reach.
 func (s *nativeBlockedColumnStorage) GetReadyWork(_ context.Context, filter beadslib.WorkFilter) ([]*beadslib.Issue, error) {
+	s.mu.Lock()
+	s.readyCalls++
+	s.mu.Unlock()
 	beads, err := s.store.List(ListQuery{AllowScan: true, Status: string(beadslib.StatusOpen), TierMode: TierBoth})
 	if err != nil {
 		return nil, err
@@ -91,10 +94,10 @@ func (s *nativeBlockedColumnStorage) GetReadyWork(_ context.Context, filter bead
 	return nativeIssuesFromBeads(ready)
 }
 
-func (s *nativeBlockedColumnStorage) counts() (calls, ids int) {
+func (s *nativeBlockedColumnStorage) counts() (batchCalls, batchedIDs, readyCalls int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.batchCalls, s.batchedIDs
+	return s.batchCalls, s.batchedIDs, s.readyCalls
 }
 
 // nativeReadyDisagreementFixture builds the two shapes where a cache's own
@@ -294,32 +297,33 @@ func nativeReadyCloseInvalidationFixture(t *testing.T) (*CachingStore, *NativeDo
 	return cache, native, ids
 }
 
-// TestNativeReadyProjectionIsOneBatchedReadPerCycle pins the cost of filling the
-// column. The enrichment runs on every cache prime and every reconcile of every
-// native scope, so it must stay a single batched read over the active set — the
-// shape IsBlockedBatch exists for — rather than a per-bead fan-out.
-func TestNativeReadyProjectionIsOneBatchedReadPerCycle(t *testing.T) {
+// TestNativeReadyProjectionUsesOneCanonicalQueryStrategyPerCycle pins the cost
+// of filling the column. The default v1.2.2 build uses one GetReadyWork call per
+// open-class status; the row-lock build uses one IsBlockedBatch. Neither may
+// fan out by bead.
+func TestNativeReadyProjectionUsesOneCanonicalQueryStrategyPerCycle(t *testing.T) {
 	_, _, storage, ids := nativeReadyDisagreementFixture(t)
 
-	calls, batched := storage.counts()
-	if calls != 1 {
-		t.Fatalf("IsBlockedBatch calls during prime = %d, want 1: the projection must be one batched read, not a fan-out", calls)
-	}
-	if batched != len(ids) {
-		t.Fatalf("IsBlockedBatch received %d ids, want %d: the batch must cover the whole active set", batched, len(ids))
+	batchCalls, batchedIDs, readyCalls := storage.counts()
+	switch {
+	case batchCalls == 1 && batchedIDs == len(ids) && readyCalls == 0:
+	case batchCalls == 0 && batchedIDs == 0 && readyCalls == len(nativeDoltOpenReadyStatuses):
+	default:
+		t.Fatalf(
+			"ready projection queries = {batch_calls:%d batched_ids:%d ready_calls:%d}, want one batch over %d ids or %d status queries",
+			batchCalls, batchedIDs, readyCalls, len(ids), len(nativeDoltOpenReadyStatuses),
+		)
 	}
 }
 
-// nativeProjectionlessStorage is a native backing whose beadslib Storage does
-// not expose BlockedQuerier, so the is_blocked column is unreachable. The core
-// beads.Storage interface does not declare IsBlockedBatch (only DoltStorage
-// composes DependencyQueryStore), so this is a real shape, not a contrivance.
-type nativeProjectionlessStorage struct {
+// nativeReadyOnlyStorage matches the pinned library's production contract: the
+// beadslib Storage surface exposes GetReadyWork but not IsBlockedBatch.
+type nativeReadyOnlyStorage struct {
 	*nativeDoltMemStorage
 	blocked map[string]bool
 }
 
-func (s *nativeProjectionlessStorage) GetReadyWork(_ context.Context, filter beadslib.WorkFilter) ([]*beadslib.Issue, error) {
+func (s *nativeReadyOnlyStorage) GetReadyWork(_ context.Context, filter beadslib.WorkFilter) ([]*beadslib.Issue, error) {
 	beads, err := s.store.List(ListQuery{AllowScan: true, Status: string(beadslib.StatusOpen), TierMode: TierBoth})
 	if err != nil {
 		return nil, err
@@ -337,19 +341,11 @@ func (s *nativeProjectionlessStorage) GetReadyWork(_ context.Context, filter bea
 	return nativeIssuesFromBeads(ready)
 }
 
-// TestNativeBackingWithoutTheBlockedColumnSendsReadyToTheLiveVerdict extends
-// #5183's invariant to the native path.
-//
-// TestDegradedProjectionSendsReadyToTheLiveBdVerdict pins that a cache with no
-// is_blocked column must decline every readiness handle and take the backing's
-// own verdict. It guards only the BdStore shape. A native store whose storage
-// cannot answer IsBlockedBatch is the same state — every IsBlocked nil, the
-// cache's predicate weaker than the backing's — and owes the same fail-safe.
-func TestNativeBackingWithoutTheBlockedColumnSendsReadyToTheLiveVerdict(t *testing.T) {
-	storage := &nativeProjectionlessStorage{nativeDoltMemStorage: newNativeDoltMemStorage(), blocked: map[string]bool{}}
-	if _, err := isBlockedBatchForStorage(context.Background(), storage, []string{"probe"}); !errors.Is(err, ErrReadyProjectionUnsupported) {
-		t.Fatalf("fixture storage can answer the blocked column (err = %v); it must model a backing that cannot", err)
-	}
+// TestNativeBackingWithOnlyGetReadyWorkServesCachedReadiness pins the exact
+// production shape: lack of IsBlockedBatch must not degrade a store whose
+// canonical GetReadyWork query already carries the transitive blocked verdict.
+func TestNativeBackingWithOnlyGetReadyWorkServesCachedReadiness(t *testing.T) {
+	storage := &nativeReadyOnlyStorage{nativeDoltMemStorage: newNativeDoltMemStorage(), blocked: map[string]bool{}}
 	native := newNativeDoltStoreForTest(storage)
 
 	ids := map[string]string{}
@@ -374,8 +370,8 @@ func TestNativeBackingWithoutTheBlockedColumnSendsReadyToTheLiveVerdict(t *testi
 		t.Fatalf("Prime: %v", err)
 	}
 
-	if !cache.readyReadsMustGoLive() {
-		t.Fatal("a native backing that cannot answer the is_blocked column must latch the ready-projection degrade")
+	if cache.readyReadsMustGoLive() {
+		t.Fatal("GetReadyWork-backed projection incorrectly degraded cached readiness")
 	}
 	rows, err := cache.Ready()
 	if err != nil {
@@ -384,18 +380,16 @@ func TestNativeBackingWithoutTheBlockedColumnSendsReadyToTheLiveVerdict(t *testi
 	if got, want := sortedIDs(rows), wantReadyIDs(ids["blocker"], ids["unrelated"]); !equalIDs(got, want) {
 		t.Fatalf("Ready = %v, want %v: the transitively blocked child %s must not be offered", got, want, ids["child"])
 	}
-	if _, ok := cache.CachedReady(); ok {
-		t.Error("CachedReady answered from a cache with no is_blocked column; the control dispatcher reads this handle")
+	if cached, ok := cache.CachedReady(); !ok || !equalIDs(sortedIDs(cached), wantReadyIDs(ids["blocker"], ids["unrelated"])) {
+		t.Errorf("CachedReady = (%v, %v), want blocker and unrelated from the native projection", sortedIDs(cached), ok)
 	}
-	if _, err := cache.ReadyContext(context.Background()); !errors.Is(err, ErrCacheUnavailable) {
-		t.Errorf("ReadyContext error = %v, want ErrCacheUnavailable", err)
+	if cached, err := cache.ReadyContext(context.Background()); err != nil || !equalIDs(sortedIDs(cached), wantReadyIDs(ids["blocker"], ids["unrelated"])) {
+		t.Errorf("ReadyContext = (%v, %v), want blocker and unrelated", sortedIDs(cached), err)
 	}
-	if _, err := cache.Handles().Cached.Ready(); !errors.Is(err, ErrCacheUnavailable) {
-		t.Errorf("cached reader Ready error = %v, want ErrCacheUnavailable", err)
+	if cached, err := cache.Handles().Cached.Ready(); err != nil || !equalIDs(sortedIDs(cached), wantReadyIDs(ids["blocker"], ids["unrelated"])) {
+		t.Errorf("cached reader Ready = (%v, %v), want blocker and unrelated", sortedIDs(cached), err)
 	}
 
-	// The rows are whole, so everything that does not need the column keeps
-	// serving from cache — the separation #5183 established.
 	cached, ok := cache.CachedList(ListQuery{AllowScan: true})
 	if !ok {
 		t.Fatal("CachedList declined: the degrade must not make non-readiness reads unavailable")

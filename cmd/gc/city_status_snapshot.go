@@ -175,6 +175,12 @@ func collectCityStatusSnapshotFromStoreSnapshot(
 		Controller:      controllerStatusForCity(cityPath),
 		Suspended:       suspended,
 	}
+	if statusSnapshot != nil {
+		if err := statusSnapshot.LoadError(); err != nil {
+			snapshot.Partial = true
+			snapshot.PartialErrors = append(snapshot.PartialErrors, "session snapshot incomplete: "+err.Error())
+		}
+	}
 	snapshot.CityName = loadedCityName(cfg, cityPath)
 	registerStatusProviderACPRoutes(sp, statusSnapshot, snapshot.CityName, cfg)
 	if snapshot.Controller.Running && cityPath != "" {
@@ -460,6 +466,9 @@ func cityStatusJSONFromSnapshot(snapshot cityStatusSnapshot, summary StatusSumma
 	if !snapshot.Controller.Running {
 		signals = append(signals, "controller_not_running")
 	}
+	if snapshot.Partial {
+		signals = append(signals, "status_partial")
+	}
 	// A running count of zero is a fact about the agents only when the probe
 	// answered for all of them. During partial status the count is zero
 	// because nothing was observed, so no_agents_running reports a live city
@@ -486,7 +495,7 @@ func cityStatusJSONFromSnapshot(snapshot cityStatusSnapshot, summary StatusSumma
 	running := snapshot.Controller.Running
 	return StatusJSON{
 		SchemaVersion:     "1",
-		OK:                true,
+		OK:                !snapshot.Partial,
 		CityName:          snapshot.CityName,
 		Workspace:         WorkspaceJSON{Name: snapshot.CityName, Path: snapshot.CityPath},
 		CityPath:          snapshot.CityPath,

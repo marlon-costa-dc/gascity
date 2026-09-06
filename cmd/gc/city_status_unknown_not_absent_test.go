@@ -243,18 +243,21 @@ func TestObservedEmptyCityStillSignalsNoAgentsRunning(t *testing.T) {
 }
 
 // TestPartialStatusWithEveryAgentObservedRunning pins the boundary: partial is
-// not by itself a reason to call anything unknown. When the probe answered for
-// every agent, the counts are measurements and read exactly as before.
+// not by itself a reason to call any agent unknown, but it still makes the
+// overall status response degraded and unsuccessful.
 func TestPartialStatusWithEveryAgentObservedRunning(t *testing.T) {
 	snapshot := fleetSnapshot(3, 3, true, nil)
 
 	status := cityStatusJSONFromSnapshot(snapshot, snapshot.Summary)
 
-	if len(status.Health.Signals) != 0 {
-		t.Fatalf("health signals = %v, want none when every agent was observed running", status.Health.Signals)
+	if !slices.Equal(status.Health.Signals, []string{"status_partial"}) {
+		t.Fatalf("health signals = %v, want only status_partial when every agent was observed running", status.Health.Signals)
 	}
 	if status.Summary.UnknownAgents != 0 {
 		t.Fatalf("summary.unknown_agents = %d, want 0 when nothing is unknown", status.Summary.UnknownAgents)
+	}
+	if status.OK || !status.Health.Degraded {
+		t.Fatalf("partial status = {ok:%t degraded:%t}, want false/true", status.OK, status.Health.Degraded)
 	}
 }
 

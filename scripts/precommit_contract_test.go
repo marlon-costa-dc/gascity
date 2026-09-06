@@ -608,7 +608,7 @@ func TestLocalParallelAllowlistIncludesObservableEnv(t *testing.T) {
 		t.Fatalf("read test-local-parallel: %v", err)
 	}
 	content := string(script)
-	for _, key := range []string{"OBSERVABLE_TEST_LOG", "OBSERVABLE_FAILURE_LINES"} {
+	for _, key := range []string{"OBSERVABLE_TEST_LOG"} {
 		if !strings.Contains(content, key+"=") {
 			t.Fatalf("test-local-parallel job env should pass through %s", key)
 		}

@@ -57,38 +57,29 @@ func getReadyWorkForOpenStatuses(
 	return out, nil
 }
 
-// blockedBatchQuerier is the local shape of the library's BlockedQuerier: a
-// storage that can answer the denormalized, transitive is_blocked column in one
-// batched read.
-//
-// The 1.2.2 library line exports no AsBlockedQuerier helper, so this build
-// asserts the method set directly. That is equivalent for every backing that
-// actually implements it — including the real Dolt storage — and keeps the
-// projection working on the pinned line.
-type blockedBatchQuerier interface {
-	IsBlockedBatch(ctx context.Context, ids []string) (map[string]bool, error)
-}
-
-// isBlockedBatchForStorage serves the ready projection's IsBlocked column when
-// the backing can answer it, and reports the named degraded state when it
-// cannot.
-//
-// ErrReadyProjectionUnsupported is a state the cache already handles: the ROWS
-// stay whole, so List/Get/DepList keep serving from cache, and cachedBeadReady
-// derives readiness from the bead's own status instead of the projected column.
+// isBlockedBatchForStorage serves the ready projection from the same canonical
+// GetReadyWork query NativeDoltStore.Ready uses. The pinned v1.2.2 Storage
+// interface does not expose IsBlockedBatch, including on its real DoltStore,
+// but it does require GetReadyWork. Querying both open-class statuses therefore
+// preserves the backing's transitive is_blocked verdict without depending on a
+// method the production storage cannot implement.
 func isBlockedBatchForStorage(
 	ctx context.Context,
 	storage beadslib.Storage,
 	ids []string,
 ) (map[string]bool, error) {
-	querier, ok := storage.(blockedBatchQuerier)
-	if !ok {
-		return nil, fmt.Errorf("native ready projection: %w: storage %T does not expose beads.BlockedQuerier",
-			ErrReadyProjectionUnsupported, storage)
-	}
-	blocked, err := querier.IsBlockedBatch(ctx, ids)
+	issues, err := getReadyWorkForOpenStatuses(ctx, storage, beadslib.WorkFilter{IncludeEphemeral: true})
 	if err != nil {
 		return nil, fmt.Errorf("native ready projection: %w", err)
+	}
+	ready := make(map[string]struct{}, len(issues))
+	for _, issue := range issues {
+		ready[issue.ID] = struct{}{}
+	}
+	blocked := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		_, isReady := ready[id]
+		blocked[id] = !isReady
 	}
 	return blocked, nil
 }

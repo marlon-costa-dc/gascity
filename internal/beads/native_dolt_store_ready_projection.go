@@ -38,18 +38,11 @@ var _ readyProjectionEnrichmentStore = (*NativeDoltStore)(nil)
 // offers the control dispatcher a step whose gate has not opened, the
 // regression #3218 closed.
 //
-// The read is one batched IsBlockedBatch over the active set — the same
-// SELECT id, is_blocked FROM {issues,wisps} WHERE id IN (...) that BdStore
-// spends a `bd sql` subprocess on — issued in-process on the store's existing
-// connection and inside withReadRetry, so it recovers from a managed-Dolt
-// rebind like every other native read.
-//
-// A storage that cannot answer the column at all reports
-// ErrReadyProjectionUnsupported rather than a silently weaker cache: the
-// CachingStore then latches its degrade, declines every readiness handle, and
-// takes the backing's own Ready. Slower, and correct. The core beadslib.Storage
-// interface does not declare IsBlockedBatch (only DoltStorage composes
-// DependencyQueryStore), so this is a real branch, not a defensive one.
+// The default v1.2.2 build derives the column from the same in-process
+// GetReadyWork queries as NativeDoltStore.Ready, because that library's real
+// DoltStore does not expose IsBlockedBatch. The row-lock build can use the
+// newer library's direct batch projection. Both run inside withReadRetry, so a
+// managed-Dolt rebind has the same behavior as every other native read.
 func (s *NativeDoltStore) enrichReadyProjectionForCache(items []Bead) ([]Bead, error) {
 	if len(items) == 0 {
 		return items, nil
@@ -95,10 +88,8 @@ func (s *NativeDoltStore) enrichReadyProjectionForCache(items []Bead) ([]Bead, e
 		}
 		blocked, ok := projection[enriched[i].ID]
 		if !ok {
-			// ids present in neither the issues nor the wisps table are absent
-			// from the map. A row this store listed and then could not find is
-			// one that raced out of the ledger; leave its last value rather
-			// than inventing a verdict, matching the bd path exactly.
+			// A direct batch query can omit ids that raced out of the ledger.
+			// Preserve the last value rather than inventing a verdict.
 			continue
 		}
 		enriched[i].IsBlocked = cloneBoolPtr(&blocked)

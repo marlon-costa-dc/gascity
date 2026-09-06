@@ -70,6 +70,7 @@ func TestQualityGateTargetsUseReadonlyModuleDownloads(t *testing.T) {
 	}
 
 	for target, wantGOFLAGS := range map[string]string{
+		"fmt":                      `GOFLAGS="$(QUALITY_GATE_GOFLAGS)"`,
 		"fmt-check":                `GOFLAGS="$(QUALITY_GATE_GOFLAGS)"`,
 		"fmt-check-changed":        `GOFLAGS="$(QUALITY_GATE_GOFLAGS)"`,
 		"vet":                      `GOFLAGS="$(QUALITY_GATE_GOFLAGS)"`,

@@ -7,9 +7,11 @@ from collections import defaultdict, deque
 import json
 import os
 import posixpath
+import re
 import stat
 import subprocess
 import sys
+import time
 from typing import Any, Iterable
 
 
@@ -52,6 +54,10 @@ NATIVE_SOURCE_FIELDS = (
     "SwigFiles",
     "SwigCXXFiles",
     "SysoFiles",
+)
+
+QUOTED_NATIVE_INCLUDE = re.compile(
+    r'^[ \t]*#[ \t]*include[ \t]*"([^"\n]+)"', re.MULTILINE
 )
 
 
@@ -221,6 +227,7 @@ def affected_package_args(
     embed_owners: dict[str, set[str]] = defaultdict(set)
     embed_patterns: list[str] = []
     native_imports: set[str] = set()
+    native_include_owners: dict[str, set[str]] = defaultdict(set)
 
     for package in package_records:
         import_path = package.get("ImportPath")
@@ -265,11 +272,30 @@ def affected_package_args(
         )
         if native_sources or any(ignored_native_sources):
             native_imports.add(import_path)
+        for native_source in native_sources:
+            source_path = embedded_repo_path(relative_dir, native_source)
+            try:
+                with open(source_path, encoding="utf-8") as source_file:
+                    source_text = source_file.read()
+            except OSError as error:
+                raise SelectionError(
+                    f"cannot read native source {source_path!r}: {error}"
+                ) from error
+            for included in QUOTED_NATIVE_INCLUDE.findall(source_text):
+                if posixpath.isabs(included):
+                    continue
+                included_path = posixpath.normpath(
+                    posixpath.join(posixpath.dirname(source_path), included)
+                )
+                if included_path == ".." or included_path.startswith("../"):
+                    continue
+                native_include_owners[included_path].add(import_path)
 
     seeds: set[str] = set()
     for status, path in changed:
         owners = embed_owners.get(path, set())
         seeds.update(owners)
+        seeds.update(native_include_owners.get(path, set()))
         if status == "D" and any(
             deleted_path_may_match_embed_pattern(path, pattern)
             for pattern in embed_patterns
@@ -277,12 +303,13 @@ def affected_package_args(
             raise SelectionError(
                 f"deleted path {path!r} may be absent from the current embed inventory"
             )
-        # Native compilers can consume inputs with arbitrary names and from
-        # shared directories. The Go package inventory does not expose that
-        # dependency graph, so every native package is the smallest safe scope
-        # for every changed path without duplicating compiler discovery.
-        seeds.update(native_imports)
         build_input = is_go_build_input(path)
+        # A recognized native build input can be shared through compiler flags,
+        # which go list does not expose. Keep that case broad. Arbitrarily named
+        # quoted include fragments are mapped to their exact source owner above,
+        # so operational files such as Makefile never seed every native package.
+        if build_input and not path.endswith(".go"):
+            seeds.update(native_imports)
         import_path = None
         directory = ""
         if build_input:
@@ -335,11 +362,24 @@ def affected_package_args(
 
 
 def run_tool(args: list[str]) -> int:
+    return run_tool_observable(args, posixpath.basename(args[0]))
+
+
+def run_tool_observable(args: list[str], label: str) -> int:
     try:
-        return subprocess.run(args).returncode
+        process = subprocess.Popen(args)
     except OSError as error:
         print(f"ci-static-select: cannot run {args[0]!r}: {error}", file=sys.stderr)
         return 127
+    started = time.monotonic()
+    while True:
+        try:
+            return process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            if not label:
+                continue
+            elapsed = int(time.monotonic() - started)
+            print(f"{label}: still running ({elapsed}s)", file=sys.stderr, flush=True)
 
 
 def run_static_checks(
@@ -354,27 +394,22 @@ def run_static_checks(
     return run_tool([go_tool, "vet", *packages])
 
 
-def full_static_checks(
-    lint_tool: str, go_tool: str, lint_flags: list[str], reason: Exception
-) -> int:
-    print(f"lint-affected: selecting full repository: {reason}", file=sys.stderr)
-    return run_static_checks(lint_tool, go_tool, lint_flags, ["./..."])
-
-
 def lint_affected(
     lint_tool: str, go_tool: str, lint_flags: list[str]
 ) -> int:
     try:
         records = diff_records()
     except SelectionError as error:
-        return full_static_checks(lint_tool, go_tool, lint_flags, error)
+        print(f"lint-affected: cannot select changed paths: {error}", file=sys.stderr)
+        return 1
     if not records:
         print("lint-affected: no changed paths")
         return 0
     try:
         packages = affected_package_args(records, go_tool)
     except SelectionError as error:
-        return full_static_checks(lint_tool, go_tool, lint_flags, error)
+        print(f"lint-affected: cannot select affected packages: {error}", file=sys.stderr)
+        return 1
     if not packages:
         print("lint-affected: no changed Go build inputs, embedded files, or native consumers")
         return 0
@@ -382,21 +417,43 @@ def lint_affected(
     return run_static_checks(lint_tool, go_tool, lint_flags, packages)
 
 
+def changed_go_paths() -> list[str]:
+    records = diff_records()
+    return sorted(
+        path
+        for status, path in records
+        if status != "D" and path.endswith(".go") and is_regular_file(path)
+    )
+
+
 def fmt_check_changed(tool: str) -> int:
     try:
-        records = diff_records()
-        paths = sorted(
-            path
-            for status, path in records
-            if status != "D" and path.endswith(".go") and is_regular_file(path)
-        )
+        paths = changed_go_paths()
     except SelectionError as error:
-        print(f"fmt-check-changed: selecting full repository: {error}", file=sys.stderr)
-        return run_tool([tool, "fmt", "--diff", "./..."])
+        print(f"fmt-check-changed: cannot select changed Go files: {error}", file=sys.stderr)
+        return 1
     if not paths:
         print("fmt-check-changed: no changed existing Go files")
         return 0
-    return run_tool([tool, "fmt", "--diff", "--", *paths])
+    result = run_tool_observable(
+        [tool, "fmt", "--diff", "--", *paths], "fmt-check-changed"
+    )
+    if result == 0:
+        print(f"fmt-check-changed: checked {len(paths)} changed Go files")
+    return result
+
+
+def fmt_changed(tool: str) -> int:
+    try:
+        paths = changed_go_paths()
+    except SelectionError as error:
+        print(f"fmt: cannot select changed Go files: {error}", file=sys.stderr)
+        return 1
+    if not paths:
+        print("fmt: no changed existing Go files")
+        return 0
+    print(f"fmt: formatting {len(paths)} changed Go files", flush=True)
+    return run_tool_observable([tool, "fmt", "--", *paths], "fmt")
 
 
 def is_regular_file(path: str) -> bool:
@@ -410,19 +467,21 @@ def is_regular_file(path: str) -> bool:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 3 or argv[1] not in {"lint-affected", "fmt-check-changed"}:
+    if len(argv) < 3 or argv[1] not in {"lint-affected", "fmt-check-changed", "fmt-changed"}:
         print(
-            "usage: ci-static-select {lint-affected|fmt-check-changed} "
+            "usage: ci-static-select {lint-affected|fmt-check-changed|fmt-changed} "
             "GOLANGCI_LINT [GO [LINT_FLAG ...]]",
             file=sys.stderr,
         )
         return 2
     mode = argv[1]
     lint_tool = argv[2]
-    if mode == "fmt-check-changed":
+    if mode in {"fmt-check-changed", "fmt-changed"}:
         if len(argv) != 3:
-            print("fmt-check-changed only accepts GOLANGCI_LINT", file=sys.stderr)
+            print(f"{mode} only accepts GOLANGCI_LINT", file=sys.stderr)
             return 2
+        if mode == "fmt-changed":
+            return fmt_changed(lint_tool)
         return fmt_check_changed(lint_tool)
     if len(argv) < 4:
         print("lint-affected requires GOLANGCI_LINT and GO", file=sys.stderr)

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1416,8 +1417,8 @@ func TestCityStatusPartialRuntimeProbeDoesNotRenderAuthoritativeStopped(t *testi
 
 	var stdout, stderr bytes.Buffer
 	code := doCityStatusWithStoreAndSnapshot(sp, newFakeDrainOps(), cfg, "", nil, newSessionBeadSnapshot(nil), &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("code = %d, want 0; stderr=%s", code, stderr.String())
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 for partial status; stderr=%s", code, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "worker") || !strings.Contains(out, "unknown  (partial status)") {
@@ -1442,8 +1443,8 @@ func TestRenderCityStatusFromAPIPartialRendersUnknownNotStopped(t *testing.T) {
 	cr := api.CachedRead[api.StatusView]{Body: view}
 
 	var stdout bytes.Buffer
-	if code := renderCityStatusFromAPI(view.CityPath, cr, newFakeDrainOps(), false, &stdout); code != 0 {
-		t.Fatalf("code = %d, want 0", code)
+	if code := renderCityStatusFromAPI(view.CityPath, cr, newFakeDrainOps(), false, &stdout); code != 1 {
+		t.Fatalf("code = %d, want 1 for partial status", code)
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "worker") || !strings.Contains(out, "unknown  (partial status)") {
@@ -1455,8 +1456,8 @@ func TestRenderCityStatusFromAPIPartialRendersUnknownNotStopped(t *testing.T) {
 
 	// The JSON projection off the same view must also carry the partial flags.
 	var jsonOut bytes.Buffer
-	if code := renderCityStatusFromAPI(view.CityPath, cr, newFakeDrainOps(), true, &jsonOut); code != 0 {
-		t.Fatalf("json code = %d, want 0", code)
+	if code := renderCityStatusFromAPI(view.CityPath, cr, newFakeDrainOps(), true, &jsonOut); code != 1 {
+		t.Fatalf("json code = %d, want 1 for partial status", code)
 	}
 	var status StatusJSON
 	if err := json.Unmarshal(jsonOut.Bytes(), &status); err != nil {
@@ -1464,6 +1465,15 @@ func TestRenderCityStatusFromAPIPartialRendersUnknownNotStopped(t *testing.T) {
 	}
 	if !status.Partial {
 		t.Fatalf("status.Partial = false, want true carried through the API JSON projection")
+	}
+	if status.OK {
+		t.Fatal("status.OK = true, want false for a partial status projection")
+	}
+	if !status.Health.Degraded {
+		t.Fatal("status.Health.Degraded = false, want true for a partial status projection")
+	}
+	if !slices.Contains(status.Health.Signals, "status_partial") {
+		t.Fatalf("status.Health.Signals = %v, want status_partial", status.Health.Signals)
 	}
 	if len(status.PartialErrors) == 0 {
 		t.Fatalf("status.PartialErrors = empty, want runtime partial diagnostic")

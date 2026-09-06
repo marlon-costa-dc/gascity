@@ -374,9 +374,9 @@ fmt-check: $(GOLANGCI_LINT)
 fmt-check-changed: $(GOLANGCI_LINT)
 	@GOFLAGS="$(QUALITY_GATE_GOFLAGS)" "$(CI_STATIC_SELECT)" fmt-check-changed "$(GOLANGCI_LINT)"
 
-## fmt: auto-fix formatting
+## fmt: auto-fix formatting on changed Go files with periodic progress
 fmt: $(GOLANGCI_LINT)
-	$(GOLANGCI_LINT) fmt ./...
+	@GOFLAGS="$(QUALITY_GATE_GOFLAGS)" "$(CI_STATIC_SELECT)" fmt-changed "$(GOLANGCI_LINT)"
 
 ## vet: run go vet
 vet:
@@ -398,8 +398,8 @@ vet:
 GOPATH_VAL    := $(shell go env GOPATH)
 GOCACHE_VAL   := $(shell go env GOCACHE)
 GOMODCACHE_VAL := $(shell go env GOMODCACHE)
-GOTMPDIR_VAL  := $(shell go env GOTMPDIR)
 GOROOT_VAL    := $(shell go env GOROOT)
+TEST_TMPDIR   ?= /var/tmp
 TEST_ENV = env -i \
 	PATH="$$PATH" \
 	HOME="$$HOME" \
@@ -407,15 +407,15 @@ TEST_ENV = env -i \
 	LOGNAME="$$LOGNAME" \
 	SHELL="$$SHELL" \
 	LANG="$$LANG" \
-	TMPDIR="$${TMPDIR:-/var/tmp}" \
+	TMPDIR="$(TEST_TMPDIR)" \
 	OBSERVABLE_TEST_LOG="$${OBSERVABLE_TEST_LOG-}" \
-	OBSERVABLE_FAILURE_LINES="$${OBSERVABLE_FAILURE_LINES-}" \
+	OBSERVABLE_PROGRESS_INTERVAL_SECONDS="$${OBSERVABLE_PROGRESS_INTERVAL_SECONDS-}" \
 	GC_TEST_NO_SLICE="$${GC_TEST_NO_SLICE-}" \
 	XDG_RUNTIME_DIR="$$XDG_RUNTIME_DIR" \
 	GOPATH="$(GOPATH_VAL)" \
 	GOCACHE="$(GOCACHE_VAL)" \
 	GOMODCACHE="$(GOMODCACHE_VAL)" \
-	GOTMPDIR="$(GOTMPDIR_VAL)" \
+	GOTMPDIR="$(TEST_TMPDIR)" \
 	GOROOT="$${GOROOT:-$(GOROOT_VAL)}" \
 	GOENV="$${GOENV-}" \
 	GOFLAGS="$${GOFLAGS-}" \
@@ -455,8 +455,8 @@ test-ci-policy:
 	$(TEST_ENV) PYTHONDONTWRITEBYTECODE=1 python3 -S -m unittest discover -s .github/workflows/scripts -p 'test_runner_policy.py'
 	$(TEST_ENV) PYTHONDONTWRITEBYTECODE=1 python3 -S -m unittest discover -s .github/workflows/scripts -p 'test_ci_suite_coverage.py'
 	$(TEST_ENV) GOFLAGS= GOENV=off GOWORK=off go test -count=1 ./scripts/cipolicy
-	$(TEST_ENV) GOFLAGS= GOENV=off GOWORK=off go test -count=1 ./scripts/prwatchdog/...
-	$(TEST_ENV) GOFLAGS= GOENV=off GOWORK=off go test -count=1 -run '^(TestPreflightStaticScopesOrdinaryPRsWithoutWeakeningProtectedRuns|TestFullStaticLintExplicitlyOwnsConfiguredGolangCIGovet|TestChangedStaticTargetsScopeLintAndFormattingToTheDiff|TestCIStaticScopeClassifierFailsClosedOutsideValidatedPullRequestMerge)$$' ./scripts
+	$(TEST_ENV) GOFLAGS= GOENV=off GOWORK=off go test -count=1 ./scripts/prwatchdog
+	$(TEST_ENV) GOFLAGS= GOENV=off GOWORK=off go test -count=1 -run '^(TestPreflightStaticScopesOrdinaryPRsWithoutWeakeningProtectedRuns|TestFullStaticLintExplicitlyOwnsConfiguredGolangCIGovet|TestChangedStaticTargetsScopeLintAndFormattingToTheDiff|TestCIStaticScopeClassifierFailsClosedOutsideValidatedPullRequestMerge|TestGoTestObservable.*)$$' ./scripts
 
 ## test: run fast unit tests (skip integration-tagged and GC_FAST_UNIT-gated process tests)
 ## The skipped cmd/gc process-backed scenarios remain covered by

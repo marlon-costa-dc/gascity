@@ -73,6 +73,13 @@ func Value() int { return alpha.Value() }
 		}
 		fixture.requireCalls(t, []string{"fmt", "--diff", "--", "alpha/alpha.go"})
 		fixture.requireGoCalls(t)
+
+		fixture.resetCalls(t)
+		if output, err := fixture.runMakeTarget("fmt"); err != nil {
+			t.Errorf("fmt failed for one changed Go file: %v\n%s", err, output)
+		}
+		fixture.requireCalls(t, []string{"fmt", "--", "alpha/alpha.go"})
+		fixture.requireGoCalls(t)
 	})
 
 	t.Run("transitive and test-only reverse dependents", func(t *testing.T) {
@@ -137,7 +144,7 @@ func TestValue(t *testing.T) { _ = alpha.Value() }
 		})
 	})
 
-	t.Run("broken package graph falls back to full lint", func(t *testing.T) {
+	t.Run("broken package graph fails before lint", func(t *testing.T) {
 		fixture := newPRStaticScopeFixture(t, map[string]string{
 			"alpha/alpha.go": "package alpha\n\nfunc Value() int { return 1 }\n",
 			"broken/broken.go": `package broken
@@ -148,11 +155,11 @@ import _ "example.com/static-scope/missing"
 		writeTestFile(t, filepath.Join(fixture.repoRoot, "alpha", "alpha.go"), "package alpha\n\nfunc Value() int { return 2 }\n")
 
 		fixture.resetCalls(t)
-		if output, err := fixture.runMakeTarget("lint-affected"); err != nil {
-			t.Errorf("lint-affected did not fail closed for a broken package graph: %v\n%s", err, output)
+		if output, err := fixture.runMakeTarget("lint-affected"); err == nil {
+			t.Errorf("lint-affected accepted a broken package graph:\n%s", output)
 		}
-		fixture.requireCalls(t, []string{"run", "./..."})
-		fixture.requireGoCalls(t, []string{"vet", "./..."})
+		fixture.requireCalls(t)
+		fixture.requireGoCalls(t)
 	})
 
 	t.Run("deleted Go file", func(t *testing.T) {
@@ -178,7 +185,7 @@ import _ "example.com/static-scope/missing"
 		fixture.requireNoCalls(t)
 	})
 
-	t.Run("deleted nested Go file beneath ancestor embed falls back to full", func(t *testing.T) {
+	t.Run("deleted nested Go file beneath ancestor embed fails before lint", func(t *testing.T) {
 		fixture := newPRStaticScopeFixture(t, map[string]string{
 			"alpha/alpha.go": `package alpha
 
@@ -195,11 +202,11 @@ var Data embed.FS
 		}
 
 		fixture.resetCalls(t)
-		if output, err := fixture.runMakeTarget("lint-affected"); err != nil {
-			t.Errorf("lint-affected did not fail closed for a deleted nested embedded Go file: %v\n%s", err, output)
+		if output, err := fixture.runMakeTarget("lint-affected"); err == nil {
+			t.Errorf("lint-affected accepted a deleted nested embedded Go file:\n%s", output)
 		}
-		fixture.requireCalls(t, []string{"run", "./..."})
-		fixture.requireGoCalls(t, []string{"vet", "./..."})
+		fixture.requireCalls(t)
+		fixture.requireGoCalls(t)
 	})
 
 	t.Run("cross-package rename with a spaced file name", func(t *testing.T) {
@@ -260,24 +267,24 @@ func Moved() int {
 		fixture.requireGoCalls(t)
 	})
 
-	t.Run("invalid ref falls back to full static checks", func(t *testing.T) {
+	t.Run("invalid ref fails closed before static tools", func(t *testing.T) {
 		fixture := newPRStaticScopeFixture(t, map[string]string{
 			"alpha/alpha.go": "package alpha\n\nfunc Value() int { return 1 }\n",
 		})
 		writeTestFile(t, filepath.Join(fixture.repoRoot, "alpha", "alpha.go"), "package alpha\n\nfunc Value() int { return 2 }\n")
 
 		fixture.resetCalls(t)
-		if output, err := fixture.runMakeTargetWithRef("lint-affected", "refs/heads/missing-static-base"); err != nil {
-			t.Errorf("lint-affected did not fail closed for an invalid ref: %v\n%s", err, output)
+		if output, err := fixture.runMakeTargetWithRef("lint-affected", "refs/heads/missing-static-base"); err == nil {
+			t.Errorf("lint-affected accepted an invalid ref:\n%s", output)
 		}
-		fixture.requireCalls(t, []string{"run", "./..."})
-		fixture.requireGoCalls(t, []string{"vet", "./..."})
+		fixture.requireCalls(t)
+		fixture.requireGoCalls(t)
 
 		fixture.resetCalls(t)
-		if output, err := fixture.runMakeTargetWithRef("fmt-check-changed", "refs/heads/missing-static-base"); err != nil {
-			t.Errorf("fmt-check-changed did not fail closed for an invalid ref: %v\n%s", err, output)
+		if output, err := fixture.runMakeTargetWithRef("fmt-check-changed", "refs/heads/missing-static-base"); err == nil {
+			t.Errorf("fmt-check-changed accepted an invalid ref:\n%s", output)
 		}
-		fixture.requireCalls(t, []string{"fmt", "--diff", "./..."})
+		fixture.requireCalls(t)
 		fixture.requireGoCalls(t)
 	})
 
@@ -522,7 +529,7 @@ var Data string
 		fixture.requireGoCalls(t, []string{"vet", "./alpha", "./alpha/child"})
 	})
 
-	t.Run("deleted required embedded file falls back to full", func(t *testing.T) {
+	t.Run("deleted required embedded file fails before lint", func(t *testing.T) {
 		fixture := newPRStaticScopeFixture(t, map[string]string{
 			"alpha/alpha.go": `package alpha
 
@@ -538,14 +545,14 @@ var Data string
 		}
 
 		fixture.resetCalls(t)
-		if output, err := fixture.runMakeTarget("lint-affected"); err != nil {
-			t.Errorf("lint-affected did not fail closed for a missing embedded file: %v\n%s", err, output)
+		if output, err := fixture.runMakeTarget("lint-affected"); err == nil {
+			t.Errorf("lint-affected accepted a missing embedded file:\n%s", output)
 		}
-		fixture.requireCalls(t, []string{"run", "./..."})
-		fixture.requireGoCalls(t, []string{"vet", "./..."})
+		fixture.requireCalls(t)
+		fixture.requireGoCalls(t)
 	})
 
-	t.Run("deleted embedded glob member falls back to full", func(t *testing.T) {
+	t.Run("deleted embedded glob member fails before lint", func(t *testing.T) {
 		fixture := newPRStaticScopeFixture(t, map[string]string{
 			"alpha/alpha.go": `package alpha
 
@@ -562,14 +569,14 @@ var Data embed.FS
 		}
 
 		fixture.resetCalls(t)
-		if output, err := fixture.runMakeTarget("lint-affected"); err != nil {
-			t.Errorf("lint-affected did not fail closed for a deleted embed glob member: %v\n%s", err, output)
+		if output, err := fixture.runMakeTarget("lint-affected"); err == nil {
+			t.Errorf("lint-affected accepted a deleted embed glob member:\n%s", output)
 		}
-		fixture.requireCalls(t, []string{"run", "./..."})
-		fixture.requireGoCalls(t, []string{"vet", "./..."})
+		fixture.requireCalls(t)
+		fixture.requireGoCalls(t)
 	})
 
-	t.Run("deleted recognized embedded glob member falls back before native shortcut", func(t *testing.T) {
+	t.Run("deleted recognized embedded glob member fails before native shortcut", func(t *testing.T) {
 		fixture := newPRStaticScopeFixture(t, map[string]string{
 			"alpha/alpha.go": `package alpha
 
@@ -594,11 +601,11 @@ var Data = alpha.Data
 		}
 
 		fixture.resetCalls(t)
-		if output, err := fixture.runMakeTarget("lint-affected"); err != nil {
-			t.Errorf("lint-affected did not fail closed before the native shortcut: %v\n%s", err, output)
+		if output, err := fixture.runMakeTarget("lint-affected"); err == nil {
+			t.Errorf("lint-affected accepted a deleted recognized embed member:\n%s", output)
 		}
-		fixture.requireCalls(t, []string{"run", "./..."})
-		fixture.requireGoCalls(t, []string{"vet", "./..."})
+		fixture.requireCalls(t)
+		fixture.requireGoCalls(t)
 	})
 
 	t.Run("changed Go symlink is not formatted", func(t *testing.T) {
@@ -624,8 +631,11 @@ var Data = alpha.Data
 
 	t.Run("non-Go diff", func(t *testing.T) {
 		fixture := newPRStaticScopeFixture(t, map[string]string{
-			"alpha/alpha.go": "package alpha\n\nfunc Value() int { return 1 }\n",
-			"README.md":      "baseline\n",
+			"alpha/alpha.go":   "package alpha\n\nfunc Value() int { return 1 }\n",
+			"native/native.go": "package native\n\nfunc Value()\n",
+			"native/value.s":   "TEXT ·Value(SB), $0-0\n\tRET\n",
+			"README.md":        "baseline\n",
+			"Makefile":         "baseline:\n\t@true\n",
 		})
 		writeTestFile(t, filepath.Join(fixture.repoRoot, "README.md"), "documentation only\n")
 
@@ -638,6 +648,14 @@ var Data = alpha.Data
 		fixture.resetCalls(t)
 		if output, err := fixture.runMakeTarget("fmt-check-changed"); err != nil {
 			t.Errorf("fmt-check-changed failed for a non-Go diff: %v\n%s", err, output)
+		}
+		fixture.requireNoCalls(t)
+
+		writeTestFile(t, filepath.Join(fixture.repoRoot, "README.md"), "baseline\n")
+		writeTestFile(t, filepath.Join(fixture.repoRoot, "Makefile"), "changed:\n\t@true\n")
+		fixture.resetCalls(t)
+		if output, err := fixture.runMakeTarget("lint-affected"); err != nil {
+			t.Errorf("lint-affected failed for a Makefile-only diff: %v\n%s", err, output)
 		}
 		fixture.requireNoCalls(t)
 

@@ -316,3 +316,61 @@ func TestNativeDoltStoreRealBackendRoundTrip(t *testing.T) {
 		t.Fatalf("Get missing error = %v, want ErrNotFound", err)
 	}
 }
+
+// TestNativeDoltCacheReadyProjectionAgainstRealBackend proves the production
+// OpenBestAvailable storage can populate the cache's complete readiness view.
+// A cache that declines ReadyContext makes every status request partial even
+// though the backing store itself can answer Ready correctly.
+func TestNativeDoltCacheReadyProjectionAgainstRealBackend(t *testing.T) {
+	ctx := context.Background()
+	storage, err := beadslib.OpenBestAvailable(ctx, filepath.Join(t.TempDir(), ".beads"))
+	if err != nil {
+		t.Fatalf("open upstream native beads storage: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := storage.Close(); err != nil {
+			t.Errorf("close upstream storage: %v", err)
+		}
+	})
+	if err := storage.SetConfig(ctx, "issue_prefix", "gc"); err != nil {
+		t.Fatalf("set issue prefix: %v", err)
+	}
+	store := newNativeDoltStoreWithStorageAndPrefix(storage, "ready-projection-integration", "gc")
+
+	blocker, err := store.Create(Bead{Title: "real native ready blocker"})
+	if err != nil {
+		t.Fatalf("Create blocker: %v", err)
+	}
+	parent, err := store.Create(Bead{
+		Title: "real native blocked parent",
+		Needs: []string{"blocks:" + blocker.ID},
+	})
+	if err != nil {
+		t.Fatalf("Create parent: %v", err)
+	}
+	child, err := store.Create(Bead{
+		Title:    "real native transitively blocked child",
+		ParentID: parent.ID,
+	})
+	if err != nil {
+		t.Fatalf("Create child: %v", err)
+	}
+	unrelated, err := store.Create(Bead{Title: "real native ready control"})
+	if err != nil {
+		t.Fatalf("Create unrelated: %v", err)
+	}
+
+	cache := NewCachingStoreForTest(store, nil)
+	if err := cache.Prime(ctx); err != nil {
+		t.Fatalf("Prime: %v", err)
+	}
+	ready, err := cache.ReadyContext(ctx)
+	if err != nil {
+		t.Fatalf("ReadyContext: %v", err)
+	}
+	got := sortedIDs(ready)
+	want := wantReadyIDs(blocker.ID, unrelated.ID)
+	if !equalIDs(got, want) {
+		t.Fatalf("ReadyContext = %v, want %v; transitively blocked child %s must stay hidden", got, want, child.ID)
+	}
+}

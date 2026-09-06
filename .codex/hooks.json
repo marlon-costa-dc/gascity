@@ -4,7 +4,7 @@
       {
         "hooks": [
           {
-            "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc hook run --when-managed-session -- handoff --auto --hook-format codex \"context cycle\"",
+            "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc handoff --auto --hook-format codex \"context cycle\"",
             "type": "command"
           }
         ],
@@ -12,6 +12,15 @@
       }
     ],
     "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc --city '/home/marlonsc/gc' prime --hook --hook-format codex",
+            "type": "command"
+          }
+        ],
+        "matcher": "startup"
+      },
       {
         "hooks": [
           {

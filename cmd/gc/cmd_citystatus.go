@@ -275,7 +275,7 @@ func renderCityStatusFromAPI(cityPath string, cr api.CachedRead[api.StatusView],
 	snapshot := snapshotFromStatusView(cityPath, cr.Body)
 	if jsonOutput {
 		writeCityStatusJSONWithCache(snapshot, snapshot.Summary, cr.AgeSeconds, stdout)
-		return 0
+		return cityStatusExitCode(snapshot)
 	}
 	renderCityStatusText(snapshot, dops, stdout)
 	if cr.Body.SessionCounts.Active > 0 || cr.Body.SessionCounts.Suspended > 0 {
@@ -284,6 +284,13 @@ func renderCityStatusFromAPI(cityPath string, cr api.CachedRead[api.StatusView],
 	}
 	if cr.AgeSeconds > cacheAgeBannerThresholdSeconds {
 		fmt.Fprintf(stdout, "(cache age: %.0fs — reconciler may be lagging)\n", cr.AgeSeconds) //nolint:errcheck // best-effort stdout
+	}
+	return cityStatusExitCode(snapshot)
+}
+
+func cityStatusExitCode(snapshot cityStatusSnapshot) int {
+	if snapshot.Partial {
+		return 1
 	}
 	return 0
 }
@@ -561,11 +568,6 @@ func doCityStatusWithStoreAndSnapshot(
 	snapshot := collectCityStatusSnapshotFromStoreSnapshot(sp, cfg, cityPath, store, statusSnapshot, stderr)
 	renderCityStatusText(snapshot, dops, stdout)
 
-	// Track session-snapshot degradation so we can render the textual report
-	// AND signal the failure via exit code. Restores the pre-#2005 contract
-	// that monitoring callers rely on (see #2147).
-	snapshotDegraded := statusSnapshot.LoadError() != nil
-
 	if store != nil {
 		sessions, err := collectCitySessionCounts(cityPath, store, sp, cfg, statusSnapshot)
 		if err != nil {
@@ -578,10 +580,7 @@ func doCityStatusWithStoreAndSnapshot(
 		}
 	}
 
-	if snapshotDegraded {
-		return 1
-	}
-	return 0
+	return cityStatusExitCode(snapshot)
 }
 
 // doCityStatusJSON outputs city status as JSON. Accepts injected providers
@@ -610,10 +609,6 @@ func doCityStatusJSONWithDiagnosticAndSnapshot(
 ) int {
 	snapshot := collectCityStatusSnapshotFromStoreSnapshot(sp, cfg, cityPath, store, statusSnapshot, stderr)
 	snapshot.Beads = diagnostic
-	// Track session-snapshot degradation so we can emit the JSON payload AND
-	// signal the failure via exit code. Restores the pre-#2005 contract that
-	// monitoring callers rely on (see #2147).
-	snapshotDegraded := statusSnapshot.LoadError() != nil
 	if store != nil {
 		sessions, err := collectCitySessionCounts(cityPath, store, sp, cfg, statusSnapshot)
 		if err != nil {
@@ -631,10 +626,7 @@ func doCityStatusJSONWithDiagnosticAndSnapshot(
 		return 1
 	}
 	fmt.Fprintln(stdout, string(data)) //nolint:errcheck // best-effort stdout
-	if snapshotDegraded {
-		return 1
-	}
-	return 0
+	return cityStatusExitCode(snapshot)
 }
 
 func controllerStatusForCity(cityPath string) ControllerJSON {

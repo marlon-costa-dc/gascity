@@ -23,8 +23,8 @@ func TestCurrentWorkflowsMatchPolicy(t *testing.T) {
 	}
 }
 
-func TestMakeTestCIPolicyRunsStaticScopeContracts(t *testing.T) {
-	const want = "\t$(TEST_ENV) GOFLAGS= GOENV=off GOWORK=off go test -count=1 -run '^(TestPreflightStaticScopesOrdinaryPRsWithoutWeakeningProtectedRuns|TestFullStaticLintExplicitlyOwnsConfiguredGolangCIGovet|TestChangedStaticTargetsScopeLintAndFormattingToTheDiff|TestCIStaticScopeClassifierFailsClosedOutsideValidatedPullRequestMerge)$$' ./scripts"
+func TestMakeTestCIPolicyRunsStaticScopeAndObservableRunnerContracts(t *testing.T) {
+	const want = "\t$(TEST_ENV) GOFLAGS= GOENV=off GOWORK=off go test -count=1 -run '^(TestPreflightStaticScopesOrdinaryPRsWithoutWeakeningProtectedRuns|TestFullStaticLintExplicitlyOwnsConfiguredGolangCIGovet|TestChangedStaticTargetsScopeLintAndFormattingToTheDiff|TestCIStaticScopeClassifierFailsClosedOutsideValidatedPullRequestMerge|TestGoTestObservable.*)$$' ./scripts"
 
 	makefilePath := filepath.Join("..", "..", "Makefile")
 	body, err := os.ReadFile(makefilePath)
@@ -43,7 +43,7 @@ func TestMakeTestCIPolicyRunsStaticScopeContracts(t *testing.T) {
 		}
 	}
 	if matches != 1 {
-		t.Fatalf("test-ci-policy recipe must run the focused static-scope contracts with the exact hermetic command:\n%s", want)
+		t.Fatalf("test-ci-policy recipe must run the focused static-scope and observable-runner contracts with the exact hermetic command:\n%s", want)
 	}
 }
 
