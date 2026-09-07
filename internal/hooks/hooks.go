@@ -33,10 +33,10 @@ var configFS embed.FS
 var supported = []string{"claude", "codex", "gemini", "antigravity", "kiro", "opencode", "mimocode", "groq", "cerebras", "copilot", "cursor", "pi", "omp", "kimi"}
 
 const (
-	managedPiHookVersion       = 8
-	managedOpenCodeHookVersion = 7
-	managedMimoCodeHookVersion = 3
-	managedOmpHookVersion      = 3
+	managedPiHookVersion       = 9
+	managedOpenCodeHookVersion = 6
+	managedMimoCodeHookVersion = 2
+	managedOmpHookVersion      = 2
 )
 
 var (
@@ -203,7 +203,7 @@ func installOverlayManaged(fs fsys.FS, cityDir, workDir, provider string) error 
 				data = normalized
 			}
 		}
-		return writeEmbeddedManaged(fs, dst, data, overlayManagedNeedsUpgrade(provider, rel))
+		return writeEmbeddedManaged(fs, dst, data, overlayManagedNeedsUpgrade(provider, rel, data))
 	})
 }
 
@@ -226,7 +226,7 @@ func writeJSONOverlayManaged(fs fsys.FS, dst string, data []byte) error {
 	return writeManagedData(fs, dst, data)
 }
 
-func overlayManagedNeedsUpgrade(provider, rel string) func([]byte) bool {
+func overlayManagedNeedsUpgrade(provider, rel string, desired []byte) func([]byte) bool {
 	if provider == "pi" && rel == path.Join(".pi", "extensions", "gc-hooks.js") {
 		return piHookNeedsUpgrade
 	}
@@ -239,7 +239,58 @@ func overlayManagedNeedsUpgrade(provider, rel string) func([]byte) bool {
 	if provider == "omp" && rel == path.Join(".omp", "hooks", "gc-hook.ts") {
 		return ompHookNeedsUpgrade
 	}
+	if provider == "cursor" && rel == path.Join(".cursor", "hooks.json") {
+		return func(existing []byte) bool {
+			return cursorHookNeedsUpgrade(existing, desired)
+		}
+	}
 	return nil
+}
+
+func cursorHookNeedsUpgrade(existing, desired []byte) bool {
+	existingCanonical, err := overlay.CanonicalJSON(existing)
+	if err != nil {
+		return false
+	}
+	for _, legacy := range cursorHookLegacyVariants(desired) {
+		legacyCanonical, err := overlay.CanonicalJSON(legacy)
+		if err == nil && bytes.Equal(existingCanonical, legacyCanonical) {
+			return true
+		}
+	}
+	return false
+}
+
+// cursorHookLegacyVariants regenerates the most recently released managed
+// .cursor/hooks.json (#3457), derived from today's desired document so the
+// match stays independent of JSON formatting. Documents released before #3457
+// differ in the command body, not just the PATH prologue, so no transformation
+// of today's document reproduces them; they are intentionally left
+// un-upgraded rather than nonexistent, and adopting one is a deliberate
+// widening decision rather than a correction. Only released shapes belong
+// here: each variant widens the set of on-disk files installOverlayManaged
+// silently overwrites as managed, so a variant no workspace can be holding
+// costs safety and buys nothing.
+func cursorHookLegacyVariants(desired []byte) [][]byte {
+	const (
+		gcAware       = `\"${GC_BIN:-gc}\"`
+		gcBare        = `gc`
+		workspacePath = `export PATH=\"$PATH:$HOME/go/bin:$HOME/.local/bin\"; if [ -n \"${BD_BIN:-}\" ]; then export PATH=\"${BD_BIN%/*}:$PATH\"; fi; `
+		oldPath       = `export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\"`
+	)
+	variants := make([][]byte, 0, 1)
+	// Every managed hooks.json released to date uses a bare gc command and
+	// prepends provider tool paths with &&. The BD_BIN clause and the
+	// GC_BIN-aware commands are introduced by this change, so no released
+	// document carries them and no unreleased intermediate shape needs its
+	// own variant. Pre-#3457 released documents are out of scope here by
+	// choice, not because they do not exist.
+	legacy := bytes.ReplaceAll(desired, []byte(workspacePath), []byte(oldPath+` && `))
+	legacy = bytes.ReplaceAll(legacy, []byte(gcAware), []byte(gcBare))
+	if !bytes.Equal(legacy, desired) {
+		variants = append(variants, legacy)
+	}
+	return variants
 }
 
 func piHookNeedsUpgrade(existing []byte) bool {
@@ -250,10 +301,13 @@ func piHookNeedsUpgrade(existing []byte) bool {
 	if piHookVersion(content) < managedPiHookVersion ||
 		!strings.Contains(content, "gc prime --hook") ||
 		!strings.Contains(content, "gc hook --inject") ||
-		!strings.Contains(content, "hook run --when-managed-session") ||
+		!strings.Contains(content, "gc handoff --auto") ||
 		!strings.Contains(content, "mirrorTempCounter") ||
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID") ||
 		!strings.Contains(content, "GC_PROVIDER_SESSION_ID_REQUIRED") ||
+		!strings.Contains(content, "GC_MANAGED_SESSION_HOOK") ||
+		!strings.Contains(content, "GC_HOOK_EVENT_NAME") ||
+		!strings.Contains(content, "pendingPrimeContext") ||
 		!strings.Contains(content, `stdio: ["ignore", "pipe", "inherit"]`) {
 		return true
 	}
@@ -292,7 +346,7 @@ func opencodeHookNeedsUpgrade(existing []byte) bool {
 		!strings.Contains(content, `process.env.GC_BIN || "gc"`) ||
 		!strings.Contains(content, `/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`) ||
 		!strings.Contains(content, `"experimental.session.compacting"`) ||
-		!strings.Contains(content, `runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle")`) ||
+		!strings.Contains(content, `runWithWarning(directory, "handoff", "--auto", "context cycle")`) ||
 		!strings.Contains(content, "output.context.push(handoff)") ||
 		!strings.Contains(content, "logRunFailure") ||
 		!strings.Contains(content, "logRunStderr(stderr);") ||
@@ -334,9 +388,7 @@ func mimocodeHookNeedsUpgrade(existing []byte) bool {
 	if !strings.Contains(content, "Gas City hooks for MiMo Code.") {
 		return false
 	}
-	return mimocodeHookVersion(content) < managedMimoCodeHookVersion ||
-		!strings.Contains(content, `runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle")`) ||
-		!strings.Contains(content, "pending.child.stdin?.end();")
+	return mimocodeHookVersion(content) < managedMimoCodeHookVersion
 }
 
 func mimocodeHookVersion(content string) int {
@@ -363,7 +415,6 @@ func ompHookNeedsUpgrade(existing []byte) bool {
 		!strings.Contains(content, `pi.on("session_start"`) ||
 		!strings.Contains(content, `pi.on("session_compact"`) ||
 		!strings.Contains(content, `pi.on("before_agent_start"`) ||
-		!strings.Contains(content, `runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`) ||
 		!strings.Contains(content, "logRunFailure") ||
 		!strings.Contains(content, `stdio: ["ignore", "pipe", "inherit"]`) {
 		return true
@@ -966,7 +1017,19 @@ func isCodexSessionStartCommandBody(body string) bool {
 
 func isCodexPreCompactCommandBody(body string) bool {
 	_, args, ok := parseGCCommandBody(body)
-	return ok && codexPreCompactArgsMatch(args)
+	if !ok || len(args) < 2 || args[0] != "handoff" {
+		return false
+	}
+	switch {
+	case len(args) == 2 && args[1] == "context cycle":
+		return true
+	case len(args) == 3 && args[1] == "--auto" && args[2] == "context cycle":
+		return true
+	case len(args) == 5 && args[1] == "--auto" && args[2] == "--hook-format" && args[3] == "codex" && args[4] == "context cycle":
+		return true
+	default:
+		return false
+	}
 }
 
 func codexManagedPromptTarget(body, hookFormat string) bool {
@@ -1127,16 +1190,6 @@ func codexLegacySessionStartRunArgsMatch(args []string) bool {
 }
 
 func codexPreCompactArgsMatch(args []string) bool {
-	if preCompactHandoffArgsMatch(args) {
-		return true
-	}
-	if len(args) < 5 || args[0] != "hook" || args[1] != "run" || args[2] != "--when-managed-session" || args[3] != "--" {
-		return false
-	}
-	return preCompactHandoffArgsMatch(args[4:])
-}
-
-func preCompactHandoffArgsMatch(args []string) bool {
 	if len(args) < 2 || args[0] != "handoff" {
 		return false
 	}
@@ -1484,15 +1537,7 @@ const sessionStartPreviousManagedFormBody = `GC_MANAGED_SESSION_HOOK=1 GC_HOOK_E
 // command body (post-canonical-PATH-prefix). If gc ever extends this command
 // with additional arguments, update this constant alongside the emission site.
 func preCompactCurrentFormBody(cityDir string) string {
-	return managedPreCompactHookRunBody(cityDir, "codex")
-}
-
-func managedPreCompactHookRunBody(cityDir, hookFormat string) string {
-	body := `gc ` + codexCityFlag(cityDir) + `hook run --when-managed-session -- handoff --auto`
-	if hookFormat != "" {
-		body += ` --hook-format ` + hookFormat
-	}
-	return body + ` "context cycle"`
+	return `gc ` + codexCityFlag(cityDir) + `handoff --auto --hook-format codex "context cycle"`
 }
 
 // equalsLegacyCommandBody reports whether the command body is exactly the
@@ -1525,28 +1570,19 @@ func upgradeClaudeHookCommand(event, command string) (string, bool) {
 	switch event {
 	case "PreCompact":
 		// Older legacy: PreCompact used `gc prime --hook` before
-		// `gc handoff` was introduced. Upgrade to the selected managed-session
-		// auto-handoff form. Tested first
+		// `gc handoff` was introduced. Upgrade to the current
+		// `gc handoff --auto "context cycle"` form. Tested first
 		// because it changes the same trailing token the bare-handoff
 		// form would otherwise patch.
 		if equalsLegacyCommandBody(body, `gc prime --hook`) {
-			prefix := strings.TrimSuffix(command, body)
-			return prefix + managedPreCompactHookRunBody("", ""), true
+			return strings.Replace(command, `gc prime --hook`, `gc handoff --auto "context cycle"`, 1), true
 		}
 		// Legacy: bare `gc handoff "context cycle"` (no --auto)
 		// requests a controller restart on every Claude Code
 		// compaction event, killing the session (gc-flp1). Upstream
 		// fix landed in commit 7b3b913a; this patches existing cities.
 		if equalsLegacyCommandBody(body, `gc handoff "context cycle"`) {
-			prefix := strings.TrimSuffix(command, body)
-			return prefix + managedPreCompactHookRunBody("", ""), true
-		}
-		if isCodexPreCompactCommandBody(body) {
-			desired := managedPreCompactHookRunBody("", "")
-			if body != desired {
-				prefix := strings.TrimSuffix(command, body)
-				return prefix + desired, true
-			}
+			return strings.Replace(command, `gc handoff "context cycle"`, `gc handoff --auto "context cycle"`, 1), true
 		}
 	case "SessionStart":
 		// Legacy: bare `gc prime --hook` without the
