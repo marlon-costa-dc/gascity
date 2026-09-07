@@ -286,6 +286,16 @@ const (
 
 const supervisorPreserveSessionsOnSignalEnv = "GC_SUPERVISOR_PRESERVE_SESSIONS_ON_SIGNAL"
 
+// supervisorOmitProviderCredsEnv, when set to "1" at the time the supervisor
+// service file is generated, causes env vars matched by the shared
+// provider-credential predicate to be excluded from the generated launchd
+// plist or systemd unit. The source of truth is internal/processenv. Default
+// behavior is unchanged.
+// When opted out, the user is responsible for delivering provider creds to
+// the supervisor's environment via some other mechanism (e.g. a wrapper
+// around `gc supervisor run` that sources a credentials file).
+const supervisorOmitProviderCredsEnv = "GC_SUPERVISOR_OMIT_PROVIDER_CREDS"
+
 // 32768 is the Linux kernel default for net.ipv4.ip_local_port_range lower bound.
 const supervisorEphemeralPortWarningThreshold = 32768
 
@@ -1110,7 +1120,7 @@ func managedCityForcedStopTimeout(mc *managedCity) time.Duration {
 // when the city did not exit cleanly within the budget. Stderr still
 // receives a trace line for operability; the returned error is for
 // callers (runSupervisor) that need to aggregate shutdown status.
-func stopManagedCity(ctx context.Context, mc *managedCity, cityPath string, stderr io.Writer) error {
+func stopManagedCity(mc *managedCity, cityPath string, stderr io.Writer) error {
 	if mc == nil {
 		return nil
 	}
@@ -1120,7 +1130,7 @@ func stopManagedCity(ctx context.Context, mc *managedCity, cityPath string, stde
 	if timeout > 0 {
 		select {
 		case <-mc.done:
-			if err := shutdownBeadsProvider(ctx, cityPath); err != nil {
+			if err := shutdownBeadsProvider(cityPath); err != nil {
 				fmt.Fprintf(stderr, "gc supervisor: city '%s': bead store: %v\n", mc.name, err) //nolint:errcheck
 			}
 			if mc.closer != nil {
@@ -1153,7 +1163,7 @@ func stopManagedCity(ctx context.Context, mc *managedCity, cityPath string, stde
 			stopErr = fmt.Errorf("city %q did not exit within %s after forced shutdown", mc.name, forceTimeout)
 		}
 	}
-	if err := shutdownBeadsProvider(ctx, cityPath); err != nil {
+	if err := shutdownBeadsProvider(cityPath); err != nil {
 		fmt.Fprintf(stderr, "gc supervisor: city '%s': bead store: %v\n", mc.name, err) //nolint:errcheck
 	}
 	if mc.closer != nil {
@@ -1344,10 +1354,6 @@ func runSupervisor(stdout, stderr io.Writer) int {
 	supCfg, err := supervisorLoadConfig(supervisor.ConfigPath())
 	if err != nil {
 		fmt.Fprintf(stderr, "gc supervisor: config: %v\n", err) //nolint:errcheck
-		return 1
-	}
-	if err := activateSupervisorCredentials(supCfg.Credentials); err != nil {
-		fmt.Fprintf(stderr, "gc supervisor: credentials: %v\n", err) //nolint:errcheck
 		return 1
 	}
 
@@ -1597,7 +1603,6 @@ func runSupervisor(stdout, stderr io.Writer) int {
 				}
 			})
 			preserveSessions := shutdownCtl.preservesSessionsAfterSettle(supervisorShutdownSettleDelay)
-			providerStopCtx := ctx
 			var stopFailures []string
 			for name, mc := range toStop {
 				if preserveSessions {
@@ -1605,13 +1610,11 @@ func runSupervisor(stdout, stderr io.Writer) int {
 				} else {
 					fmt.Fprintf(stdout, "Stopping city '%s'...\n", name) //nolint:errcheck
 				}
-				var err error
+				stopFn := stopManagedCity
 				if preserveSessions {
-					err = stopManagedCityPreservingSessions(mc, name, stderr)
-				} else {
-					err = stopManagedCity(providerStopCtx, mc, name, stderr)
+					stopFn = stopManagedCityPreservingSessions
 				}
-				if err != nil {
+				if err := stopFn(mc, name, stderr); err != nil {
 					stopFailures = append(stopFailures, fmt.Sprintf("%s: %s", name, err.Error()))
 					fmt.Fprintf(stdout, "City '%s' stop reported error (see stderr).\n", name) //nolint:errcheck
 				} else {
@@ -1762,7 +1765,7 @@ func reconcileCities(
 			cityName = filepath.Base(path)
 		}
 		fmt.Fprintf(stdout, "Unregistered city '%s', stopping...\n", cityName) //nolint:errcheck
-		stopErr := stopManagedCity(ctx, mc, path, stderr)
+		stopErr := stopManagedCity(mc, path, stderr)
 		// Clear backoff so re-registering starts immediately.
 		cr.BatchUpdate(func(
 			_ map[string]*managedCity,
@@ -1842,7 +1845,7 @@ func reconcileCities(
 	})
 	for i, mc := range nameDriftCities {
 		fmt.Fprintf(stdout, "City name changed at '%s', restarting...\n", nameDriftPaths[i]) //nolint:errcheck
-		_ = stopManagedCity(ctx, mc, nameDriftPaths[i], stderr)
+		_ = stopManagedCity(mc, nameDriftPaths[i], stderr)
 	}
 
 	// Start new cities (and name-drifted restarts). Selection marks each
@@ -1851,7 +1854,7 @@ func reconcileCities(
 	// starting.
 	toStart := selectCitiesToStart(cr, desired, supervisorBootPriority())
 	skipped := startCityWorkers(ctx, toStart, supervisorBootConcurrency(), stderr, func(entry supervisor.CityEntry) {
-		startOneCity(ctx, entry, reg, cr, publication, stdout, stderr)
+		startOneCity(entry, reg, cr, publication, stdout, stderr)
 	})
 	// A city dropped for shutdown never ran, so it never cleared the marker
 	// selectCitiesToStart gave it. Releasing it here is what lets the next
@@ -1877,7 +1880,6 @@ func reconcileCities(
 // leaked entry wedges the city out of the reconcile loop for the life of the
 // process, with no backoff and no retry.
 func startOneCity(
-	ctx context.Context,
 	entry supervisor.CityEntry,
 	reg *supervisor.Registry,
 	cr *cityRegistry,
@@ -1886,11 +1888,6 @@ func startOneCity(
 ) {
 	path := entry.Path
 	name := entry.EffectiveName()
-	if ctx == nil {
-		releaseQueuedCityStart(cr, path)
-		fmt.Fprintf(stderr, "gc supervisor: city '%s': start failed: nil context\n", name) //nolint:errcheck // best-effort stderr
-		return
-	}
 
 	// Release this city's initStatus entry however this attempt ends. The three
 	// branches below that return before the config load — crash-loop backoff, an
@@ -1918,9 +1915,6 @@ func startOneCity(
 		return skip
 	}()
 	if skipBackoff {
-		return
-	}
-	if ctx.Err() != nil {
 		return
 	}
 
@@ -1962,9 +1956,6 @@ func startOneCity(
 		}
 		return
 	}
-	if ctx.Err() != nil {
-		return
-	}
 
 	// Init failure backoff: skip cities whose init failed recently,
 	// unless the config file has been modified (user may have fixed it).
@@ -1998,9 +1989,6 @@ func startOneCity(
 		) {
 			delete(initFailures, path)
 		})
-	}
-	if ctx.Err() != nil {
-		return
 	}
 
 	// recordInitFailure logs the error, ends the attempt, and records
@@ -2057,9 +2045,6 @@ func startOneCity(
 		recordInitFailure(name, fmt.Sprintf("fetching packs: %v", err))
 		return
 	}
-	if ctx.Err() != nil {
-		return
-	}
 
 	// Load city config with provenance so WatchTargets covers included files.
 	// System packs are appended as extra includes for normal pack expansion.
@@ -2067,9 +2052,6 @@ func startOneCity(
 	if loadErr != nil {
 		emitPendingCityCreateFailure(cr, path, name, "city_config_failed", loadErr, stderr)
 		recordInitFailure(name, loadErr.Error())
-		return
-	}
-	if ctx.Err() != nil {
 		return
 	}
 	emitSupervisorLoadCityConfigWarnings(stderr, path, prov)
@@ -2094,7 +2076,7 @@ func startOneCity(
 	})
 
 	// Run critical city initialization (same steps as cmd_start.go).
-	if err := prepareCityForSupervisor(ctx, path, cityName, cfg, stderr, func(status string) {
+	if err := prepareCityForSupervisor(path, cityName, cfg, stderr, func(status string) {
 		cr.BatchUpdate(func(
 			_ map[string]*managedCity,
 			initStatus map[string]cityInitProgress,
@@ -2110,9 +2092,6 @@ func startOneCity(
 	}
 
 	runPostPrepareStep := func(status string, fn func() error) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
 		cr.BatchUpdate(func(
 			_ map[string]*managedCity,
 			initStatus map[string]cityInitProgress,
@@ -2126,13 +2105,7 @@ func startOneCity(
 		if dur := supervisorBootStepNow().Sub(started); dur > supervisorBootStepReportThreshold {
 			fmt.Fprintf(stderr, "gc supervisor: city '%s': %s took %s\n", cityName, status, dur.Round(10*time.Millisecond)) //nolint:errcheck
 		}
-		if err != nil {
-			return err
-		}
-		return ctx.Err()
-	}
-	startCanceled := func(err error) bool {
-		return ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+		return err
 	}
 
 	// Warn if city has its own API port.
@@ -2144,9 +2117,9 @@ func startOneCity(
 	var sp runtime.Provider
 	spErr := runPostPrepareStep("creating_session_provider", func() error {
 		providerName := effectiveProviderName(cfg.Session.Provider)
-		providerCtx := sessionProviderContextForCity(cfg, path, providerName)
-		snapshot := loadProviderSessionSnapshot(ctx, providerCtx)
-		resolvedSP, err := newSessionProviderFromContext(providerCtx, snapshot)
+		ctx := sessionProviderContextForCity(cfg, path, providerName)
+		snapshot := loadProviderSessionSnapshot(ctx)
+		resolvedSP, err := newSessionProviderFromContext(ctx, snapshot)
 		if err != nil {
 			return err
 		}
@@ -2154,9 +2127,6 @@ func startOneCity(
 		return nil
 	})
 	if spErr != nil {
-		if startCanceled(spErr) {
-			return
-		}
 		emitPendingCityCreateFailure(cr, path, cityName, "session_provider_failed", spErr, stderr)
 		recordInitFailure(cityName, fmt.Sprintf("session provider: %v", spErr))
 		return
@@ -2166,9 +2136,6 @@ func startOneCity(
 	if err := runPostPrepareStep("checking_agent_images", func() error {
 		return checkAgentImages(sp, cfg.Agents, stderr)
 	}); err != nil {
-		if startCanceled(err) {
-			return
-		}
 		emitPendingCityCreateFailure(cr, path, cityName, "agent_image_check_failed", err, stderr)
 		recordInitFailure(cityName, err.Error())
 		return
@@ -2184,15 +2151,15 @@ func startOneCity(
 	}
 
 	dops := newDrainOps(sp)
-	cityCtx, cityCancel := context.WithCancel(ctx)
 	poolSessions := computePoolSessions(cfg, cityName, path, sp)
-	poolDeathHandlers := computePoolDeathHandlers(cityCtx, cfg, cityName, path, sp, stderr)
+	poolDeathHandlers := computePoolDeathHandlers(cfg, cityName, path, sp, stderr)
 	watchTargets := config.WatchTargets(prov, cfg, path)
 	configRev := config.Revision(fsys.OSFS{}, prov, cfg, path)
 	pokeCh := make(chan struct{}, 1)
 	configDirty := &atomic.Bool{}
 	forceShutdown := &atomic.Bool{}
 	reloadReqCh := make(chan reloadRequest)
+	cityCtx, cityCancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	mc := &managedCity{name: cityName, cancel: cityCancel, done: done, closer: fr}
 
@@ -2210,7 +2177,6 @@ func startOneCity(
 			ConfigRev:               configRev,
 			ConfigDirty:             configDirty,
 			Cfg:                     cfg,
-			Ctx:                     cityCtx,
 			SP:                      sp,
 			Publication:             publication,
 			BuildFn:                 supervisorBuildAgentsFn(path, cityName, stderr),
@@ -2242,13 +2208,6 @@ func startOneCity(
 		})
 		return runtimeErr
 	}); err != nil {
-		if startCanceled(err) {
-			cityCancel()
-			if fr != nil {
-				fr.Close() //nolint:errcheck
-			}
-			return
-		}
 		emitPendingCityCreateFailure(cr, path, cityName, "city_runtime_failed", err, stderr)
 		recordInitFailure(cityName, fmt.Sprintf("city runtime: %v", err))
 		return
@@ -2261,14 +2220,6 @@ func startOneCity(
 		cs = newControllerStateWithRoutes(cityCtx, cityRuntime.storageRoutes, cfg, sp, eventProv, cityName, path)
 		return nil
 	}); err != nil {
-		if startCanceled(err) {
-			cityCancel()
-			cityRuntime.shutdown()
-			if fr != nil {
-				fr.Close() //nolint:errcheck
-			}
-			return
-		}
 		// The runtime is already built, and it holds this city's storage
 		// binding, its trace file and its workspace services. Abandoning it
 		// here would leave the engine open for the life of the supervisor —
@@ -2304,28 +2255,12 @@ func startOneCity(
 		}
 		return nil
 	})
-	if ctx.Err() != nil {
-		cityCancel()
-		cityRuntime.shutdown()
-		if fr != nil {
-			fr.Close() //nolint:errcheck
-		}
-		return
-	}
 
 	_ = runPostPrepareStep("starting_bead_event_watcher", func() error {
 		cs.startBeadEventWatcher(cityCtx)
 		cs.startMaintenanceLoop(cityCtx)
 		return nil
 	})
-	if ctx.Err() != nil {
-		cityCancel()
-		cityRuntime.shutdown()
-		if fr != nil {
-			fr.Close() //nolint:errcheck
-		}
-		return
-	}
 
 	// G13 §6 sweep-before-serve: reconcile this city's orphan in_flight
 	// rig-create idem records before it is published into the registry (and
@@ -2337,28 +2272,12 @@ func startOneCity(
 		}
 		return nil
 	})
-	if ctx.Err() != nil {
-		cityCancel()
-		cityRuntime.shutdown()
-		if fr != nil {
-			fr.Close() //nolint:errcheck
-		}
-		return
-	}
 
 	// Run pool on_boot hooks (same as runController does).
 	if err := runPostPrepareStep("running_pool_on_boot", func() error {
-		runPoolOnBoot(cityCtx, cfg, path, shellRunHook, stderr)
+		runPoolOnBoot(cfg, path, shellRunHook, stderr)
 		return nil
 	}); err != nil {
-		if startCanceled(err) {
-			cityCancel()
-			cityRuntime.shutdown()
-			if fr != nil {
-				fr.Close() //nolint:errcheck
-			}
-			return
-		}
 		// Same as the controller-state branch above: the runtime is built,
 		// so it is shut down rather than abandoned with its storage binding
 		// still open.
@@ -2369,14 +2288,6 @@ func startOneCity(
 		}
 		emitPendingCityCreateFailure(cr, path, cityName, "pool_on_boot_failed", err, stderr)
 		recordInitFailure(cityName, fmt.Sprintf("pool on_boot: %v", err))
-		return
-	}
-	if ctx.Err() != nil {
-		cityCancel()
-		cityRuntime.shutdown()
-		if fr != nil {
-			fr.Close() //nolint:errcheck
-		}
 		return
 	}
 
@@ -2548,7 +2459,7 @@ func startOneCity(
 					defer func() { recover() }() //nolint:errcheck
 					cityRuntime.shutdown()
 				}()
-				if err := shutdownBeadsProvider(context.Background(), p); err != nil {
+				if err := shutdownBeadsProvider(p); err != nil {
 					fmt.Fprintf(stderr, "gc supervisor: city '%s': bead store: %v\n", n, err) //nolint:errcheck
 				}
 				// Close the file recorder (only on panic — normal exit
@@ -2732,7 +2643,7 @@ func loadSupervisorCityConfig(cityPath string) (*config.City, *config.Provenance
 // prepareCityForSupervisor runs the critical city initialization steps
 // that cmd_start.go performs before runController. Without these, cities
 // would have no formulas, no bead stores, and no resolved rig paths.
-func prepareCityForSupervisor(ctx context.Context, cityPath, cityName string, cfg *config.City, stderr io.Writer, progress func(string)) error {
+func prepareCityForSupervisor(cityPath, cityName string, cfg *config.City, stderr io.Writer, progress func(string)) error {
 	runStep := func(status string, fn func() error) error {
 		if progress != nil && status != "" {
 			progress(status)
@@ -2774,14 +2685,14 @@ func prepareCityForSupervisor(ctx context.Context, cityPath, cityName string, cf
 	// Resolve rig paths and start bead store lifecycle.
 	resolveRigPaths(cityPath, cfg.Rigs)
 	if err := runStep("starting_bead_store", func() error {
-		return startBeadsLifecycle(ctx, cityPath, cityName, cfg, stderr)
+		return startBeadsLifecycle(cityPath, cityName, cfg, stderr)
 	}); err != nil {
 		return fmt.Errorf("beads lifecycle: %w", err)
 	}
 
 	// Post-startup bead provider health check.
 	if err := runStep("checking_bead_store_health", func() error {
-		return healthBeadsProvider(ctx, cityPath)
+		return healthBeadsProvider(cityPath)
 	}); err != nil {
 		fmt.Fprintf(stderr, "gc supervisor: city '%s': beads health: %v\n", cityName, err) //nolint:errcheck
 		// Non-fatal.
@@ -2888,18 +2799,17 @@ func effectiveProviderName(configured string) string {
 
 // supervisorBuildAgentsFn returns a buildFn suitable for CityRuntimeParams.
 // It delegates to buildDesiredState with a stable beacon timestamp.
-func supervisorBuildAgentsFn(cityPath, cityName string, stderr io.Writer) func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+func supervisorBuildAgentsFn(cityPath, cityName string, stderr io.Writer) func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 	beaconTime := time.Now()
-	return func(ctx context.Context, c *config.City, sp runtime.Provider, store beads.Store) DesiredStateResult {
-		return buildDesiredState(ctx, cityName, cityPath, beaconTime, c, sp, store, stderr)
+	return func(c *config.City, sp runtime.Provider, store beads.Store) DesiredStateResult {
+		return buildDesiredState(cityName, cityPath, beaconTime, c, sp, store, stderr)
 	}
 }
 
-func supervisorBuildAgentsFnWithSessionBeads(cityPath, cityName string, stderr io.Writer) func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+func supervisorBuildAgentsFnWithSessionBeads(cityPath, cityName string, stderr io.Writer) func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 	beaconTime := time.Now()
-	return func(ctx context.Context, c *config.City, sp runtime.Provider, store beads.Store, rigStores map[string]beads.Store, sessionBeads *sessionBeadSnapshot, trace *sessionReconcilerTraceCycle) DesiredStateResult {
+	return func(c *config.City, sp runtime.Provider, store beads.Store, rigStores map[string]beads.Store, sessionBeads *sessionBeadSnapshot, trace *sessionReconcilerTraceCycle) DesiredStateResult {
 		return buildDesiredStateWithSessionBeadsAt(
-			ctx,
 			cityName,
 			cityPath,
 			beaconTime,

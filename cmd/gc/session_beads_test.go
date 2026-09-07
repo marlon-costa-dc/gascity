@@ -553,7 +553,7 @@ mode = "always"
 	store := beads.NewMemStore()
 	sp := runtime.NewFake()
 	clk := &clock.Fake{Time: time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)}
-	ds := buildDesiredState(context.Background(), cfg.EffectiveCityName(), cityPath, clk.Now(), cfg, sp, store, io.Discard).State
+	ds := buildDesiredState(cfg.EffectiveCityName(), cityPath, clk.Now(), cfg, sp, store, io.Discard).State
 
 	var stderr bytes.Buffer
 	syncSessionBeads(cityPath, store, ds, sp, allConfiguredDS(ds), cfg, clk, &stderr, false)
@@ -721,6 +721,7 @@ func TestSyncSessionBeads_StampsProviderFamilyMetadata(t *testing.T) {
 			Command:      "claude",
 			ResolvedProvider: &config.ResolvedProvider{
 				Name:            "claude-max",
+				Kind:            "claude",
 				BuiltinAncestor: "claude",
 			},
 		},
@@ -772,6 +773,7 @@ func TestSyncSessionBeads_BackfillsProviderFamilyMetadata(t *testing.T) {
 			Command:      "claude",
 			ResolvedProvider: &config.ResolvedProvider{
 				Name:            "claude-max",
+				Kind:            "claude",
 				BuiltinAncestor: "claude",
 			},
 		},
@@ -1909,7 +1911,7 @@ func TestSyncSessionBeads_UpdatesNamedModeForWizardMayor(t *testing.T) {
 	sp := runtime.NewFake()
 	cfg := config.WizardCity("test-city", "", "true")
 
-	initial := buildDesiredState(context.Background(), "test-city", cityPath, clk.Now(), &cfg, sp, store, io.Discard)
+	initial := buildDesiredState("test-city", cityPath, clk.Now(), &cfg, sp, store, io.Discard)
 	if len(initial.State) == 0 {
 		t.Fatal("initial desired state is empty, want canonical mayor session")
 	}
@@ -1929,7 +1931,7 @@ func TestSyncSessionBeads_UpdatesNamedModeForWizardMayor(t *testing.T) {
 	}
 
 	cfg.NamedSessions[0].Mode = "on_demand"
-	updated := buildDesiredState(context.Background(), "test-city", cityPath, clk.Now(), &cfg, sp, store, io.Discard)
+	updated := buildDesiredState("test-city", cityPath, clk.Now(), &cfg, sp, store, io.Discard)
 	if len(updated.State) == 0 {
 		t.Fatal("updated desired state is empty, want canonical mayor session")
 	}
@@ -2806,7 +2808,7 @@ func TestSyncSessionBeads_KeepsDiscoveredPlainTemplateSessionOpen(t *testing.T) 
 		t.Fatalf("creating plain template bead: %v", err)
 	}
 
-	bp := newAgentBuildParams(context.Background(), "test", t.TempDir(), cfg, sp, clk.Now(), store, io.Discard)
+	bp := newAgentBuildParams("test", t.TempDir(), cfg, sp, clk.Now(), store, io.Discard)
 	desired := make(map[string]TemplateParams)
 	discoverSessionBeads(bp, cfg, desired, io.Discard)
 	if _, ok := desired["s-gc-plain"]; !ok {
@@ -2860,7 +2862,7 @@ func TestSyncSessionBeads_PreservesManualSessionExplicitAlias(t *testing.T) {
 		t.Fatalf("creating manual helper bead: %v", err)
 	}
 
-	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, sp, clk.Now(), store, io.Discard)
+	bp := newAgentBuildParams("test-city", cityPath, cfg, sp, clk.Now(), store, io.Discard)
 	desired := make(map[string]TemplateParams)
 	discoverSessionBeads(bp, cfg, desired, io.Discard)
 

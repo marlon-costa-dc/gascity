@@ -1,10 +1,10 @@
 package main
 
 import (
-	"context"
 	"net"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // stubManagedDoltInitWait replaces the injectable functions used by
@@ -43,7 +43,7 @@ func (s *stubManagedDoltInitWait) install(t *testing.T) {
 func TestWaitForManagedDoltInitReady_NonManaged(t *testing.T) {
 	stub := &stubManagedDoltInitWait{isManaged: false}
 	stub.install(t)
-	if err := waitForManagedDoltInitReady(context.Background(), "any"); err != nil {
+	if err := waitForManagedDoltInitReady("any", 5*time.Second); err != nil {
 		t.Errorf("non-managed: want nil, got %v", err)
 	}
 }
@@ -58,14 +58,13 @@ func TestWaitForManagedDoltInitReady_FastReady(t *testing.T) {
 		pidAlive:  true,
 	}
 	stub.install(t)
-	if err := waitForManagedDoltInitReady(context.Background(), "any"); err != nil {
+	if err := waitForManagedDoltInitReady("any", 5*time.Second); err != nil {
 		t.Errorf("fast ready: want nil, got %v", err)
 	}
 }
 
-// Criterion: missing state returns immediately; callers retry by reinvoking the
-// owner, not inside this helper.
-func TestWaitForManagedDoltInitReady_MissingStateReturnsFirstFailure(t *testing.T) {
+// Criterion: delayed ready — state/TCP not available at first, then appears.
+func TestWaitForManagedDoltInitReady_DelayedReady(t *testing.T) {
 	var calls atomic.Int32
 	prevIsManaged := managedDoltInitWaitIsManaged
 	prevReadState := managedDoltInitWaitReadState
@@ -80,25 +79,26 @@ func TestWaitForManagedDoltInitReady_MissingStateReturnsFirstFailure(t *testing.
 	managedDoltInitWaitIsManaged = func(_ string) bool { return true }
 	managedDoltInitWaitPidAlive = func(_ int) bool { return true }
 	managedDoltInitWaitReadState = func(_ string) (doltRuntimeState, bool) {
-		calls.Add(1)
-		return doltRuntimeState{}, false
+		n := calls.Add(1)
+		if n < 3 {
+			return doltRuntimeState{}, false // state not ready yet
+		}
+		return doltRuntimeState{PID: 123, Port: 28231}, true
 	}
 	managedDoltInitWaitReachable = func(_, _ string) bool {
-		t.Fatal("reachable probe ran without published state")
-		return false
+		return calls.Load() >= 3
 	}
 
-	err := waitForManagedDoltInitReady(context.Background(), "any")
-	if err == nil {
-		t.Fatal("missing state error = nil")
+	if err := waitForManagedDoltInitReady("any", 2*time.Second); err != nil {
+		t.Errorf("delayed ready: want nil, got %v", err)
 	}
-	if n := calls.Load(); n != 1 {
-		t.Errorf("state read calls = %d, want 1", n)
+	if n := calls.Load(); n < 3 {
+		t.Errorf("expected at least 3 poll calls before ready, got %d", n)
 	}
 }
 
-// Criterion: missing port (state not published) — return the first failure.
-func TestWaitForManagedDoltInitReady_MissingState(t *testing.T) {
+// Criterion: missing port (state never published within timeout) — return error.
+func TestWaitForManagedDoltInitReady_MissingState_Timeout(t *testing.T) {
 	stub := &stubManagedDoltInitWait{
 		isManaged: true,
 		stateOK:   false, // port never published
@@ -107,9 +107,15 @@ func TestWaitForManagedDoltInitReady_MissingState(t *testing.T) {
 	}
 	stub.install(t)
 
-	err := waitForManagedDoltInitReady(context.Background(), "any")
+	start := time.Now()
+	err := waitForManagedDoltInitReady("any", 80*time.Millisecond)
+	elapsed := time.Since(start)
 	if err == nil {
 		t.Error("expected error when state never published, got nil")
+	}
+	// Must have waited at least most of the timeout.
+	if elapsed < 50*time.Millisecond {
+		t.Errorf("returned too fast: %v (want ≥50ms)", elapsed)
 	}
 }
 
@@ -124,14 +130,20 @@ func TestWaitForManagedDoltInitReady_ProcessExits(t *testing.T) {
 	}
 	stub.install(t)
 
-	err := waitForManagedDoltInitReady(context.Background(), "any")
+	start := time.Now()
+	err := waitForManagedDoltInitReady("any", 5*time.Second)
+	elapsed := time.Since(start)
 	if err == nil {
 		t.Error("expected error when process exits, got nil")
 	}
+	// Should return quickly, not wait the full 5s.
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("process-exit detection too slow: %v (want <500ms)", elapsed)
+	}
 }
 
-// Criterion: port published and process alive but TCP not ready — return the first failure.
-func TestWaitForManagedDoltInitReady_TCPNotReady(t *testing.T) {
+// Criterion: timeout cleanup — port published and process alive but TCP never ready.
+func TestWaitForManagedDoltInitReady_Timeout(t *testing.T) {
 	stub := &stubManagedDoltInitWait{
 		isManaged: true,
 		state:     doltRuntimeState{PID: 123, Port: 28231},
@@ -141,9 +153,14 @@ func TestWaitForManagedDoltInitReady_TCPNotReady(t *testing.T) {
 	}
 	stub.install(t)
 
-	err := waitForManagedDoltInitReady(context.Background(), "any")
+	start := time.Now()
+	err := waitForManagedDoltInitReady("any", 80*time.Millisecond)
+	elapsed := time.Since(start)
 	if err == nil {
-		t.Error("expected TCP readiness error, got nil")
+		t.Error("expected timeout error, got nil")
+	}
+	if elapsed < 50*time.Millisecond {
+		t.Errorf("returned too fast: %v (want ≥50ms block)", elapsed)
 	}
 }
 

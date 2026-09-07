@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -93,7 +92,7 @@ func gcExecStoreEnv(cityPath string, target execStoreTarget, provider string) ma
 	return env
 }
 
-func gcExecLifecycleInitProcessEnv(ctx context.Context, cityPath string, target execStoreTarget, provider string) ([]string, error) {
+func gcExecLifecycleInitProcessEnv(cityPath string, target execStoreTarget, provider string) ([]string, error) {
 	env := gcExecStoreEnv(cityPath, target, provider)
 	if !execProviderNeedsScopedDoltInit(provider) {
 		return mergeRuntimeEnv(os.Environ(), env), nil
@@ -103,13 +102,13 @@ func gcExecLifecycleInitProcessEnv(ctx context.Context, cityPath string, target 
 		if err != nil {
 			return nil, err
 		}
-		projected, err := bdRuntimeEnvForRigWithError(ctx, cityPath, cfg, target.ScopeRoot)
+		projected, err := bdRuntimeEnvForRigWithError(cityPath, cfg, target.ScopeRoot)
 		if err != nil {
 			return nil, err
 		}
 		copyExecProjectedBackendEnv(env, projected)
 	} else {
-		projected, err := bdRuntimeEnvWithError(ctx, cityPath)
+		projected, err := bdRuntimeEnvWithError(cityPath)
 		if err != nil {
 			return nil, err
 		}

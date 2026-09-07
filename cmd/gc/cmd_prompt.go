@@ -329,7 +329,7 @@ func resolveCityForSynth(override string) (string, error) {
 // so tests can swap real bead-store / sling-subprocess interactions for
 // fakes without spinning up a city.
 type slinguedSynthDeps struct {
-	storeOpener func(context.Context, string) (beads.Store, error)
+	storeOpener func(cityPath string) (beads.Store, error)
 	slingCaller func(ctx context.Context, args []string) error
 	now         func() time.Time
 	waitTick    time.Duration
@@ -403,7 +403,7 @@ func runSlinguedSynthWithDeps(ctx context.Context, opts promptSynthOpts, cfg *co
 		return fmt.Errorf("write staged meta-prompt: %w", err)
 	}
 
-	store, err := deps.storeOpener(ctx, cityPath)
+	store, err := deps.storeOpener(cityPath)
 	if err != nil {
 		return fmt.Errorf("open city bead store: %w", err)
 	}

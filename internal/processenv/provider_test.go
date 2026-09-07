@@ -39,7 +39,7 @@ func TestIsProviderCredentialEnvRejectsNearMisses(t *testing.T) {
 	}
 }
 
-func TestProviderProcessPassthroughEnvExcludesProviderCredentials(t *testing.T) {
+func TestProviderProcessPassthroughEnvIncludesProviderAndRuntimeBaseline(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("PATH", "/usr/local/bin:/usr/bin:/bin")
@@ -68,6 +68,10 @@ func TestProviderProcessPassthroughEnvExcludesProviderCredentials(t *testing.T) 
 		"LC_CTYPE":               "",
 		"XDG_CONFIG_HOME":        filepath.Join(homeDir, ".config"),
 		"XDG_STATE_HOME":         filepath.Join(homeDir, ".local", "state"),
+		"ANTHROPIC_AUTH_TOKEN":   "test-anthropic-token",
+		"OLLAMA_API_KEY":         "test-ollama-token",
+		"XIAOMI_API_KEY":         "test-xiaomi-key",
+		"AWS_ACCESS_KEY_ID":      "test-aws-key",
 		"CLAUDECODE":             "",
 		"CLAUDE_CODE_ENTRYPOINT": "",
 		"CODEX_THREAD_ID":        "",
@@ -79,16 +83,6 @@ func TestProviderProcessPassthroughEnvExcludesProviderCredentials(t *testing.T) 
 	}
 	if _, ok := got["AWS_PAGER"]; ok {
 		t.Errorf("ProviderProcessPassthroughEnv()[AWS_PAGER] = %q, want absent", got["AWS_PAGER"])
-	}
-	for _, key := range []string{
-		"ANTHROPIC_AUTH_TOKEN",
-		"OLLAMA_API_KEY",
-		"XIAOMI_API_KEY",
-		"AWS_ACCESS_KEY_ID",
-	} {
-		if val, ok := got[key]; ok {
-			t.Errorf("ProviderProcessPassthroughEnv()[%s] = %q, want absent", key, val)
-		}
 	}
 }
 

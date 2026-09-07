@@ -275,7 +275,7 @@ func containsWakeReason(reasons []WakeReason, want WakeReason) bool {
 // real repo even when agent sessions use isolated work_dir sandboxes. Non-empty
 // output means work exists. Agents without a work_query produce no WakeWork
 // reason.
-func computeWorkSet(ctx context.Context, cfg *config.City, runner ScaleCheckRunner, cityName, cityDir string, store beads.Store, sessionBeads *sessionBeadSnapshot, stderr io.Writer) map[string]bool { //nolint:unparam // cityName varies at runtime; tests use a fixed value
+func computeWorkSet(cfg *config.City, runner ScaleCheckRunner, cityName, cityDir string, store beads.Store, sessionBeads *sessionBeadSnapshot, stderr io.Writer) map[string]bool { //nolint:unparam // cityName varies at runtime; tests use a fixed value
 	if cfg == nil || runner == nil {
 		return nil
 	}
@@ -313,7 +313,7 @@ func computeWorkSet(ctx context.Context, cfg *config.City, runner ScaleCheckRunn
 		if isAgentEffectivelySuspendedWith(cfg, cityDir, a, suspState) {
 			continue
 		}
-		probeEnv, err := controllerQueryRuntimeEnv(ctx, cityDir, cfg, a)
+		probeEnv, err := controllerQueryRuntimeEnv(cityDir, cfg, a)
 		if err != nil {
 			fmt.Fprintf(stderr, "session reconcile: building probe env for %s: %v\n", qn, err) //nolint:errcheck
 			continue

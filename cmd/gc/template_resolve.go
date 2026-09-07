@@ -16,7 +16,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -329,7 +328,7 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	if exe, err := os.Executable(); err == nil && exe != "" {
 		agentEnv["GC_BIN"] = exe
 	}
-	sessionBackendEnv, err := sessionBackendEnvWithError(p.ctx, p.cityPath, rigRoot, p.rigs)
+	sessionBackendEnv, err := sessionBackendEnvWithError(p.cityPath, rigRoot, p.rigs)
 	if err != nil {
 		return TemplateParams{}, fmt.Errorf("agent %q: building session backend env: %w", qualifiedName, err)
 	}
@@ -474,13 +473,7 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 	if p.workspace != nil {
 		workspaceEnv = p.workspace.Env
 	}
-	env := mergeEnv(
-		passthroughEnvForResolvedProvider(resolved),
-		expandEnvMapForResolvedProvider(workspaceEnv, resolved),
-		expandEnvMapForResolvedProvider(resolved.Env, resolved),
-		expandEnvMapForResolvedProvider(cfgAgent.Env, resolved),
-		agentEnv,
-	)
+	env := mergeEnv(passthroughEnv(), expandEnvMap(workspaceEnv), expandEnvMap(resolved.Env), expandEnvMap(cfgAgent.Env), agentEnv)
 	processenv.PrependGCBinDirToPATH(env, env["GC_BIN"])
 	env = convergence.ScrubTokenEnv(env)
 
@@ -529,20 +522,12 @@ func resolveTemplate(p *agentBuildParams, cfgAgent *config.Agent, qualifiedName 
 				if envName == "" {
 					return TemplateParams{}, fmt.Errorf("agent %q upstream %q sets %s, but its harness %q declares no upstream_env.%s binding (set %s_env on the upstream, or upstream_env.%s on the harness)", qualifiedName, upstreamName, r.field, resolvedProviderName(resolved), r.field, r.field, r.field)
 				}
-				expanded, err := expandUpstreamEnvValueForResolvedProvider(r.value, resolved)
-				if err != nil {
-					return TemplateParams{}, fmt.Errorf("agent %q upstream %q %s: %w", qualifiedName, upstreamName, r.field, err)
-				}
-				env[envName] = expanded
+				env[envName] = processenv.ExpandSessionEnvValue(r.value)
 			}
 		}
 		// Raw env is the harness-specific escape hatch, merged LAST (wins over the
 		// abstract render and ambient/agent env for the keys it sets).
-		upstreamEnv, err := expandUpstreamEnvMapForResolvedProvider(spec.Env, resolved)
-		if err != nil {
-			return TemplateParams{}, fmt.Errorf("agent %q upstream %q: %w", qualifiedName, upstreamName, err)
-		}
-		for k, v := range upstreamEnv {
+		for k, v := range expandEnvMap(spec.Env) {
 			env[k] = v
 		}
 	}
@@ -815,10 +800,7 @@ func suppressStartupPromptForAgent(cfgAgent *config.Agent) bool {
 	return config.IsDeterministicControlDispatcher(cfgAgent)
 }
 
-func sessionBackendEnvWithError(ctx context.Context, cityPath, rigRoot string, rigs []config.Rig) (map[string]string, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("session backend env: nil context")
-	}
+func sessionBackendEnvWithError(cityPath, rigRoot string, rigs []config.Rig) (map[string]string, error) {
 	env := map[string]string{
 		// Suppress bd's built-in Dolt auto-start. The gc controller manages
 		// the server; bd's CLI auto-start launches rogue servers from the
@@ -832,6 +814,9 @@ func sessionBackendEnvWithError(ctx context.Context, cityPath, rigRoot string, r
 	// the server environment when the current city/rig does not use them.
 	setProjectedDoltEnvEmpty(env)
 
+	// Session env projection must not trigger provider recovery. Session setup
+	// only publishes the currently resolved target; store operations use the
+	// bd runtime env when recovery is allowed.
 	if rigRoot == "" {
 		if cityUsesBdStoreContract(cityPath) {
 			if err := applyHostedBeadsCredentialEnv(env, cityPath); err != nil {
@@ -849,9 +834,11 @@ func sessionBackendEnvWithError(ctx context.Context, cityPath, rigRoot string, r
 				return env, nil
 			}
 		}
-		if err := applyResolvedCityDoltEnv(ctx, env, cityPath); err != nil {
+		if err := applyResolvedCityDoltEnv(env, cityPath, false); err != nil {
 			mirrorBeadsDoltEnv(env)
-			return env, err
+			if !isRecoverableManagedDoltEnvError(err) {
+				return env, err
+			}
 		}
 		return env, nil
 	}
@@ -861,9 +848,11 @@ func sessionBackendEnvWithError(ctx context.Context, cityPath, rigRoot string, r
 			return env, err
 		}
 	}
-	if err := applyResolvedRigDoltEnv(ctx, env, cityPath, rigRoot, rigConfigForScopeRoot(cityPath, rigRoot, rigs)); err != nil {
+	if err := applyResolvedRigDoltEnv(env, cityPath, rigRoot, rigConfigForScopeRoot(cityPath, rigRoot, rigs), false); err != nil {
 		mirrorBeadsDoltEnv(env)
-		return env, err
+		if !isRecoverableManagedDoltEnvError(err) {
+			return env, err
+		}
 	}
 	return env, nil
 }

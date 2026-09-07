@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/config"
 )
@@ -152,7 +152,7 @@ func TestLifecycleCoordination_InitRigAddStart(t *testing.T) {
 
 	// Phase 1: gc init — initDirIfReady for city root.
 	prefix := "tc"
-	deferred, err := initDirIfReady(context.Background(), cityPath, cityPath, prefix)
+	deferred, err := initDirIfReady(cityPath, cityPath, prefix)
 	if err != nil {
 		t.Fatalf("initDirIfReady (city): %v", err)
 	}
@@ -167,7 +167,7 @@ func TestLifecycleCoordination_InitRigAddStart(t *testing.T) {
 
 	// Phase 2: gc rig add — initDirIfReady for rig.
 	rigPrefix := "mr"
-	deferred, err = initDirIfReady(context.Background(), cityPath, rigPath, rigPrefix)
+	deferred, err = initDirIfReady(cityPath, rigPath, rigPrefix)
 	if err != nil {
 		t.Fatalf("initDirIfReady (rig): %v", err)
 	}
@@ -188,7 +188,7 @@ func TestLifecycleCoordination_InitRigAddStart(t *testing.T) {
 	cfg := testCityConfig(cityName, []config.Rig{
 		{Name: "myrig", Path: rigPath, Prefix: rigPrefix},
 	})
-	if err := startBeadsLifecycle(context.Background(), cityPath, cityName, cfg, io.Discard); err != nil {
+	if err := startBeadsLifecycle(cityPath, cityName, cfg, io.Discard); err != nil {
 		t.Fatalf("startBeadsLifecycle: %v", err)
 	}
 
@@ -224,7 +224,7 @@ func TestLifecycleCoordination_StartOrder(t *testing.T) {
 	cfg := testCityConfig(cityName, []config.Rig{
 		{Name: "myrig", Path: rigPath, Prefix: "mr"},
 	})
-	if err := startBeadsLifecycle(context.Background(), cityPath, cityName, cfg, io.Discard); err != nil {
+	if err := startBeadsLifecycle(cityPath, cityName, cfg, io.Discard); err != nil {
 		t.Fatalf("startBeadsLifecycle: %v", err)
 	}
 
@@ -257,7 +257,7 @@ func TestLifecycleCoordination_StopOrder(t *testing.T) {
 	script := writeSpyScript(t, logFile)
 	t.Setenv("GC_BEADS", "exec:"+script)
 
-	if err := shutdownBeadsProvider(context.Background(), cityPath); err != nil {
+	if err := shutdownBeadsProvider(cityPath); err != nil {
 		t.Fatalf("shutdownBeadsProvider: %v", err)
 	}
 
@@ -278,7 +278,7 @@ func TestLifecycleCoordination_InitDirIfReady_BdDeferred(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_DOLT", "skip")
 
-	deferred, err := initDirIfReady(context.Background(), dir, dir, "test")
+	deferred, err := initDirIfReady(dir, dir, "test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -332,12 +332,12 @@ func TestLifecycleCoordination_InitDirIfReadySkipsProviderForPostgresCityAndRig(
 	})
 
 	var ensureCalls int
-	initDirIfReadyEnsureBeadsProvider = func(context.Context, string) error {
+	initDirIfReadyEnsureBeadsProvider = func(string) error {
 		ensureCalls++
 		return fmt.Errorf("managed Dolt provider start should not run for postgres-backed scopes")
 	}
 
-	deferred, err := initDirIfReady(context.Background(), cityPath, cityPath, "gc")
+	deferred, err := initDirIfReady(cityPath, cityPath, "gc")
 	if err != nil {
 		t.Fatalf("initDirIfReady(city) error = %v, want nil", err)
 	}
@@ -346,7 +346,7 @@ func TestLifecycleCoordination_InitDirIfReadySkipsProviderForPostgresCityAndRig(
 	}
 	assertHooksAbsent(t, cityPath, "after postgres city init")
 
-	deferred, err = initDirIfReady(context.Background(), cityPath, rigPath, "pg")
+	deferred, err = initDirIfReady(cityPath, rigPath, "pg")
 	if err != nil {
 		t.Fatalf("initDirIfReady(rig) error = %v, want nil", err)
 	}
@@ -378,21 +378,21 @@ func TestLifecycleCoordination_InitDirIfReady_PropagatesManagedDoltInitFailure(t
 	})
 
 	// Bypass the pre-flight wait; we're testing initAndHookDir error propagation.
-	initDirIfReadyWaitForManagedDolt = func(context.Context, string) error { return nil }
+	initDirIfReadyWaitForManagedDolt = func(_ string, _ time.Duration) error { return nil }
 
 	var ensureCalls int
-	initDirIfReadyEnsureBeadsProvider = func(context.Context, string) error {
+	initDirIfReadyEnsureBeadsProvider = func(_ string) error {
 		ensureCalls++
 		return nil
 	}
 
 	var initCalls int
-	initDirIfReadyInitAndHookDir = func(context.Context, string, string, string) error {
+	initDirIfReadyInitAndHookDir = func(_, _, _ string) error {
 		initCalls++
 		return fmt.Errorf("exec beads init: signal: terminated")
 	}
 
-	deferred, err := initDirIfReady(context.Background(), dir, dir, "gc")
+	deferred, err := initDirIfReady(dir, dir, "gc")
 	if err == nil {
 		t.Fatal("initDirIfReady() error = nil, want propagated initAndHookDir failure")
 	}
@@ -425,16 +425,16 @@ func TestLifecycleCoordination_InitDirIfReady_PropagatesManagedDoltSchemaError(t
 	})
 
 	// Bypass the pre-flight wait; we're testing initAndHookDir error propagation.
-	initDirIfReadyWaitForManagedDolt = func(context.Context, string) error { return nil }
-	initDirIfReadyEnsureBeadsProvider = func(context.Context, string) error { return nil }
+	initDirIfReadyWaitForManagedDolt = func(_ string, _ time.Duration) error { return nil }
+	initDirIfReadyEnsureBeadsProvider = func(_ string) error { return nil }
 
 	var initCalls int
-	initDirIfReadyInitAndHookDir = func(context.Context, string, string, string) error {
+	initDirIfReadyInitAndHookDir = func(_, _, _ string) error {
 		initCalls++
 		return fmt.Errorf("bd list: exit status 1: table not found: issues")
 	}
 
-	deferred, err := initDirIfReady(context.Background(), dir, dir, "gc")
+	deferred, err := initDirIfReady(dir, dir, "gc")
 	if err == nil {
 		t.Fatal("initDirIfReady() error = nil, want propagated schema error")
 	}
@@ -466,18 +466,18 @@ func TestLifecycleCoordination_InitDirIfReady_DoesNotRetryNonManagedProviderFail
 	})
 
 	var ensureCalls int
-	initDirIfReadyEnsureBeadsProvider = func(context.Context, string) error {
+	initDirIfReadyEnsureBeadsProvider = func(_ string) error {
 		ensureCalls++
 		return nil
 	}
 
 	var initCalls int
-	initDirIfReadyInitAndHookDir = func(context.Context, string, string, string) error {
+	initDirIfReadyInitAndHookDir = func(_, _, _ string) error {
 		initCalls++
 		return fmt.Errorf("exec beads init: signal: terminated")
 	}
 
-	deferred, err := initDirIfReady(context.Background(), dir, dir, "gc")
+	deferred, err := initDirIfReady(dir, dir, "gc")
 	if err == nil {
 		t.Fatal("initDirIfReady() error = nil, want non-managed provider failure")
 	}
@@ -507,7 +507,7 @@ func TestLifecycleCoordination_InitDirIfReady_BdDeferredPreservesExistingDoltDat
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_DOLT", "skip")
 
-	deferred, err := initDirIfReady(context.Background(), dir, dir, "gc")
+	deferred, err := initDirIfReady(dir, dir, "gc")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

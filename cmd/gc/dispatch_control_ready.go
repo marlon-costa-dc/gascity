@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -455,7 +454,7 @@ type controlReadyCacheEntry struct {
 // loop's typical call pattern is sequential-per-tick per dir. Note the entries
 // are keyed by scope dir, so on a split city every rig dispatcher primes the
 // shared city binding independently (ga-n6gnr).
-func controlReadyCachesFor(ctx context.Context, dir, cityPath string, cfg *config.City) []*beads.CachingStore {
+func controlReadyCachesFor(dir, cityPath string, cfg *config.City) []*beads.CachingStore {
 	controlReadyCacheRegistry.mu.Lock()
 	entry, ok := controlReadyCacheRegistry.byDir[dir]
 	fresh := ok && time.Since(entry.primedAt) < controlReadyCacheTTL
@@ -464,18 +463,14 @@ func controlReadyCachesFor(ctx context.Context, dir, cityPath string, cfg *confi
 		return entry.caches
 	}
 
-	sources, err := controlReadyCacheSources(ctx, dir, cityPath, cfg)
+	sources, err := controlReadyCacheSources(dir, cityPath, cfg)
 	if err != nil {
 		return nil
 	}
 	caches := make([]*beads.CachingStore, 0, len(sources))
 	for _, source := range sources {
-		if err := ctx.Err(); err != nil {
-			log.Printf("control-ready cache: pre-prime canceled for %s: %v", dir, err)
-			return nil
-		}
 		cs := beads.NewCachingStore(source, nil)
-		if err := cs.PrimeActive(ctx); err != nil {
+		if err := cs.PrimeActive(); err != nil {
 			log.Printf("control-ready cache: pre-prime failed for %s: %v (falling back to a live bd query)", dir, err)
 			return nil
 		}
@@ -491,13 +486,13 @@ func controlReadyCachesFor(ctx context.Context, dir, cityPath string, cfg *confi
 // controlReadyCacheSources returns the ordered ledgers to snapshot, applying the
 // same routing rule as controlReadyFallbackReady so the cached answer and the
 // fallback answer cannot disagree about which stores hold this scope's queue.
-func controlReadyCacheSources(ctx context.Context, dir, cityPath string, cfg *config.City) ([]beads.Store, error) {
+func controlReadyCacheSources(dir, cityPath string, cfg *config.City) ([]beads.Store, error) {
 	// A relocated CITY scope does not open its scope store at all — that would
 	// be a bd process this scan never reads.
 	if binding, relocated := controlGraphBinding(cityPath, dir); relocated {
 		return []beads.Store{binding}, nil
 	}
-	scoped, err := openControlStoreAtForCity(ctx, dir, cityPath, cfg)
+	scoped, err := openControlStoreAtForCity(dir, cityPath, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -537,7 +532,7 @@ func cachedControlReadyUnion(caches []*beads.CachingStore) ([]beads.Bead, bool) 
 // control-dispatcher readiness, not the decision logic (ga-ak6rt1): candidate
 // precedence, legacy/bare route aliasing, and the instantiating-metadata
 // dedup filter are reproduced exactly by evaluateControlReady.
-func tryControlReadyFromCacheOrFallback(ctx context.Context, workQuery, dir string, env map[string]string) (queue []hookBead, handled bool, err error) {
+func tryControlReadyFromCacheOrFallback(workQuery, dir string, env map[string]string) (queue []hookBead, handled bool, err error) {
 	parsed, ok := parseControlReadyQuery(workQuery)
 	if !ok {
 		return nil, false, nil
@@ -548,7 +543,7 @@ func tryControlReadyFromCacheOrFallback(ctx context.Context, workQuery, dir stri
 	envList := mergeRuntimeEnv(os.Environ(), env)
 
 	if !parsed.includeEphemeral {
-		if caches := controlReadyCachesFor(ctx, dir, cityPath, cfg); len(caches) > 0 {
+		if caches := controlReadyCachesFor(dir, cityPath, cfg); len(caches) > 0 {
 			if ready, ok := cachedControlReadyUnion(caches); ok {
 				return beadsToHookBeads(evaluateControlReady(ready, parsed, envList)), true, nil
 			}
