@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"go/ast"
 	"os"
@@ -142,9 +141,9 @@ func testUnregisteredBackendScopeProjectsNoBackendEnv(t *testing.T) {
 		t.Fatalf("write config.yaml: %v", err)
 	}
 
-	env, err := bdRuntimeEnvWithError(context.Background(), cityPath)
+	env, err := bdRuntimeEnvWithErrorNoRecovery(cityPath)
 	if err == nil {
-		t.Fatal("bdRuntimeEnvWithError accepted a scope whose backend this build does not register")
+		t.Fatal("bdRuntimeEnvWithErrorNoRecovery accepted a scope whose backend this build does not register")
 	}
 	registered, regErr := contract.RegisteredBackends()
 	if regErr != nil {

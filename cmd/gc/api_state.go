@@ -146,11 +146,11 @@ var controllerStateInitRigDirIfReady = initDirIfReady
 
 var beadEventWatcherRetryDelay = time.Second
 
-// newControllerStateOpenCityStoreContext opens the city-level bead store for
+// newControllerStateOpenCityStore opens the city-level bead store for
 // newControllerState. Test code can swap this to return an in-memory store
 // and skip spawning managed dolt (~12s per call).
-var newControllerStateOpenCityStoreContext = func(ctx context.Context, cityPath string, mode gate.Mode) (beads.StoreOpenResult, error) {
-	return openStoreResultAtForCityWithMode(ctx, cityPath, cityPath, mode, true)
+var newControllerStateOpenCityStore = func(cityPath string, mode gate.Mode) (beads.StoreOpenResult, error) {
+	return openStoreResultAtForCityWithMode(cityPath, cityPath, mode, true)
 }
 
 // controllerStateOpenRigStoreAtForCity routes controller rig stores through
@@ -204,6 +204,9 @@ func newControllerStateWithRoutes(
 	ep events.Provider,
 	cityName, cityPath string,
 ) *controllerState {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	tomlPath := filepath.Join(cityPath, "city.toml")
 	var beadEventStartSeq uint64
 	var beadEventStartSeqOK bool
@@ -245,13 +248,13 @@ func newControllerStateWithRoutes(
 	for _, n := range cs.rolloutFlags.Notices() {
 		cs.rolloutWarnf("api: rollout: %s\n", n.Message)
 	}
-	cs.beadStores = cs.buildStores(ctx, cfg)
+	cs.beadStores = cs.buildStores(cfg)
 	// Capture the initial raw config snapshot so provenance reads before the
 	// first reload still use the gate's basis. nil is tolerated: RawConfig
 	// lazily retries on the first read.
 	cs.rawCfg = cs.loadRawSnapshot()
 	// Open city-level store for session beads and mail (best-effort).
-	if opened, err := newControllerStateOpenCityStoreContext(ctx, cityPath, cs.rolloutFlags.BeadsConditionalWrites()); err != nil {
+	if opened, err := newControllerStateOpenCityStore(cityPath, cs.rolloutFlags.BeadsConditionalWrites()); err != nil {
 		fmt.Fprintf(os.Stderr, "api: city bead store: %v (session/mail endpoints disabled)\n", err)
 	} else {
 		store := opened.Store
@@ -278,6 +281,9 @@ func wrapWithCachingStore(ctx context.Context, store beads.Store, ep events.Prov
 	if baseStore == nil {
 		return nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	var recorder events.Recorder
 	if ep != nil {
 		recorder = ep
@@ -301,7 +307,7 @@ func wrapWithCachingStore(ctx context.Context, store beads.Store, ep events.Prov
 	// Loads open + in_progress beads — enough for the startup path
 	// (adoption, session snapshot, desired state) so the city can
 	// reach "ready" without waiting for the full prime.
-	if err := cs.PrimeActive(ctx); err != nil {
+	if err := cs.PrimeActive(); err != nil {
 		log.Printf("caching-store: pre-prime failed: %v", err)
 	}
 	// No cancellable ctx, or caller opted out of background refresh (suspended
@@ -346,7 +352,7 @@ func primeThenStartReconciler(ctx context.Context, cs *beads.CachingStore, agent
 // Mail providers are NOT built here — all mail uses the city-level store.
 // Does not read or write mutable cs fields (safe to call unlocked); reads
 // the runtime suspension state file to gate per-rig cache refresh.
-func (cs *controllerState) buildStores(ctx context.Context, cfg *config.City) map[string]beads.Store {
+func (cs *controllerState) buildStores(cfg *config.City) map[string]beads.Store {
 	cityProvider := rawBeadsProviderForScope(cs.cityPath, cs.cityPath)
 	suspState := loadSuspensionStateBestEffort(cs.cityPath)
 	stores := make(map[string]beads.Store, len(cfg.Rigs))
@@ -357,7 +363,7 @@ func (cs *controllerState) buildStores(ctx context.Context, cfg *config.City) ma
 		// Through the factory so the shared legacy store carries the
 		// boot-latched conditional-writes stamp like every other store; a
 		// direct open here left legacy-file cities silently unfenced.
-		result, err := beads.OpenStoreAtForCity(ctx, beads.StoreOpenOptions{
+		result, err := beads.OpenStoreAtForCity(cs.cacheCtx, beads.StoreOpenOptions{
 			ScopeRoot:                   cs.cityPath,
 			CityPath:                    cs.cityPath,
 			Provider:                    "file",
@@ -390,13 +396,13 @@ func (cs *controllerState) buildStores(ctx context.Context, cfg *config.City) ma
 			// Legacy file mode aliases every rig to the same backing store, so
 			// the cache handle must be shared too for immediate cross-rig reads.
 			if sharedLegacyCachedStore == nil {
-				sharedLegacyCachedStore = wrapWithCachingStore(ctx, sharedLegacyFileStore, cs.eventProv, true)
+				sharedLegacyCachedStore = wrapWithCachingStore(cs.cacheCtx, sharedLegacyFileStore, cs.eventProv, true)
 			}
 			stores[rig.Name] = sharedLegacyCachedStore
 			continue
 		}
-		store = cs.openRigStore(ctx, scopeProvider, rig.Name, scopeRoot, rig.EffectivePrefix(), cfg)
-		stores[rig.Name] = wrapWithCachingStore(ctx, store, cs.eventProv, rigStoreBackgroundRefresh(suspState, rig))
+		store = cs.openRigStore(scopeProvider, rig.Name, scopeRoot, rig.EffectivePrefix(), cfg)
+		stores[rig.Name] = wrapWithCachingStore(cs.cacheCtx, store, cs.eventProv, rigStoreBackgroundRefresh(suspState, rig))
 	}
 	return stores
 }
@@ -417,7 +423,7 @@ func rigStoreBackgroundRefresh(suspState suspensionstate.State, rig config.Rig) 
 }
 
 // openRigStore creates a bead store for a rig path using the given provider.
-func (cs *controllerState) openRigStore(ctx context.Context, provider, rigName, rigPath, prefix string, cfg *config.City) beads.Store {
+func (cs *controllerState) openRigStore(provider, rigName, rigPath, prefix string, cfg *config.City) beads.Store {
 	scopeRoot := resolveStoreScopeRoot(cs.cityPath, rigPath)
 	openExecStore := func() (beads.Store, error) {
 		s := beadsexec.NewStore(strings.TrimPrefix(provider, "exec:"))
@@ -428,7 +434,7 @@ func (cs *controllerState) openRigStore(ctx context.Context, provider, rigName, 
 			RigName:   rigName,
 		}, provider)
 		if execProviderNeedsScopedDoltStoreEnv(provider) {
-			projected, err := bdRuntimeEnvForRigWithError(ctx, cs.cityPath, cfg, scopeRoot)
+			projected, err := bdRuntimeEnvForRigWithError(cs.cityPath, cfg, scopeRoot)
 			if err != nil {
 				return nil, fmt.Errorf("project rig store env %s: %w", scopeRoot, err)
 			}
@@ -437,11 +443,11 @@ func (cs *controllerState) openRigStore(ctx context.Context, provider, rigName, 
 		s.SetEnv(env)
 		return s, nil
 	}
-	result, err := controllerStateOpenRigStoreAtForCity(ctx, beads.StoreOpenOptions{
+	result, err := controllerStateOpenRigStoreAtForCity(context.Background(), beads.StoreOpenOptions{
 		ScopeRoot:                   scopeRoot,
 		CityPath:                    cs.cityPath,
 		Provider:                    provider,
-		PreflightChecker:            newBeadsPreflightChecker(ctx, cs.cityPath, provider),
+		PreflightChecker:            newBeadsPreflightChecker(cs.cityPath, provider),
 		ConditionalWrites:           cs.rolloutFlags.BeadsConditionalWrites(),
 		OnConditionalWritesDegraded: conditionalWritesDegradedRecorder(cs.eventProv, cs.rolloutFlags, "rig/"+rigName),
 		OpenFileStore: func() (beads.Store, error) {
@@ -452,24 +458,27 @@ func (cs *controllerState) openRigStore(ctx context.Context, provider, rigName, 
 			return store, nil
 		},
 		OpenBdStore: func() (beads.Store, error) {
-			return bdStoreForRig(ctx, scopeRoot, cs.cityPath, cfg, prefix), nil
+			return bdStoreForRig(scopeRoot, cs.cityPath, cfg, prefix), nil
 		},
 		OpenExecStore: openExecStore,
 		OpenNativeStore: func() (beads.Store, error) {
-			env, err := nativeDoltOpenEnvForScope(ctx, cs.cityPath, cfg, scopeRoot)
+			env, err := nativeDoltOpenEnvForScope(cs.cityPath, cfg, scopeRoot)
 			if err != nil {
 				return nil, fmt.Errorf("project native rig store env %s: %w", scopeRoot, err)
 			}
-			// Reopen hook for native storage uses the caller's context to
-			// re-resolve the current environment for the exact reconnect attempt.
+			// Reopen hook for the native read-path reconnect (see the matching
+			// comment in main.go openStoreResultAtForCity): re-resolve the CURRENT
+			// managed Dolt env on every reconnect so the controller's reconcile
+			// scan / Get recovers a managed-Dolt hard-kill/rebind instead of
+			// dialing the dead port for the whole retry budget.
 			reopen := func(ctx context.Context) (beads.NativeStorage, error) {
-				freshEnv, rerr := nativeDoltOpenEnvForScope(ctx, cs.cityPath, cfg, scopeRoot)
+				freshEnv, rerr := nativeDoltOpenEnvForScopeContext(ctx, cs.cityPath, cfg, scopeRoot)
 				if rerr != nil {
 					return nil, fmt.Errorf("re-resolve native rig store env %s: %w", scopeRoot, rerr)
 				}
 				return beads.OpenNativeStorage(ctx, scopeRoot, freshEnv)
 			}
-			return beads.OpenNativeDoltStoreAt(ctx, scopeRoot, env, beads.WithNativeReopen(reopen))
+			return beads.OpenNativeDoltStoreAt(context.Background(), scopeRoot, env, beads.WithNativeReopen(reopen))
 		},
 	})
 	if err != nil {
@@ -925,7 +934,7 @@ func beadEventID(evt events.Event) string {
 
 // update replaces the config, session provider, and reopens stores.
 // Stores are built outside the lock to avoid blocking readers during I/O.
-func (cs *controllerState) update(ctx context.Context, cfg *config.City, sp runtime.Provider) {
+func (cs *controllerState) update(cfg *config.City, sp runtime.Provider) {
 	cs.updateMu.Lock()
 	defer cs.updateMu.Unlock()
 
@@ -934,7 +943,7 @@ func (cs *controllerState) update(ctx context.Context, cfg *config.City, sp runt
 	cs.noteRolloutDrift(cfg)
 
 	// Build new stores outside the lock (may do file I/O / subprocess spawns).
-	stores := cs.buildStores(ctx, cfg)
+	stores := cs.buildStores(cfg)
 	storeSignature := storeMetadataSignature(cs.cityPath, cfg)
 	// Capture the raw config from the same on-disk generation as cfg, outside
 	// the lock (it does a TOML parse). nil signals "keep the prior snapshot".
@@ -946,7 +955,7 @@ func (cs *controllerState) update(ctx context.Context, cfg *config.City, sp runt
 	// Reopen carries the BOOT-latched mode: re-resolving from the (possibly
 	// edited) on-disk config here would flip the city store's write
 	// discipline mid-process while rig stores keep the boot mode.
-	openedCityStore, err := newControllerStateOpenCityStoreContext(ctx, cs.cityPath, cs.rolloutFlags.BeadsConditionalWrites())
+	openedCityStore, err := newControllerStateOpenCityStore(cs.cityPath, cs.rolloutFlags.BeadsConditionalWrites())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "api: city bead store reload: %v\n", err) //nolint:errcheck // best-effort stderr
 	}
@@ -955,7 +964,7 @@ func (cs *controllerState) update(ctx context.Context, cfg *config.City, sp runt
 	var cityMailProv mail.Provider
 	var extSvc *extmsg.Services
 	if cityStore != nil {
-		cityStore = wrapWithCachingStore(ctx, cityStore, cs.eventProv, true)
+		cityStore = wrapWithCachingStore(cs.cacheCtx, cityStore, cs.eventProv, true)
 		cityMailProv = newCityMailProvider(cs.storageRoutes, cityStore, cfg, cs.cityPath, cs.eventProv)
 		extSvc = newCityExtMsgServices(cs.storageRoutes, cityStore, cfg, cs.cityPath, cs.eventProv)
 	}
@@ -1057,7 +1066,7 @@ func storePointerKey(store beads.Store) (uintptr, bool) {
 	return value.Pointer(), true
 }
 
-func (cs *controllerState) updateFromRuntime(ctx context.Context, cfg *config.City, sp runtime.Provider, revision string) {
+func (cs *controllerState) updateFromRuntime(cfg *config.City, sp runtime.Provider, revision string) {
 	if cs.configMutationPending.Load() {
 		matchesPending, stale := cs.runtimeUpdateStatusForPendingMutation(revision)
 		if stale {
@@ -1081,7 +1090,7 @@ func (cs *controllerState) updateFromRuntime(ctx context.Context, cfg *config.Ci
 		cs.clearConfigMutationPending()
 		return
 	}
-	cs.update(ctx, cfg, sp)
+	cs.update(cfg, sp)
 	cs.clearConfigMutationPending()
 }
 
@@ -2310,7 +2319,7 @@ var controllerDropManagedDoltDatabase = func(cs *controllerState, ctx context.Co
 // log-only, never gating, since routes are a projection, not debris.
 func (cs *controllerState) TeardownPartialRig(ctx context.Context, m api.RigProvisionManifest) error {
 	if ctx == nil {
-		return fmt.Errorf("teardown partial rig: nil context")
+		ctx = context.Background()
 	}
 	var errs error
 	// Resolve the managed Dolt DB to drop BEFORE the RemoveAll destroys the
@@ -2530,7 +2539,6 @@ func (cs *controllerState) rigProvisionDeps(editCfg *config.City, r config.Rig, 
 		FS:           fsys.OSFS{},
 		CityPath:     cs.cityPath,
 		Cfg:          editCfg,
-		Ctx:          cs.cacheCtx,
 		InitStore:    controllerStateInitRigDirIfReady,
 		InitAndHook:  initAndHookDir,
 		ComposePacks: ensureBundledRigImportsInstalled,
@@ -2881,10 +2889,7 @@ func (cs *controllerState) refreshConfigSnapshot() (string, error) {
 	cs.mu.RLock()
 	sp := cs.sp
 	cs.mu.RUnlock()
-	if cs.cacheCtx == nil {
-		return "", errors.New("controller state context is not initialized")
-	}
-	cs.update(cs.cacheCtx, nextCfg, sp)
+	cs.update(nextCfg, sp)
 	return revision, nil
 }
 
@@ -2979,7 +2984,7 @@ func (cs *controllerState) WebhookDispatcher() orderdispatch.Dispatcher {
 type controllerWebhookDispatcher struct{ cs *controllerState }
 
 func (d controllerWebhookDispatcher) Dispatch(ctx context.Context, req orderdispatch.DispatchRequest) (orderdispatch.DispatchResult, error) {
-	return d.dispatcher(ctx).Dispatch(ctx, req)
+	return d.dispatcher().Dispatch(ctx, req)
 }
 
 // dispatcher builds the per-delivery dispatcher Dispatch fires through, reading
@@ -2989,7 +2994,7 @@ func (d controllerWebhookDispatcher) Dispatch(ctx context.Context, req orderdisp
 // reason a webhook-fired wisp lands in the same graph store a tick-fired one
 // does, and they arrive as a constructor argument that nothing downstream
 // re-resolves.
-func (d controllerWebhookDispatcher) dispatcher(ctx context.Context) *memoryOrderDispatcher {
+func (d controllerWebhookDispatcher) dispatcher() *memoryOrderDispatcher {
 	cs := d.cs
 	cs.mu.RLock()
 	cfg := cs.cfg
@@ -3001,7 +3006,7 @@ func (d controllerWebhookDispatcher) dispatcher(ctx context.Context) *memoryOrde
 		// discard recorder keeps it panic-free when the city has events disabled.
 		rec = events.Discard
 	}
-	return newMemoryOrderDispatcher(ctx, routes, nil, cs.cityPath, cfg, rec, os.Stderr)
+	return newMemoryOrderDispatcher(routes, nil, cs.cityPath, cfg, rec, os.Stderr)
 }
 
 // ExtMsgServices returns the external messaging services.

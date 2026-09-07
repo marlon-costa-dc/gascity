@@ -10,19 +10,19 @@ import (
 	"github.com/gastownhall/gascity/internal/fsys"
 )
 
-func newBeadsPreflightChecker(ctx context.Context, cityPath, provider string) contract.PreflightChecker {
+func newBeadsPreflightChecker(cityPath, provider string) contract.PreflightChecker {
 	return contract.PreflightChecker{
 		FS:                        fsys.OSFS{},
 		Provider:                  provider,
-		BDContext:                 preflightBDContextReader(ctx, cityPath),
+		BDContext:                 preflightBDContextReader(cityPath),
 		DatabaseProjectID:         preflightDatabaseProjectIDReader(cityPath),
 		DeferIdentityToNativeOpen: preflightIdentityDeferredReader(cityPath),
 	}
 }
 
-func preflightBDContextReader(ctx context.Context, cityPath string) func(scope string) (contract.PreflightBDContext, error) {
+func preflightBDContextReader(cityPath string) func(scope string) (contract.PreflightBDContext, error) {
 	return func(scope string) (contract.PreflightBDContext, error) {
-		out, err := bdCommandRunnerForCity(ctx, cityPath)(scope, "bd", "context", "--json")
+		out, err := bdCommandRunnerForCity(cityPath)(scope, "bd", "context", "--json")
 		if err != nil {
 			return contract.PreflightBDContext{}, err
 		}

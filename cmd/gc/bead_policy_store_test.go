@@ -600,7 +600,7 @@ func TestOpenStoreResultAtForCityRejectsRemovedSQLiteProvider(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			_, err := openStoreResultAtForCity(context.Background(), cityDir, cityDir)
+			_, err := openStoreResultAtForCity(cityDir, cityDir)
 			if err == nil {
 				t.Fatalf("openStoreResultAtForCity(%q) = nil error, want hard error for removed provider", provider)
 			}

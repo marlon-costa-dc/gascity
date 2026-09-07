@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -96,14 +95,14 @@ type rigStatusCounts struct {
 	Suspended int
 }
 
-func openCityStatusStore(ctx context.Context, cityPath string, stderr io.Writer) (beads.Store, *beads.BeadsDiagnostic, int) {
+func openCityStatusStore(cityPath string, stderr io.Writer) (beads.Store, *beads.BeadsDiagnostic, int) {
 	if cityPath == "" {
 		return nil, nil, 0
 	}
 	if !cityStatusStorePresent(cityPath) {
 		return nil, nil, 0
 	}
-	opened, err := openCityStoreAtForStatus(ctx, cityPath)
+	opened, err := openCityStoreAtForStatus(cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc status: opening bead store: %v\n", err) //nolint:errcheck // best-effort stderr
 		return nil, nil, 1

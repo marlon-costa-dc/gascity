@@ -254,16 +254,12 @@ type (
 	hookClaimFunc              func(context.Context, string, []string, string, string) (beads.Bead, bool, error)
 	hookListContinuationFunc   func(context.Context, string, []string, string, string) ([]beads.Bead, error)
 	hookAssignContinuationFunc func(context.Context, string, []string, string, string) error
-<<<<<<< HEAD
-	hookDrainAckFunc           func(context.Context, io.Writer) error
-=======
 	hookDrainAckFunc           func(io.Writer) error
 	hookDrainPendingFunc       func(sessionID string) (bool, error)
->>>>>>> main
 	hookEmitClaimRejectedFunc  func(beadID, existingClaimant, attemptedClaimant string)
 	hookResolveWorkBranchFunc  func(dir string) string
 	hookStampWorkMetaFunc      func(ctx context.Context, dir string, env []string, beadID, assignee string, patch map[string]string) error
-	hookStampSessionClaimFunc  func(context.Context, string, string) error
+	hookStampSessionClaimFunc  func(sessionID, beadID string) error
 	hookPublishRunMapFunc      func(runID, beadID string, sessionKeys ...string) error
 	hookClaimReleaseFunc       func(ctx context.Context, dir string, env []string, beadID, assignee string) (bool, error)
 )
@@ -305,12 +301,12 @@ type hookClaimResult struct {
 	claimsErrored bool
 }
 
-func doHookClaim(ctx context.Context, workQuery, dir string, opts hookClaimOptions, ops hookClaimOps, stdout, stderr io.Writer) int {
-	res := tryHookClaim(ctx, workQuery, dir, &opts, &ops, stdout, stderr)
+func doHookClaim(workQuery, dir string, opts hookClaimOptions, ops hookClaimOps, stdout, stderr io.Writer) int {
+	res := tryHookClaim(workQuery, dir, &opts, &ops, stdout, stderr)
 	if res.terminal {
 		return res.code
 	}
-	return writeHookClaimNoWork(ctx, opts, ops, res.claimsErrored, dir, stdout, stderr)
+	return writeHookClaimNoWork(opts, ops, res.claimsErrored, dir, stdout, stderr)
 }
 
 // tryHookClaim runs the work query for one store (dir, via ops.Runner) and
@@ -320,7 +316,7 @@ func doHookClaim(ctx context.Context, workQuery, dir string, opts hookClaimOptio
 // a federated caller can try a later store before draining. opts and ops are
 // normalized in place so a non-terminal caller can reuse the normalized ops
 // (defaults applied) for the shared drain.
-func tryHookClaim(ctx context.Context, workQuery, dir string, opts *hookClaimOptions, ops *hookClaimOps, stdout, stderr io.Writer) hookClaimResult {
+func tryHookClaim(workQuery, dir string, opts *hookClaimOptions, ops *hookClaimOps, stdout, stderr io.Writer) hookClaimResult {
 	opts.Assignee = strings.TrimSpace(opts.Assignee)
 	opts.IdentityCandidates = hookClaimIdentityCandidates(append([]string{opts.Assignee}, opts.IdentityCandidates...)...)
 	opts.RouteTargets = hookClaimRouteTargets(opts.RouteTargets...)
@@ -425,10 +421,6 @@ func tryHookClaim(ctx context.Context, workQuery, dir string, opts *hookClaimOpt
 	}
 
 	if result, bead, ok := hookClaimExistingAssignment(candidates, *opts); ok {
-<<<<<<< HEAD
-		// minted=false: adoption returns work this session already owned.
-		return hookClaimResult{terminal: true, code: writeHookClaimWorkResultForBead(ctx, result, bead, *opts, *ops, dir, false, stdout, stderr)}
-=======
 		// Adoption mints no CAS, so until now it minted its receipt on the word
 		// of the work query alone — and a stale caching-store row survives long
 		// enough to re-serve a bead the dispatcher already gave to a fresher
@@ -441,7 +433,6 @@ func tryHookClaim(ctx context.Context, workQuery, dir string, opts *hookClaimOpt
 		// cache was not — and neither tier can match this row anyway (ready
 		// requires open, eligible requires an empty assignee), so this ends in
 		// the shared drain unless there is other work to do.
->>>>>>> main
 	}
 
 	readyResult := claimFirstReadyHookAssignment(candidates, *opts, *ops, dir, stdout, stderr)
@@ -708,7 +699,7 @@ func claimFirstReadyHookAssignment(candidates []beads.Bead, opts hookClaimOption
 		if result.Assignee == "" {
 			result.Assignee = claimActor
 		}
-		return hookClaimResult{terminal: true, code: writeHookClaimWorkResultForBead(ctx, result, claimed, opts, ops, dir, true, stdout, stderr)}
+		return hookClaimResult{terminal: true, code: writeHookClaimWorkResultForBead(result, claimed, opts, ops, dir, true, stdout, stderr)}
 	}
 	return hookClaimResult{claimsErrored: claimsErrored}
 }
@@ -824,7 +815,7 @@ func claimFirstEligibleHookCandidate(candidates []beads.Bead, opts hookClaimOpti
 		if result.Assignee == "" {
 			result.Assignee = opts.Assignee
 		}
-		return hookClaimResult{terminal: true, code: writeHookClaimWorkResultForBead(ctx, result, claimed, opts, ops, dir, true, stdout, stderr)}
+		return hookClaimResult{terminal: true, code: writeHookClaimWorkResultForBead(result, claimed, opts, ops, dir, true, stdout, stderr)}
 	}
 
 	return hookClaimResult{claimsErrored: claimsErrored}
@@ -953,7 +944,7 @@ func hookClaimCandidateIsMessage(candidate beads.Bead) bool {
 // owned, so releasing it on a delivery failure would give away a claim an earlier
 // turn legitimately made. A held claim that goes undelivered is re-served to the
 // next turn by the existing-assignment tier instead.
-func writeHookClaimWorkResultForBead(ctx context.Context, result hookClaimJSONResult, bead beads.Bead, opts hookClaimOptions, ops hookClaimOps, dir string, minted bool, stdout, stderr io.Writer) int {
+func writeHookClaimWorkResultForBead(result hookClaimJSONResult, bead beads.Bead, opts hookClaimOptions, ops hookClaimOps, dir string, minted bool, stdout, stderr io.Writer) int {
 	// F-B straddle. The CAS was STARTED inside the window and LANDED outside it:
 	// the claim-write child carries its own ceiling, so a claim can commit after
 	// the invoking turn is already gone. That is the same parked claim by another
@@ -969,7 +960,7 @@ func writeHookClaimWorkResultForBead(ctx context.Context, result hookClaimJSONRe
 	if stamped && hookClaimLifecycleCandidate(durable, opts) {
 		ops.EmitExecutionStepStarted(durable, dir, opts.Env, opts.Assignee)
 	}
-	stampHookSessionCurrentClaim(ctx, bead, opts, ops, stderr)
+	stampHookSessionCurrentClaim(bead, opts, ops, stderr)
 	publishHookClaimRunMap(bead, opts, ops, stderr)
 	assigned, err := preassignHookContinuationGroup(bead, opts, ops, dir)
 	if err != nil {
@@ -995,7 +986,7 @@ func writeHookClaimWorkResultForBead(ctx context.Context, result hookClaimJSONRe
 		// bead this session no longer owns — the "close somebody else's bead" hazard
 		// this back-channel exists to prevent. The straddle path (F-B) needs no clear
 		// because it returns before the stamp.
-		clearHookSessionCurrentClaim(ctx, opts, ops, stderr)
+		clearHookSessionCurrentClaim(opts, ops, stderr)
 		return unwindUndeliveredHookClaim(hookClaimReleaseReasonUndelivered, cause, bead, opts, ops, dir, stderr)
 	}
 	return 0
@@ -1078,16 +1069,12 @@ func unwindUndeliveredHookClaim(reason, cause string, bead beads.Bead, opts hook
 // used ONLY after the drain has been written. See recordDemandClaimDivergence:
 // a demand-spawned seat draining empty is either correct pull or a broken
 // agreement invariant, and the drain itself cannot tell an operator which.
-func writeHookClaimNoWork(ctx context.Context, opts hookClaimOptions, ops hookClaimOps, claimsErrored bool, dir string, stdout, stderr io.Writer) int {
+func writeHookClaimNoWork(opts hookClaimOptions, ops hookClaimOps, claimsErrored bool, dir string, stdout, stderr io.Writer) int {
 	reason := hookClaimReasonNoWork
 	if claimsErrored {
 		reason = hookClaimReasonClaimsErrored
 	}
-<<<<<<< HEAD
-	code := writeHookClaimDrain(ctx, reason, opts.JSON, opts.DrainAck, ops.DrainAck, stdout, stderr)
-=======
 	code := writeHookClaimDrain(hookClaimLabel, reason, opts.JSON, opts.DrainAck, ops.DrainAck, stdout, stderr)
->>>>>>> main
 	// Strictly after the result: the drain is already written and its exit code
 	// is already decided, so nothing below can influence either.
 	if reason == hookClaimReasonNoWork {
@@ -1158,13 +1145,8 @@ func writeHookClaimDrainPending(label, sessionID string, opts hookClaimOptions, 
 // reason "stale_session"), and --drain-ack is honored, so a startup wrapper
 // acknowledges drain and exits cleanly rather than seeing a bare exit 1 and
 // retrying the refusal forever.
-<<<<<<< HEAD
-func writeHookClaimStaleSessionDrain(ctx context.Context, opts hookCommandOptions, stdout, stderr io.Writer) int {
-	return writeHookClaimDrain(ctx, hookClaimReasonStaleSession, opts.JSON, opts.DrainAck, hookRuntimeDrainAck, stdout, stderr)
-=======
 func writeHookClaimStaleSessionDrain(opts hookCommandOptions, stdout, stderr io.Writer) int {
 	return writeHookClaimDrain(hookClaimLabel, hookClaimReasonStaleSession, opts.JSON, opts.DrainAck, hookRuntimeDrainAck, stdout, stderr)
->>>>>>> main
 }
 
 // writeHookClaimDrain writes the single structured drain result shared by every
@@ -1174,16 +1156,12 @@ func writeHookClaimStaleSessionDrain(opts hookCommandOptions, stdout, stderr io.
 // acknowledged. The exit code mirrors the historical contract — 0 once drain is
 // acknowledged, else 1 — so a non-drain-ack caller still reports action=drain
 // (a completed drain) rather than a bare failure.
-<<<<<<< HEAD
-func writeHookClaimDrain(ctx context.Context, reason string, jsonOut, drainAck bool, drainAckFn hookDrainAckFunc, stdout, stderr io.Writer) int {
-=======
 //
 // label names the door that answered ("gc hook --claim" or "gc hook"). Every
 // caller but the drain-pending fence is claim-only, but that fence is reachable
 // through the DISCOVERY door too, and a hardcoded prefix would report the wrong
 // command to the operator reading the pane.
 func writeHookClaimDrain(label, reason string, jsonOut, drainAck bool, drainAckFn hookDrainAckFunc, stdout, stderr io.Writer) int {
->>>>>>> main
 	result := hookClaimJSONResult{
 		SchemaVersion: "1",
 		OK:            true,
@@ -1200,17 +1178,11 @@ func writeHookClaimDrain(label, reason string, jsonOut, drainAck bool, drainAckF
 	// Those are different facts and the consumer needs both.
 	ackFailed := false
 	if drainAck {
-<<<<<<< HEAD
-		if err := drainAckFn(ctx, stderr); err != nil {
-			fmt.Fprintf(stderr, "gc hook --claim: drain-ack failed: %v\n", err) //nolint:errcheck
-			return 1
-=======
 		if err := drainAckFn(stderr); err != nil {
 			fmt.Fprintf(stderr, "%s: drain-ack failed: %v\n", label, err) //nolint:errcheck
 			ackFailed = true
 		} else {
 			result.DrainAcknowledged = true
->>>>>>> main
 		}
 	}
 	if jsonOut {
@@ -1467,13 +1439,13 @@ func hookEmitExecutionStepStarted(step beads.Bead, dir string, env []string, ass
 // session.Store.SetCurrentClaim, and a failure is reported on stderr but never
 // fails the claim. The loud refusal for a step that cannot name its bead belongs
 // at the point of use, not here.
-func stampHookSessionCurrentClaim(ctx context.Context, bead beads.Bead, opts hookClaimOptions, ops hookClaimOps, stderr io.Writer) {
+func stampHookSessionCurrentClaim(bead beads.Bead, opts hookClaimOptions, ops hookClaimOps, stderr io.Writer) {
 	sessionID := hookClaimSessionID(opts.Env)
 	beadID := strings.TrimSpace(bead.ID)
 	if sessionID == "" || beadID == "" {
 		return
 	}
-	if err := ops.StampSessionClaim(ctx, sessionID, beadID); err != nil {
+	if err := ops.StampSessionClaim(sessionID, beadID); err != nil {
 		fmt.Fprintf(stderr, "gc hook --claim: recording current claim %s on session %s: %v\n", beadID, sessionID, err) //nolint:errcheck
 	}
 }
@@ -1494,12 +1466,12 @@ func stampHookSessionCurrentClaim(ctx context.Context, bead beads.Bead, opts hoo
 // clears BEFORE releasing so a freed bead is never simultaneously claimable by
 // another seat and still named by this session (the ordering session_beads.go's
 // cascade already relies on).
-func clearHookSessionCurrentClaim(ctx context.Context, opts hookClaimOptions, ops hookClaimOps, stderr io.Writer) {
+func clearHookSessionCurrentClaim(opts hookClaimOptions, ops hookClaimOps, stderr io.Writer) {
 	sessionID := hookClaimSessionID(opts.Env)
 	if sessionID == "" {
 		return
 	}
-	if err := ops.StampSessionClaim(ctx, sessionID, ""); err != nil {
+	if err := ops.StampSessionClaim(sessionID, ""); err != nil {
 		fmt.Fprintf(stderr, "gc hook --claim: clearing current claim on session %s: %v\n", sessionID, err) //nolint:errcheck
 	}
 }
@@ -2129,8 +2101,8 @@ func hookAssignContinuationWithBdStore(_ context.Context, dir string, env []stri
 	return store.Update(beadID, beads.UpdateOpts{Assignee: &assignee})
 }
 
-func hookRuntimeDrainAck(ctx context.Context, stderr io.Writer) error {
-	if code := cmdRuntimeDrainAck(ctx, nil, false, io.Discard, stderr); code != 0 {
+func hookRuntimeDrainAck(stderr io.Writer) error {
+	if code := cmdRuntimeDrainAck(nil, false, io.Discard, stderr); code != 0 {
 		return errors.New("runtime drain-ack returned non-zero")
 	}
 	return nil

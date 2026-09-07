@@ -82,7 +82,7 @@ func TestPreflightConditionalWritesRequire(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(toml), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		result, err := openStoreResultAtForCityWithMode(context.Background(), dir, dir, mode, true)
+		result, err := openStoreResultAtForCityWithMode(dir, dir, mode, true)
 		if err != nil {
 			t.Fatalf("openStoreResultAtForCityWithMode: %v", err)
 		}
@@ -266,7 +266,7 @@ func TestControllerStateRolloutDriftThroughReloadSeams(t *testing.T) {
 	}
 
 	// Reload via update(): on-disk drops to off → drift recorded, gate NOT re-latched.
-	cs.update(context.Background(), cityOf("off"), runtime.NewFake())
+	cs.update(cityOf("off"), runtime.NewFake())
 	if got := cs.RolloutFlags().BeadsConditionalWrites(); got != rollout.Require {
 		t.Errorf("update() re-latched the gate: %q, want require", got)
 	}
@@ -294,7 +294,7 @@ func TestConditionalWritesStatusBlock(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(toml), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		result, err := openStoreResultAtForCityWithMode(context.Background(), dir, dir, mode, true)
+		result, err := openStoreResultAtForCityWithMode(dir, dir, mode, true)
 		if err != nil {
 			t.Fatalf("openStoreResultAtForCityWithMode: %v", err)
 		}

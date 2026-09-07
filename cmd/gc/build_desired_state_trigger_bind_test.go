@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -64,7 +63,7 @@ func TestBindPoolSessionTriggerBead_ClearEmitsSingleUpdate(t *testing.T) {
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "city"}}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams(context.Background(), "city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), rec, &stderr)
+	bp := newAgentBuildParams("city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), rec, &stderr)
 
 	// Clear: repointing to no work bead drops the whole trigger/provenance cluster.
 	bound, err := bindPoolSessionTriggerBead(bp, &config.Agent{Name: "claude"}, "city/claude", info, SessionRequest{WorkBeadID: ""})
@@ -120,7 +119,7 @@ func TestBindPoolSessionTriggerBead_FailedWritePersistsNothing(t *testing.T) {
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "city"}}
 	var stderr bytes.Buffer
-	bp := newAgentBuildParams(context.Background(), "city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), fail, &stderr)
+	bp := newAgentBuildParams("city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), fail, &stderr)
 
 	bound, err := bindPoolSessionTriggerBead(bp, &config.Agent{Name: "claude"}, "city/claude", info, SessionRequest{WorkBeadID: ""})
 	if err == nil {

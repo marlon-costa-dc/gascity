@@ -32,11 +32,11 @@ func messagingSplitRoutes(infra beads.Store) *storageRoutes {
 // in-memory store for the duration of a test.
 func stubControllerCityStore(t *testing.T, store beads.Store) {
 	t.Helper()
-	prev := newControllerStateOpenCityStoreContext
-	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
+	prev := newControllerStateOpenCityStore
+	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: store}, nil
 	}
-	t.Cleanup(func() { newControllerStateOpenCityStoreContext = prev })
+	t.Cleanup(func() { newControllerStateOpenCityStore = prev })
 }
 
 func newRoutedControllerStateForTest(t *testing.T, routes *storageRoutes, work beads.Store) *controllerState {

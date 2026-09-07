@@ -44,7 +44,9 @@ var newCityRuntimeOpenSweepStore = openStoreAtForCity
 // sweepOrphanedOrderTrackingAtBoot closes order-tracking beads a previous
 // controller instance left open (goroutines killed on restart, or silent Close
 // failures). It runs on startup only, never on config reload, and is
-// best-effort: a store it cannot open is reported and skipped.
+// best-effort: a store it cannot open is reported and skipped, and the retry
+// with backoff is defense-in-depth against transient store errors immediately
+// after ensureBeadsProvider returns (#753).
 //
 // It sweeps the city work store AND, on a split city, the orders binding those
 // tracking beads are now born in. Both, not one. A converged city holds
@@ -56,8 +58,8 @@ var newCityRuntimeOpenSweepStore = openStoreAtForCity
 //
 // The binding handle belongs to routes and is closed with them at runtime
 // shutdown; only the work store opened here is closed here.
-func sweepOrphanedOrderTrackingAtBoot(ctx context.Context, routes *storageRoutes, cityPath string, cfg *config.City, rec events.Recorder, stderr io.Writer) {
-	workStore, err := newCityRuntimeOpenSweepStore(ctx, cityPath, cityPath)
+func sweepOrphanedOrderTrackingAtBoot(routes *storageRoutes, cityPath string, cfg *config.City, rec events.Recorder, stderr io.Writer) {
+	workStore, err := newCityRuntimeOpenSweepStore(cityPath, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc start: order tracking sweep: %v\n", err) //nolint:errcheck // best-effort stderr
 		return
@@ -69,7 +71,7 @@ func sweepOrphanedOrderTrackingAtBoot(ctx context.Context, routes *storageRoutes
 		stores = append(stores, ordersStore)
 	}
 	for _, store := range stores {
-		if n, err := sweepOrphanedOrderTrackingLimit(store, orderTrackingSweepCloseBudget); err != nil {
+		if n, err := sweepOrphanedOrderTrackingRetryLimit(store, 3, time.Second, orderTrackingSweepCloseBudget); err != nil {
 			fmt.Fprintf(stderr, "gc start: order tracking sweep (closed %d): %v\n", n, err) //nolint:errcheck // best-effort stderr
 		} else if n > 0 {
 			fmt.Fprintf(stderr, "gc start: closed %d orphaned order-tracking beads\n", n) //nolint:errcheck // best-effort stderr
@@ -101,7 +103,6 @@ var orderRescanInterval = time.Minute
 type CityRuntime struct {
 	cityPath     string
 	cityName     string
-	ctx          context.Context
 	configName   string
 	tomlPath     string
 	watchTargets []config.WatchTarget
@@ -114,8 +115,8 @@ type CityRuntime struct {
 	cfg                     *config.City
 	sp                      runtime.Provider
 	publication             supervisor.PublicationConfig
-	buildFn                 func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult
-	buildFnWithSessionBeads func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult
+	buildFn                 func(*config.City, runtime.Provider, beads.Store) DesiredStateResult
+	buildFnWithSessionBeads func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult
 
 	dops                    drainOps
 	ct                      crashTracker
@@ -213,7 +214,7 @@ type CityRuntime struct {
 	activeReload        *reloadRequest
 	onStarted           func()
 	onStatus            func(string)
-	managedDoltHealth   func(context.Context, string) error
+	managedDoltHealth   func(string) error
 	managedDoltOwned    func(string) (bool, error)
 	managedDoltPort     func(string) string
 
@@ -287,11 +288,10 @@ type CityRuntimeParams struct {
 	ConfigDirty  *atomic.Bool
 
 	Cfg                     *config.City
-	Ctx                     context.Context
 	SP                      runtime.Provider
 	Publication             supervisor.PublicationConfig
-	BuildFn                 func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult
-	BuildFnWithSessionBeads func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult
+	BuildFn                 func(*config.City, runtime.Provider, beads.Store) DesiredStateResult
+	BuildFnWithSessionBeads func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult
 	Dops                    drainOps
 
 	Rec events.Recorder
@@ -306,7 +306,7 @@ type CityRuntimeParams struct {
 	ControlDispatcherCh chan struct{}           // may be nil; triggers control-dispatcher-only reconcile
 	OnStarted           func()                  // called after initial reconciliation succeeds
 	OnStatus            func(string)            // called when init status changes
-	ManagedDoltHealth   func(context.Context, string) error
+	ManagedDoltHealth   func(string) error
 	ManagedDoltOwned    func(string) (bool, error)
 	ManagedDoltPort     func(string) string
 	// TranscriptMetaEnabled opts this supervisor-owned city runtime into the
@@ -319,7 +319,8 @@ type CityRuntimeParams struct {
 }
 
 var (
-	cityRuntimeStartBeadsLifecycle = startBeadsLifecycle
+	cityRuntimeStartBeadsLifecycle       = startBeadsLifecycle
+	cityRuntimeReloadLifecycleRetryDelay = time.Second
 	// reloadActiveTTL bounds how long a single accepted reload may occupy
 	// the activeReload slot. If a reconciler tick wedges in something that
 	// does not panic (so the tick's defer never runs), activeReload stays
@@ -331,6 +332,8 @@ var (
 	// but progressing reload is not killed in flight. Test-overridable.
 	reloadActiveTTL = 10 * time.Minute
 )
+
+const cityRuntimeReloadLifecycleRetryLimit = 2
 
 // postCreateProtectionTimeout protects freshly-started pool beads from the
 // first steady-state sweep even after wake bookkeeping metadata lands.
@@ -349,9 +352,6 @@ const postCreateProtectionTimeout = 2 * time.Minute
 // decides is storage_boot.go; every caller here does is print the error and
 // stop this one city.
 func newCityRuntime(p CityRuntimeParams) (*CityRuntime, error) {
-	if p.Ctx == nil {
-		return nil, fmt.Errorf("city runtime: nil context")
-	}
 	configName := lockedConfigName(p.Cfg, p.CityPath)
 	applyRuntimeCityIdentity(p.Cfg, p.CityName)
 
@@ -388,13 +388,13 @@ func newCityRuntime(p CityRuntimeParams) (*CityRuntime, error) {
 		logPrefix = "gc start"
 	}
 
-	ensureManagedDoltPublishedForRuntime(p.Ctx, p.CityPath, p.Stderr, logPrefix, managedDoltHealth, managedDoltOwned, managedDoltPort)
+	ensureManagedDoltPublishedForRuntime(p.CityPath, p.Stderr, logPrefix, managedDoltHealth, managedDoltOwned, managedDoltPort)
 
 	// Storage-class routing, resolved once and before any store below is opened
 	// for use. A city that authors no [storage] short-circuits inside the gate
 	// without constructing a registry or a plan; a city whose config and data
 	// disagree stops here rather than serving from the wrong side of a cutover.
-	routes, err := storageBootGate(p.Ctx, p.CityPath, p.Cfg, logPrefix, p.Rec, p.Stderr)
+	routes, err := storageBootGate(p.CityPath, p.Cfg, logPrefix, p.Rec, p.Stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -404,9 +404,9 @@ func newCityRuntime(p CityRuntimeParams) (*CityRuntime, error) {
 	// live city's release sweeps at a binding it is about to close. The lock
 	// holder registers — see registerResidencyRoutes.
 
-	sweepOrphanedOrderTrackingAtBoot(p.Ctx, routes, p.CityPath, p.Cfg, p.Rec, p.Stderr)
+	sweepOrphanedOrderTrackingAtBoot(routes, p.CityPath, p.Cfg, p.Rec, p.Stderr)
 
-	od, orderSnapshot := buildOrderDispatcherWithSnapshot(p.Ctx, routes, p.CityPath, p.Cfg, p.Rec, p.Stderr, "gc start: order scan")
+	od, orderSnapshot := buildOrderDispatcherWithSnapshot(routes, p.CityPath, p.Cfg, p.Rec, p.Stderr, "gc start: order scan")
 
 	suspendedNames := computeSuspendedNames(p.Cfg, p.CityName, p.CityPath)
 
@@ -414,7 +414,6 @@ func newCityRuntime(p CityRuntimeParams) (*CityRuntime, error) {
 		storageRoutes:           routes,
 		cityPath:                p.CityPath,
 		cityName:                p.CityName,
-		ctx:                     p.Ctx,
 		configName:              configName,
 		tomlPath:                p.TomlPath,
 		watchTargets:            p.WatchTargets,
@@ -537,12 +536,12 @@ func (cr *CityRuntime) run(ctx context.Context) {
 	// Open standalone city bead store when controllerState is unavailable.
 	// When controllerState is present, it manages the cached city store.
 	if cr.cs == nil && cityRoot != "" {
-		if store, err := openCityStoreAt(ctx, cityRoot); err != nil {
+		if store, err := openCityStoreAt(cityRoot); err != nil {
 			fmt.Fprintf(cr.stderr, "%s: city bead store: %v (auto-suspend disabled)\n", cr.logPrefix, err) //nolint:errcheck // best-effort stderr
 		} else {
 			cr.standaloneCityStore = store
 		}
-		cr.standaloneRigStores = buildStandaloneRigStores(ctx, cr.cfg, cr.cityPath, cr.stderr)
+		cr.standaloneRigStores = buildStandaloneRigStores(cr.cfg, cr.cityPath, cr.stderr)
 	}
 
 	// Record bead store health metric.
@@ -706,7 +705,7 @@ func (cr *CityRuntime) run(ctx context.Context) {
 	// ctx cancellation, or normal completion alike.
 	startupComplete := false
 	if !retryStartupStep("startup", func() bool { return startupComplete }, func() {
-		cr.ensureManagedDoltPublishedForTick(ctx)
+		cr.ensureManagedDoltPublishedForTick()
 		sessionBeads := cr.loadSessionBeadSnapshot()
 		startupTrace := cr.beginTraceCycle("startup", "initial_reconcile", sessionBeads)
 		completion := TraceCompletionAborted
@@ -729,11 +728,11 @@ func (cr *CityRuntime) run(ctx context.Context) {
 		if reapStaleSessionBeads(cr.sessionsBeadStore().Store, cr.sp, cr.sessionDrains, clock.Real{}, cr.stderr) > 0 {
 			sessionBeads = cr.loadSessionBeadSnapshot()
 		}
-		result := cr.buildDesiredState(ctx, sessionBeads, startupTrace)
+		result := cr.buildDesiredState(sessionBeads, startupTrace)
 		sessionBeads = cr.loadSessionBeadSnapshot()
-		result = cr.refreshDesiredState(ctx, result, sessionBeads)
+		result = cr.refreshDesiredState(result, sessionBeads)
 		sessionBeads = cr.syncBeadsAndUpdateIndex(result.State, sessionBeads)
-		result = cr.refreshDesiredState(ctx, result, sessionBeads)
+		result = cr.refreshDesiredState(result, sessionBeads)
 		if ctx.Err() != nil {
 			return
 		}
@@ -1221,7 +1220,7 @@ func (cr *CityRuntime) tick(
 	}
 
 	phaseStart := time.Now()
-	cr.ensureManagedDoltPublishedForTick(ctx)
+	cr.ensureManagedDoltPublishedForTick()
 	recordPhase(TraceSiteControllerTickPhase, "managed_dolt_preflight", phaseStart, nil)
 	if ctx.Err() != nil {
 		return
@@ -1357,7 +1356,7 @@ func (cr *CityRuntime) tick(
 		return
 	}
 	phaseStart = time.Now()
-	demand := cr.loadDemandSnapshot(ctx, sessionBeads, trace, trigger, configChanged)
+	demand := cr.loadDemandSnapshot(sessionBeads, trace, trigger, configChanged)
 	recordPhase(TraceSiteDemandSnapshot, "load_demand_snapshot", phaseStart, map[string]any{
 		"config_changed": configChanged,
 		"trigger":        trigger,
@@ -1367,7 +1366,7 @@ func (cr *CityRuntime) tick(
 	sessionBeads = cr.loadSessionBeadSnapshot()
 	recordPhase(TraceSiteSessionSnapshot, "load_session_snapshot.after_demand", phaseStart, traceSessionSnapshotFields(sessionBeads))
 	phaseStart = time.Now()
-	result = cr.refreshDesiredState(ctx, result, sessionBeads)
+	result = cr.refreshDesiredState(result, sessionBeads)
 	recordPhase(TraceSiteDesiredStateBuild, "refresh_desired_state.before_sync", phaseStart, traceDesiredStateFields(result))
 	phaseStart = time.Now()
 	_ = cr.syncBeadsAndUpdateIndex(result.State, sessionBeads)
@@ -1392,7 +1391,7 @@ func (cr *CityRuntime) tick(
 	reapStaleExtmsgParticipants(ctx, cr.sessionsBeadStore(), cr.stderr)
 	recordPhase(TraceSiteControllerTickPhase, "reap_stale_extmsg_participants", phaseStart, nil)
 	phaseStart = time.Now()
-	result = cr.refreshDesiredState(ctx, result, sessionBeads)
+	result = cr.refreshDesiredState(result, sessionBeads)
 	recordPhase(TraceSiteDesiredStateBuild, "refresh_desired_state.after_sync", phaseStart, traceDesiredStateFields(result))
 
 	if manualReload != nil && manualReload.soft && manualReloadCompleted &&
@@ -1533,7 +1532,7 @@ func (cr *CityRuntime) replaceOrderDispatcher(next orderDispatcher) {
 
 func (cr *CityRuntime) rescanOrderDispatcher(ctx context.Context, cityRoot string, cfg *config.City, cmdName string, now time.Time) (bool, string, error) {
 	if ctx == nil {
-		return false, "", fmt.Errorf("rescan order dispatcher: nil context")
+		ctx = context.Background()
 	}
 	snapshot, err := scanOrderSetSnapshotFS(fsys.OSFS{}, cityRoot, cfg, cr.stderr, cmdName)
 	if err != nil {
@@ -1550,7 +1549,7 @@ func (cr *CityRuntime) rescanOrderDispatcher(ctx context.Context, cityRoot strin
 		cr.drainOutgoingOrderDispatcher(drainCtx, cr.od)
 		drainCancel()
 	}
-	cr.replaceOrderDispatcher(buildOrderDispatcherFromOrderSet(ctx, cr.storageRoutes, cityRoot, cfg, snapshot.Orders, cr.rec, cr.stderr))
+	cr.replaceOrderDispatcher(buildOrderDispatcherFromOrderSet(cr.storageRoutes, cityRoot, cfg, snapshot.Orders, cr.rec, cr.stderr))
 	cr.orderSet = snapshot.Orders
 	cr.orderSetSignature = snapshot.Signature
 	if summary != "unchanged" {
@@ -1799,7 +1798,7 @@ func (cr *CityRuntime) orderTrackingSweepStores() ([]beads.Store, []orderTrackin
 			store = rigStores[sweepTarget.target.RigName]
 		}
 		if store == nil {
-			fresh, openErr := newCityRuntimeOpenSweepStore(cr.ctx, sweepTarget.target.ScopeRoot, cr.cityPath)
+			fresh, openErr := newCityRuntimeOpenSweepStore(sweepTarget.target.ScopeRoot, cr.cityPath)
 			if openErr == nil {
 				freshlyOpened = append(freshlyOpened, fresh)
 			}
@@ -2001,7 +2000,7 @@ func (cr *CityRuntime) reloadConfigTraced(
 			}
 		}
 		if cr.cs != nil && cr.cs.storeMetadataChanged(result.Cfg) {
-			cr.cs.update(ctx, result.Cfg, cr.sp)
+			cr.cs.update(result.Cfg, cr.sp)
 			message := fmt.Sprintf("Config reloaded: bead store metadata changed (rev %s)", shortRev(result.Revision))
 			if ordersChanged {
 				message = fmt.Sprintf("Config reloaded: bead store metadata changed; orders reloaded: %s (rev %s)", orderSummary, shortRev(result.Revision))
@@ -2103,7 +2102,20 @@ func (cr *CityRuntime) reloadConfigTraced(
 		appendWarning(fmt.Sprintf("config reload: %s", w))
 	}
 	resolveRigPaths(cityRoot, nextCfg.Rigs)
-	lifecycleErr := cityRuntimeStartBeadsLifecycle(ctx, cityRoot, cr.cityName, nextCfg, cr.stderr)
+	var lifecycleErr error
+	for attempt := 1; attempt <= cityRuntimeReloadLifecycleRetryLimit; attempt++ {
+		lifecycleErr = cityRuntimeStartBeadsLifecycle(cityRoot, cr.cityName, nextCfg, cr.stderr)
+		if lifecycleErr == nil {
+			break
+		}
+		if attempt == cityRuntimeReloadLifecycleRetryLimit || !isRetryableManagedDoltLifecycleError(lifecycleErr) {
+			break
+		}
+		appendWarning(fmt.Sprintf("config reload: transient bead lifecycle failure: %v; retrying", lifecycleErr))
+		if cityRuntimeReloadLifecycleRetryDelay > 0 {
+			time.Sleep(cityRuntimeReloadLifecycleRetryDelay)
+		}
+	}
 	if lifecycleErr != nil {
 		err := fmt.Errorf("config reload: %w", lifecycleErr)
 		fmt.Fprintf(cr.stderr, "%s: %v (keeping old config)\n", cr.logPrefix, err) //nolint:errcheck // best-effort stderr
@@ -2176,7 +2188,7 @@ func (cr *CityRuntime) reloadConfigTraced(
 	}
 
 	cr.poolSessions = computePoolSessions(nextCfg, cr.cityName, cr.cityPath, nextSp)
-	cr.poolDeathHandlers = computePoolDeathHandlers(ctx, nextCfg, cr.cityName, cityRoot, nextSp, cr.stderr)
+	cr.poolDeathHandlers = computePoolDeathHandlers(nextCfg, cr.cityName, cityRoot, nextSp, cr.stderr)
 	cr.suspendedNames = computeSuspendedNames(nextCfg, cr.cityName, cr.cityPath)
 
 	// Rebuild crash tracker if config values changed, otherwise clear all
@@ -2223,7 +2235,7 @@ func (cr *CityRuntime) reloadConfigTraced(
 		cr.drainOutgoingOrderDispatcher(drainCtx, cr.od)
 		drainCancel()
 	}
-	nextOD, orderSnapshot := buildOrderDispatcherWithSnapshot(ctx, cr.storageRoutes, cityRoot, nextCfg, cr.rec, cr.stderr, "gc reload: order scan")
+	nextOD, orderSnapshot := buildOrderDispatcherWithSnapshot(cr.storageRoutes, cityRoot, nextCfg, cr.rec, cr.stderr, "gc reload: order scan")
 	orderSummary := orderSetChangeSummary(cr.orderSet, orderSnapshot.Orders)
 	cr.replaceOrderDispatcher(nextOD)
 	cr.orderSet = orderSnapshot.Orders
@@ -2241,7 +2253,7 @@ func (cr *CityRuntime) reloadConfigTraced(
 	cr.demandSnapshot = nil
 
 	if cr.cs != nil {
-		cr.cs.updateFromRuntime(ctx, nextCfg, nextSp, result.Revision)
+		cr.cs.updateFromRuntime(nextCfg, nextSp, result.Revision)
 	}
 	if cr.svc != nil {
 		if err := cr.svc.Reload(); err != nil {
@@ -2252,14 +2264,14 @@ func (cr *CityRuntime) reloadConfigTraced(
 	if cr.cs == nil {
 		// Refresh standalone city store for auto-suspend.
 		// Also recovers from nil → non-nil when bd becomes available after startup.
-		if s, err := openCityStoreAt(ctx, cityRoot); err != nil {
+		if s, err := openCityStoreAt(cityRoot); err != nil {
 			if cr.standaloneCityStore != nil {
 				appendWarning(fmt.Sprintf("city bead store reload: %v", err))
 			}
 		} else {
 			cr.standaloneCityStore = s
 		}
-		cr.standaloneRigStores = buildStandaloneRigStores(ctx, nextCfg, cr.cityPath, cr.stderr)
+		cr.standaloneRigStores = buildStandaloneRigStores(nextCfg, cr.cityPath, cr.stderr)
 	}
 
 	// Rebuild convergence scopes against the reloaded config so rigs added,
@@ -2735,7 +2747,7 @@ func (cr *CityRuntime) beadReconcileTick(ctx context.Context, result DesiredStat
 	}
 	phaseStart = time.Now()
 	if err == nil {
-		if nudgeErr := dispatchReadyWaitNudgesWithSnapshot(cr.ctx, cr.cityPath, cr.cfg, sessionpkg.NewStore(sessStore), cr.nudgesBeadStore(), time.Now(), dispatchSessionBeads); nudgeErr != nil {
+		if nudgeErr := dispatchReadyWaitNudgesWithSnapshot(cr.cityPath, cr.cfg, sessionpkg.NewStore(sessStore), cr.nudgesBeadStore(), time.Now(), dispatchSessionBeads); nudgeErr != nil {
 			fmt.Fprintf(cr.stderr, "%s: dispatching wait nudges: %v\n", cr.logPrefix, nudgeErr) //nolint:errcheck
 		}
 	}
@@ -3374,7 +3386,7 @@ func (cr *CityRuntime) nudgeDispatchTick(_ context.Context) {
 	if sessionBeads == nil {
 		return
 	}
-	if _, err := dispatchAllQueuedNudges(cr.ctx, cr.cityPath, cr.cfg, store.Store, cr.sessionsBeadStore().Store, cr.sp, sessionBeads, cr.stderr); err != nil {
+	if _, err := dispatchAllQueuedNudges(cr.cityPath, cr.cfg, store.Store, cr.sessionsBeadStore().Store, cr.sp, sessionBeads, cr.stderr); err != nil {
 		fmt.Fprintf(cr.stderr, "%s: nudge dispatcher: %v\n", cr.logPrefix, err) //nolint:errcheck
 	}
 }
@@ -3398,12 +3410,11 @@ func (cr *CityRuntime) controlDispatcherTick(ctx context.Context) {
 		return
 	}
 
-	cr.ensureManagedDoltPublishedForTick(ctx)
+	cr.ensureManagedDoltPublishedForTick()
 
 	sessionBeads := cr.loadSessionBeadSnapshot()
 	tickTime := time.Now()
 	wfcResult := buildDesiredStateWithSessionBeadsAt(
-		ctx,
 		cr.cityName,
 		cr.cityPath,
 		tickTime,
@@ -3491,7 +3502,7 @@ func (cr *CityRuntime) controlDispatcherTick(ctx context.Context) {
 	cr.requestDeferredDrainFollowUpTick()
 }
 
-func (cr *CityRuntime) ensureManagedDoltPublishedForTick(ctx context.Context) {
+func (cr *CityRuntime) ensureManagedDoltPublishedForTick() {
 	healthFn := cr.managedDoltHealth
 	if healthFn == nil {
 		healthFn = healthBeadsProvider
@@ -3504,15 +3515,14 @@ func (cr *CityRuntime) ensureManagedDoltPublishedForTick(ctx context.Context) {
 	if portFn == nil {
 		portFn = currentResolvableManagedDoltPort
 	}
-	ensureManagedDoltPublishedForRuntime(ctx, cr.cityPath, cr.stderr, cr.logPrefix, healthFn, ownedFn, portFn)
+	ensureManagedDoltPublishedForRuntime(cr.cityPath, cr.stderr, cr.logPrefix, healthFn, ownedFn, portFn)
 }
 
 func ensureManagedDoltPublishedForRuntime(
-	ctx context.Context,
 	cityPath string,
 	stderr io.Writer,
 	logPrefix string,
-	healthFn func(context.Context, string) error,
+	healthFn func(string) error,
 	ownedFn func(string) (bool, error),
 	portFn func(string) string,
 ) {
@@ -3530,7 +3540,7 @@ func ensureManagedDoltPublishedForRuntime(
 	if portFn(cityPath) != "" {
 		return
 	}
-	if err := healthFn(ctx, cityPath); err != nil {
+	if err := healthFn(cityPath); err != nil {
 		fmt.Fprintf(stderr, "%s: managed dolt health preflight: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 	}
 }
@@ -3636,7 +3646,7 @@ func filterReconcileRowsByName(snapshot *sessionBeadSnapshot, names map[string]b
 	return filtered
 }
 
-func (cr *CityRuntime) buildDesiredState(ctx context.Context, sessionBeads *sessionBeadSnapshot, trace *sessionReconcilerTraceCycle) DesiredStateResult {
+func (cr *CityRuntime) buildDesiredState(sessionBeads *sessionBeadSnapshot, trace *sessionReconcilerTraceCycle) DesiredStateResult {
 	// The desired-state build threads two store roles: the session-bead store the
 	// build-fn's leading store param flows into (sessions — it becomes
 	// agentBuildParams.beadStore, which creates and updates session beads, and the
@@ -3645,9 +3655,9 @@ func (cr *CityRuntime) buildDesiredState(ctx context.Context, sessionBeads *sess
 	// routes each role independently; both collapse to the same store today.
 	sessionsStore := cr.sessionsBeadStore()
 	if cr.buildFnWithSessionBeads != nil {
-		return cr.buildFnWithSessionBeads(ctx, cr.cfg, cr.sp, sessionsStore.Store, unwrapWorkStores(cr.workBeadStores()), sessionBeads, trace)
+		return cr.buildFnWithSessionBeads(cr.cfg, cr.sp, sessionsStore.Store, unwrapWorkStores(cr.workBeadStores()), sessionBeads, trace)
 	}
-	return cr.buildFn(ctx, cr.cfg, cr.sp, sessionsStore.Store)
+	return cr.buildFn(cr.cfg, cr.sp, sessionsStore.Store)
 }
 
 // refreshDesiredState re-applies the session-bead overlay to an already-built
@@ -3660,9 +3670,8 @@ func (cr *CityRuntime) buildDesiredState(ctx context.Context, sessionBeads *sess
 // it. So it is the SESSIONS store, not the work store; on a relocated city the
 // work store would take a session-class create the class binding never sees and
 // the boot containment re-check names.
-func (cr *CityRuntime) refreshDesiredState(ctx context.Context, result DesiredStateResult, sessionBeads *sessionBeadSnapshot) DesiredStateResult {
+func (cr *CityRuntime) refreshDesiredState(result DesiredStateResult, sessionBeads *sessionBeadSnapshot) DesiredStateResult {
 	return refreshDesiredStateWithSessionBeads(
-		ctx,
 		result,
 		cr.cityName,
 		cr.cityPath,
@@ -3675,7 +3684,6 @@ func (cr *CityRuntime) refreshDesiredState(ctx context.Context, result DesiredSt
 }
 
 func (cr *CityRuntime) loadDemandSnapshot(
-	ctx context.Context,
 	sessionBeads *sessionBeadSnapshot,
 	trace *sessionReconcilerTraceCycle,
 	trigger string,
@@ -3694,7 +3702,7 @@ func (cr *CityRuntime) loadDemandSnapshot(
 		} else if cr.demandSnapshot != nil {
 			readyDemandFingerprint = cr.demandSnapshot.readyDemandFingerprint
 		}
-		result := cr.buildDesiredState(ctx, sessionBeads, trace)
+		result := cr.buildDesiredState(sessionBeads, trace)
 		var openSessionInfos []sessionpkg.Info
 		if sessionBeads != nil {
 			openSessionInfos = sessionBeads.OpenInfos()
@@ -3955,7 +3963,7 @@ type rigStoreOpenFailure struct {
 // rig is unmounted is worse than running degraded, and the controller has an
 // operator-visible log to say so. `gc ready` (readyRigLegStores) fails the whole
 // query: its entire output is a JSON array with nowhere to say it is short.
-func openStandaloneRigStores(ctx context.Context, cfg *config.City, cityPath string) (map[string]beads.Store, []rigStoreOpenFailure) {
+func openStandaloneRigStores(cfg *config.City, cityPath string) (map[string]beads.Store, []rigStoreOpenFailure) {
 	if cfg == nil || len(cfg.Rigs) == 0 {
 		return nil, nil
 	}
@@ -3970,7 +3978,7 @@ func openStandaloneRigStores(ctx context.Context, cfg *config.City, cityPath str
 		if strings.TrimSpace(rig.Path) == "" {
 			continue
 		}
-		store, err := openStoreAtForCity(ctx, rig.Path, cityPath)
+		store, err := openStoreAtForCity(rig.Path, cityPath)
 		if err != nil {
 			failures = append(failures, rigStoreOpenFailure{rig: rig.Name, err: err})
 			continue
@@ -3983,8 +3991,8 @@ func openStandaloneRigStores(ctx context.Context, cfg *config.City, cityPath str
 	return stores, failures
 }
 
-func buildStandaloneRigStores(ctx context.Context, cfg *config.City, cityPath string, stderr io.Writer) map[string]beads.Store {
-	stores, failures := openStandaloneRigStores(ctx, cfg, cityPath)
+func buildStandaloneRigStores(cfg *config.City, cityPath string, stderr io.Writer) map[string]beads.Store {
+	stores, failures := openStandaloneRigStores(cfg, cityPath)
 	for _, f := range failures {
 		fmt.Fprintf(stderr, "gc supervisor: rig bead store %q: %v\n", f.rig, f.err) //nolint:errcheck // best-effort stderr
 	}

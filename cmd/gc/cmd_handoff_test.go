@@ -323,13 +323,19 @@ func TestCmdHandoffAutoHookFormatCodex(t *testing.T) {
 	}
 
 	var payload struct {
-		SystemMessage string `json:"systemMessage"`
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
 		t.Fatalf("stdout is not Codex hook JSON: %v\n%s", err, stdout.String())
 	}
-	if !strings.Contains(payload.SystemMessage, "Handoff: sent auto mail") {
-		t.Fatalf("systemMessage = %q, want handoff confirmation", payload.SystemMessage)
+	if got, want := payload.HookSpecificOutput.HookEventName, "PreCompact"; got != want {
+		t.Fatalf("hookEventName = %q, want %q", got, want)
+	}
+	if !strings.Contains(payload.HookSpecificOutput.AdditionalContext, "Handoff: sent auto mail") {
+		t.Fatalf("additionalContext = %q, want handoff confirmation", payload.HookSpecificOutput.AdditionalContext)
 	}
 	store, err := openCityStoreAt(cityDir)
 	if err != nil {
@@ -339,8 +345,8 @@ func TestCmdHandoffAutoHookFormatCodex(t *testing.T) {
 	if len(all) != 1 {
 		t.Fatalf("open beads = %d, want handoff mail", len(all))
 	}
-	if !strings.Contains(payload.SystemMessage, all[0].ID) {
-		t.Fatalf("systemMessage = %q, want handoff mail id %s", payload.SystemMessage, all[0].ID)
+	if !strings.Contains(payload.HookSpecificOutput.AdditionalContext, all[0].ID) {
+		t.Fatalf("additionalContext = %q, want handoff mail id %s", payload.HookSpecificOutput.AdditionalContext, all[0].ID)
 	}
 }
 
