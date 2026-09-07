@@ -19,7 +19,8 @@ func isTestBinary() bool {
 	if len(os.Args) == 0 {
 		return false
 	}
-	return strings.HasSuffix(filepath.Base(os.Args[0]), ".test")
+	return strings.HasSuffix(os.Args[0], ".test") ||
+		strings.Contains(os.Args[0], ".test")
 }
 
 // Config holds machine-wide supervisor configuration loaded from

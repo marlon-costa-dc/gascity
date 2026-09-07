@@ -110,15 +110,7 @@ func (c PreflightChecker) readMetadata(scope string) (preflightMetadata, error) 
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		return preflightMetadata{}, fmt.Errorf("parse preflight metadata %s: %w", path, err)
 	}
-	metadata = metadata.trimmed()
-	projectID, ok, err := ReadProjectIdentity(files, scope)
-	if err != nil {
-		return preflightMetadata{}, err
-	}
-	if ok {
-		metadata.ProjectID = projectID
-	}
-	return metadata, nil
+	return metadata.trimmed(), nil
 }
 
 func (c PreflightChecker) checkProvider() PreflightCheckResult {

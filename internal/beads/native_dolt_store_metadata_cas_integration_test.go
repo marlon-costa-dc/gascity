@@ -1,9 +1,4 @@
-//go:build integration && beads_rowlock
-
-// Metadata CAS against a live store. Requires beads_rowlock in addition to
-// integration: the CAS methods live in native_dolt_store_conditional.go, and the
-// issues.row_lock column they fence on arrives with migration 0054. See beads
-// gc-5oauf.
+//go:build integration
 
 package beads
 

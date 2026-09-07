@@ -121,19 +121,11 @@ func hookCommands(raw any) []string {
 	return commands
 }
 
-// containsGCHandoff reports whether command invokes the "handoff"
-// subcommand, either directly ("gc handoff ...") or routed through the
-// managed-session gate ("gc hook run --when-managed-session -- handoff ...",
-// per gct-jpkla / internal/hooks/config/claude.json's canonical form): in
-// both forms "handoff" is the token immediately after "gc" or after the "--"
-// argument terminator that ends gc hook run's own flags.
 func containsGCHandoff(command string) bool {
 	fields := strings.Fields(command)
-	for i := 1; i < len(fields); i++ {
-		if fields[i] != "handoff" {
-			continue
-		}
-		if fields[i-1] == "gc" || fields[i-1] == "--" {
+	for i := 0; i < len(fields)-1; i++ {
+		gcCommand := strings.Trim(fields[i], `"'`)
+		if (gcCommand == "gc" || gcCommand == "${GC_BIN:-gc}") && fields[i+1] == "handoff" {
 			return true
 		}
 	}
