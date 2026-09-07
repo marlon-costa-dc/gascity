@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -119,9 +118,10 @@ func TestBuildDesiredState_WarmRigPoolSeesCityStoreRoutedDemand(t *testing.T) {
 		createRoutedBead(t, cityStore, "cross-store routed work")
 	}
 
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"gc", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, rigStores, nil, nil, io.Discard)
+		cityStore, rigStores, nil, nil, io.Discard,
+	)
 
 	if got := dsResult.ScaleCheckCounts["gascity/worker"]; got != 3 {
 		t.Fatalf("ScaleCheckCounts[gascity/worker] = %d, want 3: a WARM rig pool must count "+
@@ -150,9 +150,10 @@ func TestBuildDesiredState_WarmRigPoolCityProbeDoesNotDoubleCountRigDemand(t *te
 	createRoutedBead(t, rigStore, "rig-store routed work")
 	createRoutedBead(t, cityStore, "city-store routed work")
 
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"gc", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, rigStores, nil, nil, io.Discard)
+		cityStore, rigStores, nil, nil, io.Discard,
+	)
 
 	if got := dsResult.ScaleCheckCounts["gascity/worker"]; got != 2 {
 		t.Fatalf("ScaleCheckCounts[gascity/worker] = %d, want 2 (1 rig + 1 city, no double count; full=%v)",
@@ -184,9 +185,10 @@ func TestBuildDesiredState_WarmAliasedRigStoreDoesNotDoubleCountDemand(t *testin
 
 	createRoutedBead(t, cityStore, "shared-backing routed work")
 
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"gc", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, rigStores, nil, nil, io.Discard)
+		cityStore, rigStores, nil, nil, io.Discard,
+	)
 
 	if got := dsResult.ScaleCheckCounts["gascity/worker"]; got != 1 {
 		t.Fatalf("ScaleCheckCounts[gascity/worker] = %d, want 1: rig store aliasing the city "+
@@ -213,9 +215,10 @@ func TestBuildDesiredState_WarmRigPoolMissingRigStoreStaysPartialNoCityProbe(t *
 
 	createRoutedBead(t, cityStore, "city routed work while rig store down")
 
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"gc", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, rigStores, nil, nil, io.Discard)
+		cityStore, rigStores, nil, nil, io.Discard,
+	)
 
 	if got, ok := dsResult.ScaleCheckCounts["gascity/worker"]; ok && got > 0 {
 		t.Fatalf("ScaleCheckCounts[gascity/worker] = %d, want absent/0: an unhealthy rig store must not "+
@@ -255,9 +258,10 @@ func TestBuildDesiredState_WarmNamedBackingRigPoolSeesCityStoreRoutedDemand(t *t
 		createRoutedBead(t, cityStore, "cross-store routed work")
 	}
 
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"gc", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, rigStores, nil, nil, io.Discard)
+		cityStore, rigStores, nil, nil, io.Discard,
+	)
 
 	if got := dsResult.ScaleCheckCounts["gascity/worker"]; got != 1 {
 		t.Fatalf("ScaleCheckCounts[gascity/worker] = %d, want 1 (namedOnDemandTemplates clamp): a WARM "+

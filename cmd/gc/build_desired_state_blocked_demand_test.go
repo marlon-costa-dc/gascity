@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"io"
 	"testing"
@@ -125,8 +124,9 @@ func TestBuildDesiredStateRetainsControlDispatcherOnRoutedDemandOutage(t *testin
 	dispatcher := config.ControlDispatcherAgentName
 
 	snapshot := newSessionBeadSnapshot([]beads.Bead{dispatcherSession})
-	got := buildDesiredStateWithSessionBeads(context.Background(),
-		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, nil, snapshot, nil, io.Discard)
+	got := buildDesiredStateWithSessionBeads(
+		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), store, nil, snapshot, nil, io.Discard,
+	)
 
 	if got.PoolScaleCheckPartialTemplates[dispatcher] {
 		t.Fatalf("PoolScaleCheckPartialTemplates = %v, want routed-demand outage to remain retention-only", got.PoolScaleCheckPartialTemplates)
@@ -179,9 +179,10 @@ func TestBuildDesiredStateStartsColdControlDispatcherFromHealthyStoreDuringOther
 		}},
 	}
 
-	got := buildDesiredStateWithSessionBeads(context.Background(),
+	got := buildDesiredStateWithSessionBeads(
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(), cityStore,
-		map[string]beads.Store{"fixture": rigStore}, newSessionBeadSnapshot(nil), nil, io.Discard)
+		map[string]beads.Store{"fixture": rigStore}, newSessionBeadSnapshot(nil), nil, io.Discard,
+	)
 
 	if got.ScaleCheckCounts["core.control-dispatcher"] != 1 {
 		t.Fatalf("ScaleCheckCounts = %v, want healthy-store control demand for core.control-dispatcher", got.ScaleCheckCounts)

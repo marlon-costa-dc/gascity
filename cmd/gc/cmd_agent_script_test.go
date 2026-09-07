@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -216,12 +215,11 @@ turns:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := runAgentScriptWithRuntime(context.Background(), scriptPath, &stdout, &stderr,
+			code := runAgentScriptWithRuntime(scriptPath, &stdout, &stderr,
 				agentScriptExecutor{stdout: &stdout, stderr: &stderr},
-				func(context.Context, io.Writer) (agentScriptBead, bool, error) {
+				func(io.Writer) (agentScriptBead, bool, error) {
 					return tt.bead, true, nil
 				})
-
 			if code == 0 {
 				t.Fatalf("runAgentScriptWithRuntime exit = 0, want failure")
 			}
@@ -591,11 +589,10 @@ turns:
 					return nil
 				},
 			}
-			code := runAgentScriptWithRuntime(context.Background(), scriptPath, &stdout, &stderr, exec,
-				func(context.Context, io.Writer) (agentScriptBead, bool, error) {
+			code := runAgentScriptWithRuntime(scriptPath, &stdout, &stderr, exec,
+				func(io.Writer) (agentScriptBead, bool, error) {
 					return agentScriptBead{ID: "ga-123"}, true, nil
 				})
-
 			if code == 0 {
 				t.Fatalf("runAgentScriptWithRuntime exit = 0, want failure")
 			}
@@ -770,8 +767,8 @@ turns:
 		},
 	}
 
-	code := runAgentScriptWithRuntime(context.Background(), scriptPath, &stdout, &stderr, exec,
-		func(context.Context, io.Writer) (agentScriptBead, bool, error) {
+	code := runAgentScriptWithRuntime(scriptPath, &stdout, &stderr, exec,
+		func(io.Writer) (agentScriptBead, bool, error) {
 			return agentScriptBead{
 				ID:    "ga-123",
 				Title: "demo task",
@@ -780,7 +777,6 @@ turns:
 				},
 			}, true, nil
 		})
-
 	if code != 7 {
 		t.Fatalf("runAgentScriptWithRuntime exit = %d, want 7; stderr=%q", code, stderr.String())
 	}
@@ -836,11 +832,10 @@ func TestAgentScriptRunsShippedLifecyclePolecatScript(t *testing.T) {
 		},
 	}
 
-	code := runAgentScriptWithRuntime(context.Background(), scriptPath, &stdout, &stderr, exec,
-		func(context.Context, io.Writer) (agentScriptBead, bool, error) {
+	code := runAgentScriptWithRuntime(scriptPath, &stdout, &stderr, exec,
+		func(io.Writer) (agentScriptBead, bool, error) {
 			return agentScriptBead{ID: "ga-123", Title: "Demo work"}, true, nil
 		})
-
 	if code != 0 {
 		t.Fatalf("runAgentScriptWithRuntime exit = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -929,8 +924,8 @@ func TestAgentScriptRunsShippedLifecycleRefineryScript(t *testing.T) {
 		},
 	}
 
-	code := runAgentScriptWithRuntime(context.Background(), scriptPath, &stdout, &stderr, exec,
-		func(context.Context, io.Writer) (agentScriptBead, bool, error) {
+	code := runAgentScriptWithRuntime(scriptPath, &stdout, &stderr, exec,
+		func(io.Writer) (agentScriptBead, bool, error) {
 			return agentScriptBead{
 				ID:    "ga-123",
 				Title: "Demo work",
@@ -940,7 +935,6 @@ func TestAgentScriptRunsShippedLifecycleRefineryScript(t *testing.T) {
 				},
 			}, true, nil
 		})
-
 	if code != 0 {
 		t.Fatalf("runAgentScriptWithRuntime exit = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -979,8 +973,8 @@ func TestAgentScriptRunsShippedLifecycleRefineryScript(t *testing.T) {
 
 func TestAgentScriptHookBeadAllowsWarningsWithReadyWork(t *testing.T) {
 	var stderr bytes.Buffer
-	bead, hasWork, err := agentScriptHookBeadWithRunner(context.Background(), &stderr,
-		func(_ context.Context, _ []string, _ bool, _ string, stdout, hookStderr io.Writer) int {
+	bead, hasWork, err := agentScriptHookBeadWithRunner(&stderr,
+		func(_ []string, _ bool, _ string, stdout, hookStderr io.Writer) int {
 			_, _ = hookStderr.Write([]byte("gc hook: deprecated config warning\n"))
 			_, _ = stdout.Write([]byte(`[{"id":"ga-123","title":"demo","metadata":{"branch":"feature"}}]`))
 			return 0
@@ -1001,8 +995,8 @@ func TestAgentScriptHookBeadAllowsWarningsWithReadyWork(t *testing.T) {
 
 func TestAgentScriptHookBeadTreatsEmptyHookWarningAsNoWork(t *testing.T) {
 	var stderr bytes.Buffer
-	bead, hasWork, err := agentScriptHookBeadWithRunner(context.Background(), &stderr,
-		func(_ context.Context, _ []string, _ bool, _ string, _ io.Writer, hookStderr io.Writer) int {
+	bead, hasWork, err := agentScriptHookBeadWithRunner(&stderr,
+		func(_ []string, _ bool, _ string, _ io.Writer, hookStderr io.Writer) int {
 			_, _ = hookStderr.Write([]byte("gc hook: deprecated config warning\n"))
 			return 1
 		})
@@ -1019,12 +1013,11 @@ func TestAgentScriptHookBeadTreatsEmptyHookWarningAsNoWork(t *testing.T) {
 
 func TestAgentScriptHookBeadReportsHookFailureWithEmptyOutput(t *testing.T) {
 	var stderr bytes.Buffer
-	_, hasWork, err := agentScriptHookBeadWithRunner(context.Background(), &stderr,
-		func(_ context.Context, _ []string, _ bool, _ string, _ io.Writer, hookStderr io.Writer) int {
+	_, hasWork, err := agentScriptHookBeadWithRunner(&stderr,
+		func(_ []string, _ bool, _ string, _ io.Writer, hookStderr io.Writer) int {
 			_, _ = hookStderr.Write([]byte("gc hook: config failed\n"))
 			return 1
 		})
-
 	if err == nil {
 		t.Fatal("agentScriptHookBeadWithRunner succeeded, want hook failure")
 	}
@@ -1041,8 +1034,8 @@ func TestAgentScriptHookBeadReportsHookFailureWithEmptyOutput(t *testing.T) {
 
 func TestAgentScriptHookBeadTreatsEmptyHookAsNoWork(t *testing.T) {
 	var stderr bytes.Buffer
-	bead, hasWork, err := agentScriptHookBeadWithRunner(context.Background(), &stderr,
-		func(_ context.Context, _ []string, _ bool, _ string, _ io.Writer, _ io.Writer) int {
+	bead, hasWork, err := agentScriptHookBeadWithRunner(&stderr,
+		func(_ []string, _ bool, _ string, _ io.Writer, _ io.Writer) int {
 			return 1
 		})
 	if err != nil {
@@ -1058,12 +1051,11 @@ func TestAgentScriptHookBeadTreatsEmptyHookAsNoWork(t *testing.T) {
 
 func TestAgentScriptHookBeadReportsArrayAndObjectDecodeErrors(t *testing.T) {
 	var stderr bytes.Buffer
-	_, _, err := agentScriptHookBeadWithRunner(context.Background(), &stderr,
-		func(_ context.Context, _ []string, _ bool, _ string, stdout, _ io.Writer) int {
+	_, _, err := agentScriptHookBeadWithRunner(&stderr,
+		func(_ []string, _ bool, _ string, stdout, _ io.Writer) int {
 			_, _ = stdout.Write([]byte(`{"id":`))
 			return 0
 		})
-
 	if err == nil {
 		t.Fatal("agentScriptHookBeadWithRunner accepted malformed hook output")
 	}

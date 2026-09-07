@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"os"
 	"strings"
@@ -39,7 +38,7 @@ func crossStoreClaimDir(cfg *config.City, agentCfg *config.Agent, beadID string)
 // the rig store directory + bd subprocess env a write against beadID must use.
 // Best-effort — any resolution failure returns ok=false so the write falls back
 // to the default (inherited) environment, preserving rig-agent behavior.
-func agentScriptCrossStoreBeadEnv(ctx context.Context, beadID string) (string, []string, bool) {
+func agentScriptCrossStoreBeadEnv(beadID string) (string, []string, bool) {
 	beadID = strings.TrimSpace(beadID)
 	if beadID == "" {
 		return "", nil, false
@@ -71,7 +70,7 @@ func agentScriptCrossStoreBeadEnv(ctx context.Context, beadID string) (string, [
 	if !ok {
 		return "", nil, false
 	}
-	overrides, err := bdRuntimeEnvForRigWithError(ctx, cityPath, cfg, rigDir)
+	overrides, err := bdRuntimeEnvForRigWithError(cityPath, cfg, rigDir)
 	if err != nil {
 		return "", nil, false
 	}

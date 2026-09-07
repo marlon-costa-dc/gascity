@@ -131,9 +131,9 @@ func cityInitDoInit(_ context.Context, req cityinit.InitRequest) error {
 	return nil
 }
 
-func cityInitFinalize(ctx context.Context, req cityinit.InitRequest) error {
+func cityInitFinalize(_ context.Context, req cityinit.InitRequest) error {
 	var stdout, stderr bytes.Buffer
-	if code := finalizeInit(ctx, req.Dir, &stdout, &stderr, initFinalizeOptions{
+	if code := finalizeInit(req.Dir, &stdout, &stderr, initFinalizeOptions{
 		skipProviderReadiness: req.SkipProviderReadiness,
 		showProgress:          false,
 		commandName:           "gc init",

@@ -148,7 +148,7 @@ func resolveCLIStorageRoutes(cityPath string) *storageRoutes {
 	if err != nil {
 		return nil
 	}
-	routes, err := storageBootGate(context.Background(), cityPath, cfg, cliStorageLogPrefix, nil, cliStorageStderr)
+	routes, err := storageBootGate(cityPath, cfg, cliStorageLogPrefix, nil, cliStorageStderr)
 	if err == nil {
 		// The one and only place a class store is given an emit target. A
 		// one-shot command has no live event bus, so without this its writes to

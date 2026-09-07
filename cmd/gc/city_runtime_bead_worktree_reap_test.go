@@ -31,7 +31,7 @@ func newReapTickRuntime(cityPath string, cfg *config.City, rigStore beads.Store,
 		logPrefix:           "test",
 		stdout:              io.Discard,
 		stderr:              stderr,
-		buildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 	}

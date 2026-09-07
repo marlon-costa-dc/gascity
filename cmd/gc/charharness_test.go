@@ -46,7 +46,7 @@ type charLane struct {
 // charCommand plugs a specific read command into the driver.
 type charCommand struct {
 	name     string // golden filename stem, e.g. "convoy-list"
-	route    func(ctx context.Context, cityPath string, c *api.Client, nilReason string, jsonOut bool, stdout, stderr io.Writer) int
+	route    func(cityPath string, c *api.Client, nilReason string, jsonOut bool, stdout, stderr io.Writer) int
 	readback func(cityPath string) ([]string, error) // optional post-run state read-back; nil = none
 }
 
@@ -75,7 +75,7 @@ func newCharCity(t *testing.T, cityToml string, seed func(t *testing.T, store be
 	}
 
 	if seed != nil {
-		store, err := openCityStoreAt(context.Background(), cityPath)
+		store, err := openCityStoreAt(cityPath)
 		if err != nil {
 			t.Fatalf("open seed store: %v", err)
 		}
@@ -144,7 +144,7 @@ func (h *charHarness) run(lane charLane, cmd charCommand, jsonOut bool, stdout, 
 	if lane.reqs != nil {
 		before = lane.reqs.Load()
 	}
-	exit = cmd.route(context.Background(), h.cityPath, lane.client, lane.nilReason, jsonOut, stdout, stderr)
+	exit = cmd.route(h.cityPath, lane.client, lane.nilReason, jsonOut, stdout, stderr)
 	if lane.reqs != nil {
 		reqDelta = lane.reqs.Load() - before
 	}
@@ -239,7 +239,7 @@ func canonLines(c *chartest.Canonicalizer, lines []string) []string {
 // convoyReadback lists the convoy beads on disk after a run (reads should not
 // mutate them), formatted deterministically for the golden.
 func convoyReadback(cityPath string) ([]string, error) {
-	store, err := openCityStoreAt(context.Background(), cityPath)
+	store, err := openCityStoreAt(cityPath)
 	if err != nil {
 		return nil, err
 	}

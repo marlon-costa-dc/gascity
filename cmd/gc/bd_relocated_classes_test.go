@@ -395,7 +395,7 @@ func bdSQLRefusalCity(t *testing.T, storageTOML string) (capture string) {
 	t.Cleanup(func() {
 		cityFlag, rigFlag, bdBeadExists = origCityFlag, origRigFlag, origProbe
 	})
-	bdBeadExists = func(context.Context, string, *config.City, execStoreTarget, string) bool { return false }
+	bdBeadExists = func(string, *config.City, execStoreTarget, string) bool { return false }
 	cityFlag, rigFlag = "", ""
 
 	cityDir := t.TempDir()
@@ -450,7 +450,7 @@ func TestGcBdSQLRefusesAGraphClassQueryOnASplitCity(t *testing.T) {
 	capture := bdSQLRefusalCity(t, bdSQLRefusalSplitStorage)
 
 	var stdout, stderr bytes.Buffer
-	code := doBd(context.Background(), []string{"sql", "select id, status from issues where id = 'gcg-abc123'"}, &stdout, &stderr)
+	code := doBd([]string{"sql", "select id, status from issues where id = 'gcg-abc123'"}, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("doBd exited 0 on a graph-blind query; stderr=%q", stderr.String())
 	}
@@ -477,7 +477,7 @@ func TestGcBdSQLRefusesBehindALeadingRootFlagOnASplitCity(t *testing.T) {
 			capture := bdSQLRefusalCity(t, bdSQLRefusalSplitStorage)
 
 			var stdout, stderr bytes.Buffer
-			if code := doBd(context.Background(), args, &stdout, &stderr); code == 0 {
+			if code := doBd(args, &stdout, &stderr); code == 0 {
 				t.Fatalf("doBd(%v) exited 0 on a graph-blind query; stderr=%q", args, stderr.String())
 			}
 			if _, err := os.Stat(capture); err == nil {
@@ -496,7 +496,7 @@ func TestGcBdQueryRefusesAGraphClassQueryOnASplitCity(t *testing.T) {
 	capture := bdSQLRefusalCity(t, bdSQLRefusalSplitStorage)
 
 	var stdout, stderr bytes.Buffer
-	if code := doBd(context.Background(), []string{"query", "--json", "id=gcg-abc123"}, &stdout, &stderr); code == 0 {
+	if code := doBd([]string{"query", "--json", "id=gcg-abc123"}, &stdout, &stderr); code == 0 {
 		t.Fatalf("doBd exited 0 on a graph-blind query; stderr=%q", stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "gc beads show <id>") {
@@ -530,7 +530,7 @@ func TestGcBdListRefusesAGraphClassProjectionOnASplitCity(t *testing.T) {
 	t.Setenv("BD_STUB_STDOUT", "[]")
 
 	var stdout, stderr bytes.Buffer
-	code := doBd(context.Background(), bdListGraphProjection, &stdout, &stderr)
+	code := doBd(bdListGraphProjection, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("`gc bd %s` exited 0 with stdout=%q; that empty array is the silent-empty this refusal exists to remove", strings.Join(bdListGraphProjection, " "), stdout.String())
 	}
@@ -581,7 +581,7 @@ func TestGcBdProjectionsAgreeOnAClassTheyCannotSee(t *testing.T) {
 			captureCLIStorageStderr(t)
 
 			var stdout, stderr bytes.Buffer
-			if code := doBd(context.Background(), args, &stdout, &stderr); code == 0 {
+			if code := doBd(args, &stdout, &stderr); code == 0 {
 				t.Fatalf("doBd(%v) exited 0; stdout=%q", args, stdout.String())
 			}
 			for _, want := range []string{"gcg", "infra"} {
@@ -604,7 +604,7 @@ func TestGcBdListIsUnchangedOnASingleStoreCity(t *testing.T) {
 	t.Setenv("BD_STUB_STDOUT", "[]")
 
 	var stdout, stderr bytes.Buffer
-	if code := doBd(context.Background(), bdListGraphProjection, &stdout, &stderr); code != 0 {
+	if code := doBd(bdListGraphProjection, &stdout, &stderr); code != 0 {
 		t.Fatalf("doBd = %d on a single-store city; stderr=%q", code, stderr.String())
 	}
 	data, err := os.ReadFile(capture)
@@ -636,7 +636,7 @@ func TestGcBdListOverrideRunsTheProjectionLoudly(t *testing.T) {
 
 	args := []string{"list", "--metadata-field", "gc.drain_control_id=gcg-abc123", "--json"}
 	var stdout, stderr bytes.Buffer
-	if code := doBd(context.Background(), args, &stdout, &stderr); code != 0 {
+	if code := doBd(args, &stdout, &stderr); code != 0 {
 		t.Fatalf("doBd = %d with the override set; stderr=%q", code, stderr.String())
 	}
 	data, err := os.ReadFile(capture)
@@ -681,7 +681,7 @@ func TestGcBdListForwardsAFreeTextSearchThatNamesAGraphID(t *testing.T) {
 			t.Setenv("BD_STUB_STDOUT", row)
 
 			var stdout, stderr bytes.Buffer
-			if code := doBd(context.Background(), args, &stdout, &stderr); code != 0 {
+			if code := doBd(args, &stdout, &stderr); code != 0 {
 				t.Fatalf("`gc bd %s` exited %d on a split city; a LIKE-contains over this ledger's own columns is a question bd answers, and refusing it withholds rows that exist. stderr=%q",
 					strings.Join(args, " "), code, stderr.String())
 			}
@@ -722,7 +722,7 @@ func TestGcBdListOnAnIDValuedFlagRefusesByOwnership(t *testing.T) {
 			captureCLIStorageStderr(t)
 
 			var stdout, stderr bytes.Buffer
-			if code := doBd(context.Background(), args, &stdout, &stderr); code == 0 {
+			if code := doBd(args, &stdout, &stderr); code == 0 {
 				t.Fatalf("doBd(%v) exited 0; stdout=%q", args, stdout.String())
 			}
 			if !strings.Contains(stderr.String(), "gcg-abc123 is owned by") {
@@ -756,7 +756,7 @@ func TestGcBdHeartbeatOnARelocatedClassIDRefusesByOwnership(t *testing.T) {
 	captureCLIStorageStderr(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := doBd(context.Background(), args, &stdout, &stderr); code == 0 {
+	if code := doBd(args, &stdout, &stderr); code == 0 {
 		t.Fatalf("doBd(%v) exited 0; a heartbeat against a relocated-class id must not run against the work store; stdout=%q", args, stdout.String())
 	}
 	// The refusal must be the by-id OWNERSHIP one, naming the bead, its binding
@@ -801,7 +801,7 @@ func TestGcBdReadyRefusesAGraphClassProjectionOnASplitCity(t *testing.T) {
 			t.Setenv("BD_STUB_STDOUT", "[]")
 
 			var stdout, stderr bytes.Buffer
-			if code := doBd(context.Background(), args, &stdout, &stderr); code == 0 {
+			if code := doBd(args, &stdout, &stderr); code == 0 {
 				t.Fatalf("`gc bd %s` exited 0 with stdout=%q; that empty array is the same silent-empty `gc bd list` refuses on the same molecule",
 					strings.Join(args, " "), stdout.String())
 			}
@@ -866,7 +866,7 @@ func TestGcBdReadyRefusesTheWholeFrontierOnASplitCity(t *testing.T) {
 			t.Setenv("BD_STUB_STDOUT", bdReadyLiveShortAnswer)
 
 			var stdout, stderr bytes.Buffer
-			if code := doBd(context.Background(), args, &stdout, &stderr); code == 0 {
+			if code := doBd(args, &stdout, &stderr); code == 0 {
 				t.Fatalf("`gc bd %s` exited 0 with stdout=%q; that is the confident short frontier — no gcg- row, no warning, no non-zero exit — that `gc ready` and the API both contradict on the same city",
 					strings.Join(args, " "), stdout.String())
 			}
@@ -920,7 +920,7 @@ func TestGcBdReadyIsByteIdenticalOnASingleStoreCity(t *testing.T) {
 			t.Setenv("BD_STUB_STDOUT", bdReadyLiveShortAnswer)
 
 			var stdout, stderr bytes.Buffer
-			if code := doBd(context.Background(), args, &stdout, &stderr); code != 0 {
+			if code := doBd(args, &stdout, &stderr); code != 0 {
 				t.Fatalf("doBd(%v) = %d on a single-store city; stderr=%q", args, code, stderr.String())
 			}
 			data, err := os.ReadFile(capture)
@@ -965,7 +965,7 @@ func TestGcBdListReadyIsTheSameFrontierAndIsRefusedToo(t *testing.T) {
 			t.Setenv("BD_STUB_STDOUT", bdReadyLiveShortAnswer)
 
 			var stdout, stderr bytes.Buffer
-			if code := doBd(context.Background(), args, &stdout, &stderr); code == 0 {
+			if code := doBd(args, &stdout, &stderr); code == 0 {
 				t.Fatalf("`gc bd %s` exited 0 with stdout=%q; that is the same confident short frontier `gc bd ready` is refused for, one flag over",
 					strings.Join(args, " "), stdout.String())
 			}
@@ -1014,7 +1014,7 @@ func TestGcBdReadyOverrideStillRunsTheFrontierLoudly(t *testing.T) {
 
 	args := []string{"ready", "--json"}
 	var stdout, stderr bytes.Buffer
-	if code := doBd(context.Background(), args, &stdout, &stderr); code != 0 {
+	if code := doBd(args, &stdout, &stderr); code != 0 {
 		t.Fatalf("doBd = %d with %s=1; the override must run the read, not soften the refusal", code, bdRelocatedClassOverrideEnvVar)
 	}
 	data, err := os.ReadFile(capture)
@@ -1045,7 +1045,7 @@ func TestGcBdRefusalNamesTheOverride(t *testing.T) {
 	t.Setenv("BD_STUB_STDOUT", "[]")
 
 	var stdout, stderr bytes.Buffer
-	if code := doBd(context.Background(), bdListGraphProjection, &stdout, &stderr); code == 0 {
+	if code := doBd(bdListGraphProjection, &stdout, &stderr); code == 0 {
 		t.Fatalf("doBd exited 0; stdout=%q", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), bdRelocatedClassOverrideEnvVar) {
@@ -1168,7 +1168,7 @@ func TestGcBdDepTreeSplitsOnOwnershipNotOnServability(t *testing.T) {
 		captureCLIStorageStderr(t)
 
 		var stdout, stderr bytes.Buffer
-		if code := doBd(context.Background(), args, &stdout, &stderr); code != 0 {
+		if code := doBd(args, &stdout, &stderr); code != 0 {
 			t.Fatalf("doBd(%v) = %d; stderr=%q", args, code, stderr.String())
 		}
 		data, err := os.ReadFile(capture)
@@ -1187,7 +1187,7 @@ func TestGcBdDepTreeSplitsOnOwnershipNotOnServability(t *testing.T) {
 		captureCLIStorageStderr(t)
 
 		var stdout, stderr bytes.Buffer
-		if code := doBd(context.Background(), args, &stdout, &stderr); code == 0 {
+		if code := doBd(args, &stdout, &stderr); code == 0 {
 			t.Fatalf("doBd(%v) exited 0 for a class-owned id the binding does not hold; stdout=%q", args, stdout.String())
 		}
 		if data, err := os.ReadFile(capture); err == nil && strings.Contains(string(data), strings.Join(args, " ")) {
@@ -1213,7 +1213,7 @@ func TestGcBdShowNeverReachesBdForAClassOwnedIDOnASplitCity(t *testing.T) {
 	captureCLIStorageStderr(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := doBd(context.Background(), []string{"show", "gcg-abc123"}, &stdout, &stderr); code == 0 {
+	if code := doBd([]string{"show", "gcg-abc123"}, &stdout, &stderr); code == 0 {
 		t.Fatalf("doBd exited 0 for a class-owned id the binding does not hold; stdout=%q", stdout.String())
 	}
 	// The capture records every bd invocation this command made, including the
@@ -1268,7 +1268,7 @@ func TestGcBdOnARefusedCitySeparatesWorkFromClassOwnedIDs(t *testing.T) {
 
 		args := []string{"update", "demo-abc123", "--status", "closed"}
 		var stdout, stderr bytes.Buffer
-		if code := doBd(context.Background(), args, &stdout, &stderr); code != 0 {
+		if code := doBd(args, &stdout, &stderr); code != 0 {
 			t.Fatalf("doBd(%v) = %d on a work id; stderr=%q", args, code, stderr.String())
 		}
 		data, err := os.ReadFile(capture)
@@ -1286,7 +1286,7 @@ func TestGcBdOnARefusedCitySeparatesWorkFromClassOwnedIDs(t *testing.T) {
 		captureCLIStorageStderr(t)
 
 		var stdout, stderr bytes.Buffer
-		if code := doBd(context.Background(), []string{"show", "gcg-abc123"}, &stdout, &stderr); code == 0 {
+		if code := doBd([]string{"show", "gcg-abc123"}, &stdout, &stderr); code == 0 {
 			t.Fatalf("doBd exited 0 for a class-owned id on a city this build must not serve; stdout=%q", stdout.String())
 		}
 		if data, err := os.ReadFile(capture); err == nil && strings.Contains(string(data), "show gcg-abc123") {
@@ -1308,7 +1308,7 @@ func TestGcBdSQLOverrideRunsTheQueryLoudly(t *testing.T) {
 	t.Setenv(bdRelocatedClassOverrideEnvVar, "1")
 
 	var stdout, stderr bytes.Buffer
-	if code := doBd(context.Background(), []string{"sql", "select id from issues where id = 'gcg-abc123'"}, &stdout, &stderr); code != 0 {
+	if code := doBd([]string{"sql", "select id from issues where id = 'gcg-abc123'"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("doBd = %d with the override set; stderr=%q", code, stderr.String())
 	}
 	data, err := os.ReadFile(capture)
@@ -1329,7 +1329,7 @@ func TestGcBdSQLIsUnchangedOnASingleStoreCity(t *testing.T) {
 	capture := bdSQLRefusalCity(t, "")
 
 	var stdout, stderr bytes.Buffer
-	if code := doBd(context.Background(), []string{"sql", "select id, status from issues where id = 'gcg-abc123'"}, &stdout, &stderr); code != 0 {
+	if code := doBd([]string{"sql", "select id, status from issues where id = 'gcg-abc123'"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("doBd = %d on a single-store city; stderr=%q", code, stderr.String())
 	}
 	data, err := os.ReadFile(capture)

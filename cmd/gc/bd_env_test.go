@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 
 func mustBdRuntimeEnv(t *testing.T, cityPath string) map[string]string {
 	t.Helper()
-	env, err := bdRuntimeEnvWithError(context.Background(), cityPath)
+	env, err := bdRuntimeEnvWithError(cityPath)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvWithError() error = %v", err)
 	}
@@ -29,7 +30,7 @@ func mustBdRuntimeEnv(t *testing.T, cityPath string) map[string]string {
 
 func mustBdRuntimeEnvForRig(t *testing.T, cityPath string, cfg *config.City, rigPath string) map[string]string {
 	t.Helper()
-	env, err := bdRuntimeEnvForRigWithError(context.Background(), cityPath, cfg, rigPath)
+	env, err := bdRuntimeEnvForRigWithError(cityPath, cfg, rigPath)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvForRigWithError() error = %v", err)
 	}
@@ -38,7 +39,7 @@ func mustBdRuntimeEnvForRig(t *testing.T, cityPath string, cfg *config.City, rig
 
 func mustCityRuntimeProcessEnv(t *testing.T, cityPath string) []string {
 	t.Helper()
-	env, err := cityRuntimeProcessEnvWithError(context.Background(), cityPath)
+	env, err := cityRuntimeProcessEnvWithError(cityPath)
 	if err != nil {
 		t.Fatalf("cityRuntimeProcessEnvWithError() error = %v", err)
 	}
@@ -58,7 +59,7 @@ func envEntriesMap(entries []string) map[string]string {
 
 func mustSessionBackendEnv(t *testing.T, cityPath, rigRoot string, rigs []config.Rig) map[string]string {
 	t.Helper()
-	env, err := sessionBackendEnvWithError(context.Background(), cityPath, rigRoot, rigs)
+	env, err := sessionBackendEnvWithError(cityPath, rigRoot, rigs)
 	if err != nil {
 		t.Fatalf("sessionBackendEnvWithError() error = %v", err)
 	}
@@ -75,10 +76,12 @@ func requireErrorContains(t *testing.T, err error, want string) {
 	}
 }
 
-// TestBdCommandRunnerForCityCompleteStorageBindingPropagatesFirstFailure runs a real
+// TestBdCommandRunnerForCityCompleteStorageBindingSkipsManagedRetry runs a real
 // bd shim that fails the way an unreachable external store fails, because that
-// is the historical failure shape that used to trigger recovery/retry.
-func TestBdCommandRunnerForCityCompleteStorageBindingPropagatesFirstFailure(t *testing.T) {
+// is the only failure shape bdTransportRetryableError matches. Anything else
+// leaves the retry branch unreached and the assertion vacuous no matter what
+// the guard does.
+func TestBdCommandRunnerForCityCompleteStorageBindingSkipsManagedRetry(t *testing.T) {
 	cityPath := t.TempDir()
 	binDir := t.TempDir()
 	bdPath := filepath.Join(binDir, "bd")
@@ -101,7 +104,15 @@ func TestBdCommandRunnerForCityCompleteStorageBindingPropagatesFirstFailure(t *t
 	credentialsPath := filepath.Join(t.TempDir(), "custom-credentials")
 	t.Setenv("BEADS_CREDENTIALS_FILE", credentialsPath)
 
-	_, err := bdCommandRunnerForCity(context.Background(), cityPath)(cityPath, "bd", "status")
+	origRecover := recoverManagedBDCommand
+	t.Cleanup(func() { recoverManagedBDCommand = origRecover })
+	recoverCalls := 0
+	recoverManagedBDCommand = func(_ string) error {
+		recoverCalls++
+		return nil
+	}
+
+	_, err := bdCommandRunnerForCity(cityPath)(cityPath, "bd", "status")
 	if err == nil {
 		t.Fatal("runner error = nil, want fake bd failure")
 	}
@@ -111,8 +122,11 @@ func TestBdCommandRunnerForCityCompleteStorageBindingPropagatesFirstFailure(t *t
 	if !strings.Contains(err.Error(), "credentials="+credentialsPath) {
 		t.Fatalf("runner error = %q, want preserved credential file", err)
 	}
+	if recoverCalls != 0 {
+		t.Errorf("recoverCalls = %d, want 0: gc must not run managed-Dolt recovery for a store it does not manage", recoverCalls)
+	}
 	if got := countBdShimInvocations(t, invocations); got != 1 {
-		t.Errorf("bd invocations = %d, want 1: the first failed command must be propagated without retry", got)
+		t.Errorf("bd invocations = %d, want 1: a bound scope's failed command must not be retried", got)
 	}
 }
 
@@ -128,33 +142,41 @@ func countBdShimInvocations(t *testing.T, path string) int {
 	return strings.Count(string(data), "run\n")
 }
 
-// boundScopeTransportProbe stubs the bd exec layer and counts attempts. The
-// stubbed bd fails with the transport-shaped error that historically reached
-// managed-Dolt retry; the current contract propagates that first failure.
+// boundScopeTransportProbe stubs the bd exec layer and the managed-recovery
+// hook and counts both. The stubbed bd fails with a transport-shaped error
+// because that is the one shape that reaches the managed-Dolt retry — the work
+// a scope served by a storage binding gc does not manage must never trigger.
 type boundScopeTransportProbe struct {
-	attempts int
-	bdErr    error
+	attempts     int
+	recoverCalls int
+	bdErr        error
 }
 
 func newBoundScopeTransportProbe(t *testing.T) *boundScopeTransportProbe {
 	t.Helper()
 	origRunner := beadsExecCommandRunnerWithEnv
+	origRecover := recoverManagedBDCommand
 	t.Cleanup(func() {
 		beadsExecCommandRunnerWithEnv = origRunner
+		recoverManagedBDCommand = origRecover
 	})
 	probe := &boundScopeTransportProbe{
 		bdErr: errors.New("dial tcp 10.0.0.5:5432: connect: connection refused"),
 	}
-	beadsExecCommandRunnerWithEnv = func(_ context.Context, _ map[string]string) beads.CommandRunner {
+	beadsExecCommandRunnerWithEnv = func(_ map[string]string) beads.CommandRunner {
 		return func(_ string, _ string, _ ...string) ([]byte, error) {
 			probe.attempts++
 			return nil, probe.bdErr
 		}
 	}
+	recoverManagedBDCommand = func(_ string) error {
+		probe.recoverCalls++
+		return nil
+	}
 	return probe
 }
 
-func (p *boundScopeTransportProbe) assertFirstFailure(t *testing.T, err error) {
+func (p *boundScopeTransportProbe) assertNoManagedRecovery(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("runner err = nil, want the bd transport failure surfaced")
@@ -163,7 +185,10 @@ func (p *boundScopeTransportProbe) assertFirstFailure(t *testing.T, err error) {
 		t.Fatalf("err = %q, want the bd transport error preserved", err)
 	}
 	if p.attempts != 1 {
-		t.Errorf("attempts = %d, want 1: the runner must not retry a failed bd command", p.attempts)
+		t.Errorf("attempts = %d, want 1: a store gc does not manage is not gc's to retry", p.attempts)
+	}
+	if p.recoverCalls != 0 {
+		t.Errorf("recoverCalls = %d, want 0: managed-Dolt recovery must not run for a store gc does not manage", p.recoverCalls)
 	}
 }
 
@@ -211,8 +236,8 @@ func TestControlBdCommandRunnerForCityBoundCitySkipsManagedRecovery(t *testing.T
 	writeBoundCityFixture(t, cityPath)
 
 	probe := newBoundScopeTransportProbe(t)
-	_, err := controlBdCommandRunnerForCity(context.Background(), cityPath)(cityPath, "bd", "list", "--json")
-	probe.assertFirstFailure(t, err)
+	_, err := controlBdCommandRunnerForCity(cityPath)(cityPath, "bd", "list", "--json")
+	probe.assertNoManagedRecovery(t, err)
 }
 
 // TestBdCommandRunnerForRigBoundScopeSkipsManagedRecovery covers both ways a
@@ -227,8 +252,8 @@ func TestBdCommandRunnerForRigBoundScopeSkipsManagedRecovery(t *testing.T) {
 		cfg := &config.City{Rigs: []config.Rig{{Name: "inherited", Path: "rigs/inherited", Prefix: "rig"}}}
 
 		probe := newBoundScopeTransportProbe(t)
-		_, err := bdCommandRunnerForRig(context.Background(), cityPath, cfg, rigDir)(rigDir, "bd", "list", "--json")
-		probe.assertFirstFailure(t, err)
+		_, err := bdCommandRunnerForRig(cityPath, cfg, rigDir)(rigDir, "bd", "list", "--json")
+		probe.assertNoManagedRecovery(t, err)
 	})
 
 	t.Run("rig carries its own binding", func(t *testing.T) {
@@ -240,8 +265,8 @@ func TestBdCommandRunnerForRigBoundScopeSkipsManagedRecovery(t *testing.T) {
 		cfg := &config.City{Rigs: []config.Rig{{Name: "own", Path: "rigs/own", Prefix: "rig"}}}
 
 		probe := newBoundScopeTransportProbe(t)
-		_, err := bdCommandRunnerForRig(context.Background(), cityPath, cfg, rigDir)(rigDir, "bd", "list", "--json")
-		probe.assertFirstFailure(t, err)
+		_, err := bdCommandRunnerForRig(cityPath, cfg, rigDir)(rigDir, "bd", "list", "--json")
+		probe.assertNoManagedRecovery(t, err)
 	})
 }
 
@@ -274,8 +299,8 @@ func TestControlBdCommandRunnerForRigBoundScopeSkipsManagedRecovery(t *testing.T
 		cfg := &config.City{Rigs: []config.Rig{{Name: "inherited", Path: "rigs/inherited", Prefix: "rig"}}}
 
 		probe := newBoundScopeTransportProbe(t)
-		_, err := controlBdCommandRunnerForRig(context.Background(), cityPath, cfg, rigDir)(rigDir, "bd", "list", "--json")
-		probe.assertFirstFailure(t, err)
+		_, err := controlBdCommandRunnerForRig(cityPath, cfg, rigDir)(rigDir, "bd", "list", "--json")
+		probe.assertNoManagedRecovery(t, err)
 	})
 
 	t.Run("rig carries its own binding", func(t *testing.T) {
@@ -287,8 +312,8 @@ func TestControlBdCommandRunnerForRigBoundScopeSkipsManagedRecovery(t *testing.T
 		cfg := &config.City{Rigs: []config.Rig{{Name: "own", Path: "rigs/own", Prefix: "rig"}}}
 
 		probe := newBoundScopeTransportProbe(t)
-		_, err := controlBdCommandRunnerForRig(context.Background(), cityPath, cfg, rigDir)(rigDir, "bd", "list", "--json")
-		probe.assertFirstFailure(t, err)
+		_, err := controlBdCommandRunnerForRig(cityPath, cfg, rigDir)(rigDir, "bd", "list", "--json")
+		probe.assertNoManagedRecovery(t, err)
 	})
 }
 
@@ -338,7 +363,7 @@ func TestRuntimeEnvDelegatesCompleteStorageBindingToBd(t *testing.T) {
 				continue
 			}
 			if got := env[key]; got != "" {
-				t.Errorf("env[%q] = %q, want absent for dcdoc-owned storage binding", key, got)
+				t.Errorf("env[%q] = %q, want absent for bd-owned storage binding", key, got)
 			}
 		}
 		if got := env["BEADS_CREDENTIALS_FILE"]; got != credentialsPath {
@@ -349,7 +374,7 @@ func TestRuntimeEnvDelegatesCompleteStorageBindingToBd(t *testing.T) {
 		}
 	}
 
-	env, err := bdRuntimeEnvWithError(context.Background(), cityPath)
+	env, err := bdRuntimeEnvWithError(cityPath)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvWithError: %v", err)
 	}
@@ -362,7 +387,7 @@ func TestRuntimeEnvDelegatesCompleteStorageBindingToBd(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(rigPath, ".beads", "config.yaml"), []byte("gc.endpoint_origin: inherited_city\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	rigEnv, err := sessionBackendEnvWithError(context.Background(), cityPath, rigPath, []config.Rig{{Name: "remote", Path: rigPath}})
+	rigEnv, err := sessionBackendEnvWithError(cityPath, rigPath, []config.Rig{{Name: "remote", Path: rigPath}})
 	if err != nil {
 		t.Fatalf("sessionBackendEnvWithError(inherited rig): %v", err)
 	}
@@ -388,7 +413,7 @@ func TestCityRuntimeProcessEnvStripsAmbientGCDolt(t *testing.T) {
 	_ = os.Unsetenv("GC_DOLT_PORT")
 
 	cityPath := t.TempDir()
-	env, err := cityRuntimeProcessEnvWithError(context.Background(), cityPath)
+	env, err := cityRuntimeProcessEnvWithError(cityPath)
 	if err != nil {
 		t.Fatalf("cityRuntimeProcessEnvWithError() error = %v", err)
 	}
@@ -432,7 +457,7 @@ func TestCityRuntimeProcessEnvUsesNativeOpenEnvSnapshotGuard(t *testing.T) {
 		processEnvSnapshotExcludingNativeDoltOpen = orig
 	})
 
-	env, err := cityRuntimeProcessEnvWithError(context.Background(), t.TempDir())
+	env, err := cityRuntimeProcessEnvWithError(t.TempDir())
 	if err != nil {
 		t.Fatalf("cityRuntimeProcessEnvWithError() error = %v", err)
 	}
@@ -530,7 +555,7 @@ prefix = "mc"
 		t.Fatal(err)
 	}
 
-	store := bdStoreForCity(context.Background(), cityDir, cityDir)
+	store := bdStoreForCity(cityDir, cityDir)
 	if got := store.IDPrefix(); got != "hq" {
 		t.Fatalf("IDPrefix() = %q, want hq", got)
 	}
@@ -547,7 +572,7 @@ bd_compatibility = "bd-1.0.5"
 		t.Fatal(err)
 	}
 
-	store := bdStoreForCity(context.Background(), cityDir, cityDir)
+	store := bdStoreForCity(cityDir, cityDir)
 	if !store.ListSkipLabelsEnabled() {
 		t.Fatal("bdStoreForCity did not enable bd list --skip-labels for bd-1.0.5 compatibility")
 	}
@@ -561,7 +586,7 @@ name = "Metro City"
 		t.Fatal(err)
 	}
 
-	store := bdStoreForCity(context.Background(), cityDir, cityDir)
+	store := bdStoreForCity(cityDir, cityDir)
 	if store.ListSkipLabelsEnabled() {
 		t.Fatal("bdStoreForCity enabled bd list --skip-labels without bd-1.0.5 compatibility")
 	}
@@ -578,7 +603,7 @@ func TestBdStoreForRigResolvesIDPrefixFromScopeConfig(t *testing.T) {
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "repo", Path: "rigs/repo", Prefix: "ga"}}}
 
-	store := bdStoreForRig(context.Background(), rigDir, cityDir, cfg)
+	store := bdStoreForRig(rigDir, cityDir, cfg)
 	if got := store.IDPrefix(); got != "repo" {
 		t.Fatalf("IDPrefix() = %q, want repo", got)
 	}
@@ -595,7 +620,7 @@ func TestBdStoreForRigEnablesSkipLabelsFromBD105Compatibility(t *testing.T) {
 		Rigs:  []config.Rig{{Name: "repo", Path: "rigs/repo", Prefix: "ga"}},
 	}
 
-	store := bdStoreForRig(context.Background(), rigDir, cityDir, cfg)
+	store := bdStoreForRig(rigDir, cityDir, cfg)
 	if !store.ListSkipLabelsEnabled() {
 		t.Fatal("bdStoreForRig did not enable bd list --skip-labels for bd-1.0.5 compatibility")
 	}
@@ -612,7 +637,7 @@ func TestBdStoreForRigPrefersScopeConfigOverKnownPrefix(t *testing.T) {
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "repo", Path: "rigs/repo", Prefix: "ga"}}}
 
-	store := bdStoreForRig(context.Background(), rigDir, cityDir, cfg, "stale")
+	store := bdStoreForRig(rigDir, cityDir, cfg, "stale")
 	if got := store.IDPrefix(); got != "repo" {
 		t.Fatalf("IDPrefix() = %q, want repo", got)
 	}
@@ -626,7 +651,7 @@ func TestBdStoreForRigFallsBackToConfiguredEffectivePrefix(t *testing.T) {
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "repo", Path: "rigs/repo", Prefix: "ga"}}}
 
-	store := bdStoreForRig(context.Background(), rigDir, cityDir, cfg)
+	store := bdStoreForRig(rigDir, cityDir, cfg)
 	if got := store.IDPrefix(); got != "ga" {
 		t.Fatalf("IDPrefix() = %q, want ga", got)
 	}
@@ -641,7 +666,7 @@ func TestBdRuntimeEnvIncludesDoltHost(t *testing.T) {
 	t.Setenv("GC_DOLT", "skip")
 
 	cityPath := t.TempDir()
-	env, err := bdRuntimeEnvWithError(context.Background(), cityPath)
+	env, err := bdRuntimeEnvWithError(cityPath)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvWithError() error = %v", err)
 	}
@@ -669,7 +694,13 @@ func TestBdRuntimeEnvIncludesDoltHost(t *testing.T) {
 	}
 }
 
-func TestBdRuntimeEnvProjectsExternalTarget(t *testing.T) {
+// TestBdRuntimeEnvNoRecoveryMatchesRecoveryForExternalTarget proves the
+// NoRecovery variant (used by ga-cdmx6x's scoped throwaway stores) still
+// resolves an explicitly configured external Dolt target identically to
+// the recovery-allowing default — only the managed-dolt
+// recovery/health-check/autostart side effect is skipped, not the
+// ordinary external-config path.
+func TestBdRuntimeEnvNoRecoveryMatchesRecoveryForExternalTarget(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_DOLT_HOST", "mini2.hippo-tilapia.ts.net")
 	t.Setenv("GC_DOLT_PORT", "3307")
@@ -678,9 +709,9 @@ func TestBdRuntimeEnvProjectsExternalTarget(t *testing.T) {
 	t.Setenv("GC_DOLT", "skip")
 
 	cityPath := t.TempDir()
-	env, err := bdRuntimeEnvWithError(context.Background(), cityPath)
+	env, err := bdRuntimeEnvWithErrorNoRecovery(cityPath)
 	if err != nil {
-		t.Fatalf("bdRuntimeEnvWithError() error = %v", err)
+		t.Fatalf("bdRuntimeEnvWithErrorNoRecovery() error = %v", err)
 	}
 
 	if got := env["GC_DOLT_HOST"]; got != "mini2.hippo-tilapia.ts.net" {
@@ -715,7 +746,7 @@ func TestBdRuntimeEnvForRigResolvesSymlinkAlias(t *testing.T) {
 
 	cityPath := t.TempDir()
 	cfg := &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigPath}}}
-	env, err := bdRuntimeEnvForRigWithError(context.Background(), cityPath, cfg, aliasRigPath)
+	env, err := bdRuntimeEnvForRigWithError(cityPath, cfg, aliasRigPath)
 	if err != nil {
 		t.Logf("bdRuntimeEnvForRigWithError() error = %v (ignored; BEADS_DIR/GC_RIG_ROOT are set before backend resolution)", err)
 	}
@@ -747,9 +778,9 @@ func TestBdRuntimeEnvForRigNoRecoveryMatchesRecoveryForExternalTarget(t *testing
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "repo", Path: "rigs/repo"}}}
 
-	env, err := bdRuntimeEnvForRigWithError(context.Background(), cityPath, cfg, rigPath)
+	env, err := bdRuntimeEnvForRigWithErrorNoRecovery(cityPath, cfg, rigPath)
 	if err != nil {
-		t.Fatalf("bdRuntimeEnvForRigWithError(context.Background(), ) error = %v", err)
+		t.Fatalf("bdRuntimeEnvForRigWithErrorNoRecovery() error = %v", err)
 	}
 	if got := env["GC_DOLT_HOST"]; got != "mini2.hippo-tilapia.ts.net" {
 		t.Errorf("GC_DOLT_HOST = %q, want %q", got, "mini2.hippo-tilapia.ts.net")
@@ -808,6 +839,46 @@ func TestSessionBackendEnvDisablesCLIRemoteSync(t *testing.T) {
 	}
 }
 
+func TestRecoverManagedBDCommandDisablesCLIRemoteSync(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+	t.Setenv("BD_DOLT_SYNC_CLI_REMOTES", "true")
+	t.Setenv("BEADS_DOLT_SYNC_CLI_REMOTES", "true")
+
+	cityPath := t.TempDir()
+	envFile := filepath.Join(cityPath, "recover-env.txt")
+	scriptPath := gcBeadsBdScriptPath(cityPath)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\n" +
+		"printf 'BD_DOLT_SYNC_CLI_REMOTES=%s\\n' \"$BD_DOLT_SYNC_CLI_REMOTES\" > \"" + envFile + "\"\n" +
+		"printf 'BEADS_DOLT_SYNC_CLI_REMOTES=%s\\n' \"$BEADS_DOLT_SYNC_CLI_REMOTES\" >> \"" + envFile + "\"\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := recoverManagedBDCommand(cityPath); err != nil {
+		t.Fatalf("recoverManagedBDCommand() error = %v", err)
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	if got := values["BD_DOLT_SYNC_CLI_REMOTES"]; got != "false" {
+		t.Fatalf("BD_DOLT_SYNC_CLI_REMOTES = %q, want false", got)
+	}
+	if got := values["BEADS_DOLT_SYNC_CLI_REMOTES"]; got != "false" {
+		t.Fatalf("BEADS_DOLT_SYNC_CLI_REMOTES = %q, want false", got)
+	}
+}
+
 // The auto-backup opt-out tests mirror the CLI-remote-sync opt-out tests
 // above. They guard against recurrence of the 2026-06-08 town-wide Dolt
 // wedge (ga-0eq), whose root cause was bd's PersistentPostRun auto-backup
@@ -858,6 +929,46 @@ func TestSessionBackendEnvDisablesAutoBackup(t *testing.T) {
 	}
 }
 
+func TestRecoverManagedBDCommandDisablesAutoBackup(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+	t.Setenv("BD_BACKUP_ENABLED", "true")
+	t.Setenv("BEADS_BACKUP_ENABLED", "true")
+
+	cityPath := t.TempDir()
+	envFile := filepath.Join(cityPath, "recover-env.txt")
+	scriptPath := gcBeadsBdScriptPath(cityPath)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\n" +
+		"printf 'BD_BACKUP_ENABLED=%s\\n' \"$BD_BACKUP_ENABLED\" > \"" + envFile + "\"\n" +
+		"printf 'BEADS_BACKUP_ENABLED=%s\\n' \"$BEADS_BACKUP_ENABLED\" >> \"" + envFile + "\"\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := recoverManagedBDCommand(cityPath); err != nil {
+		t.Fatalf("recoverManagedBDCommand() error = %v", err)
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	if got := values["BD_BACKUP_ENABLED"]; got != "false" {
+		t.Fatalf("BD_BACKUP_ENABLED = %q, want false", got)
+	}
+	if got := values["BEADS_BACKUP_ENABLED"]; got != "false" {
+		t.Fatalf("BEADS_BACKUP_ENABLED = %q, want false", got)
+	}
+}
+
 func TestSessionBackendEnvDisablesContributorRouting(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("BD_ROUTING_MODE", "auto")
@@ -868,6 +979,46 @@ func TestSessionBackendEnvDisablesContributorRouting(t *testing.T) {
 		t.Fatalf("BD_ROUTING_MODE = %q, want off", got)
 	}
 	if got := env["BEADS_ROUTING_MODE"]; got != "off" {
+		t.Fatalf("BEADS_ROUTING_MODE = %q, want off", got)
+	}
+}
+
+func TestRecoverManagedBDCommandDisablesContributorRouting(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+	t.Setenv("BD_ROUTING_MODE", "auto")
+	t.Setenv("BEADS_ROUTING_MODE", "auto")
+
+	cityPath := t.TempDir()
+	envFile := filepath.Join(cityPath, "recover-env.txt")
+	scriptPath := gcBeadsBdScriptPath(cityPath)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\n" +
+		"printf 'BD_ROUTING_MODE=%s\\n' \"$BD_ROUTING_MODE\" > \"" + envFile + "\"\n" +
+		"printf 'BEADS_ROUTING_MODE=%s\\n' \"$BEADS_ROUTING_MODE\" >> \"" + envFile + "\"\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := recoverManagedBDCommand(cityPath); err != nil {
+		t.Fatalf("recoverManagedBDCommand() error = %v", err)
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	if got := values["BD_ROUTING_MODE"]; got != "off" {
+		t.Fatalf("BD_ROUTING_MODE = %q, want off", got)
+	}
+	if got := values["BEADS_ROUTING_MODE"]; got != "off" {
 		t.Fatalf("BEADS_ROUTING_MODE = %q, want off", got)
 	}
 }
@@ -889,7 +1040,7 @@ func TestBdRuntimeEnvExternalHostSkipsLocalState(t *testing.T) {
 	}
 }
 
-func TestResolvedRuntimeCityDoltTargetPropagatesManagedRuntimeUnavailableBeforeEnvOverride(t *testing.T) {
+func TestResolvedRuntimeCityDoltTargetUsesEnvOverrideWhenManagedRuntimeUnavailable(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_DOLT", "skip")
 	t.Setenv("GC_DOLT_HOST", "remote.example.com")
@@ -907,12 +1058,15 @@ dolt.auto-start: false
 		t.Fatal(err)
 	}
 
-	target, ok, err := resolvedRuntimeCityDoltTarget(context.Background(), cityPath)
-	if err == nil || !contract.IsManagedRuntimeUnavailable(err) {
-		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v, want managed runtime unavailable", err)
+	target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, true)
+	if err != nil {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v", err)
 	}
-	if ok {
-		t.Fatalf("resolvedRuntimeCityDoltTarget() ok = true with target %+v, want no target", target)
+	if !ok {
+		t.Fatal("resolvedRuntimeCityDoltTarget() ok = false, want env override fallback")
+	}
+	if target.Host != "remote.example.com" || target.Port != "5511" || !target.External {
+		t.Fatalf("target = %+v, want external env override remote.example.com:5511", target)
 	}
 }
 
@@ -978,7 +1132,7 @@ func TestResolvedRuntimeCityDoltTargetIgnoresIPv6LocalEnvOverride(t *testing.T) 
 		t.Run(host, func(t *testing.T) {
 			t.Setenv("GC_DOLT_HOST", host)
 			cityPath := t.TempDir()
-			target, ok, err := resolvedRuntimeCityDoltTarget(context.Background(), cityPath)
+			target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, false)
 			if err != nil {
 				t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v", err)
 			}
@@ -1067,7 +1221,7 @@ dolt.auto-start: false
 	}
 }
 
-func TestBdRuntimeEnvPropagatesMissingPublishedManagedState(t *testing.T) {
+func TestBdRuntimeEnvUsesValidProviderStateWhenPublishedStateIsMissing(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_DOLT", "skip")
 	t.Setenv("GC_DOLT_HOST", "")
@@ -1116,24 +1270,40 @@ dolt.auto-start: false
 		t.Fatalf("write provider state: %v", err)
 	}
 	if _, err := os.Stat(managedDoltStatePath(cityPath)); !os.IsNotExist(err) {
-		t.Fatalf("published state should be absent before no-recovery test, stat err = %v", err)
+		t.Fatalf("published state should be absent before fallback test, stat err = %v", err)
 	}
-	if got := currentResolvableManagedDoltPort(cityPath); got != "" {
-		t.Fatalf("currentResolvableManagedDoltPort() = %q, want empty without published state", got)
+	if got := currentResolvableManagedDoltPort(cityPath); got != strconv.Itoa(port) {
+		t.Fatalf("currentResolvableManagedDoltPort() = %q, want %d", got, port)
 	}
 
-	env, err := bdRuntimeEnvWithError(context.Background(), cityPath)
-	if err == nil || !contract.IsManagedRuntimeUnavailable(err) {
-		t.Fatalf("bdRuntimeEnvWithError() error = %v, want managed runtime unavailable", err)
+	env, err := bdRuntimeEnvWithError(cityPath)
+	if err != nil {
+		t.Fatalf("bdRuntimeEnvWithError() error = %v", err)
 	}
-	if got := env["GC_DOLT_PORT"]; got != "" {
-		t.Fatalf("GC_DOLT_PORT = %q, want empty without published state", got)
+	want := strconv.Itoa(port)
+	if got := env["GC_DOLT_PORT"]; got != want {
+		t.Fatalf("GC_DOLT_PORT = %q, want provider-state port %q", got, want)
 	}
-	if got := env["BEADS_DOLT_SERVER_PORT"]; got != "" {
-		t.Fatalf("BEADS_DOLT_SERVER_PORT = %q, want empty without published state", got)
+	if got := env["BEADS_DOLT_SERVER_PORT"]; got != want {
+		t.Fatalf("BEADS_DOLT_SERVER_PORT = %q, want provider-state port %q", got, want)
 	}
 	if got := env["GC_DOLT_HOST"]; got != "" {
-		t.Fatalf("GC_DOLT_HOST = %q, want empty without published state", got)
+		t.Fatalf("GC_DOLT_HOST = %q, want empty for managed provider-state target", got)
+	}
+
+	publishedState, err := readDoltRuntimeStateFile(managedDoltStatePath(cityPath))
+	if err != nil {
+		t.Fatalf("read published state: %v", err)
+	}
+	if publishedState.Port != port || publishedState.PID != listener.Process.Pid {
+		t.Fatalf("published state = %+v, want pid %d port %d", publishedState, listener.Process.Pid, port)
+	}
+	mirror, err := os.ReadFile(filepath.Join(cityPath, ".beads", "dolt-server.port"))
+	if err != nil {
+		t.Fatalf("read port mirror: %v", err)
+	}
+	if got := strings.TrimSpace(string(mirror)); got != strconv.Itoa(port) {
+		t.Fatalf("port mirror = %q, want %d", got, port)
 	}
 }
 
@@ -1159,15 +1329,15 @@ dolt.auto-start: false
 	}
 	port := writeReachableProviderManagedDoltState(t, cityPath)
 
-	target, ok, err := resolvedRuntimeCityDoltTarget(context.Background(), cityPath)
+	target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, false)
 	if err == nil || !contract.IsManagedRuntimeUnavailable(err) {
 		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v, want managed runtime unavailable", err)
 	}
 	if ok {
 		t.Fatalf("resolvedRuntimeCityDoltTarget() ok = true with target %+v, want no fallback target", target)
 	}
-	if got := currentResolvableManagedDoltPort(cityPath); got != "" {
-		t.Fatalf("currentResolvableManagedDoltPort() = %q, want empty without published state for provider-state-only port %d", got, port)
+	if got := currentResolvableManagedDoltPort(cityPath); got != strconv.Itoa(port) {
+		t.Fatalf("currentResolvableManagedDoltPort() = %q, want %d", got, port)
 	}
 	if _, err := os.Stat(managedDoltStatePath(cityPath)); !os.IsNotExist(err) {
 		t.Fatalf("published state should remain absent when recovery is disabled, stat err = %v", err)
@@ -1177,7 +1347,7 @@ dolt.auto-start: false
 	}
 }
 
-func TestResolvedRuntimeCityDoltTargetPropagatesMissingPublishedStateWhenProviderStateIsNotOwned(t *testing.T) {
+func TestResolvedRuntimeCityDoltTargetFallsBackToEnvWhenProviderStateIsNotOwned(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	t.Setenv("GC_DOLT", "skip")
 	t.Setenv("GC_DOLT_HOST", "external-db.example.com")
@@ -1204,19 +1374,22 @@ dolt.auto-start: false
 	}
 	writeReachableProviderManagedDoltState(t, cityPath)
 
-	target, ok, err := resolvedRuntimeCityDoltTarget(context.Background(), cityPath)
-	if err == nil || !contract.IsManagedRuntimeUnavailable(err) {
-		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v, want managed runtime unavailable", err)
+	target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, true)
+	if err != nil {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v, want env fallback", err)
 	}
-	if ok {
-		t.Fatalf("resolvedRuntimeCityDoltTarget() ok = true with target %+v, want no target", target)
+	if !ok {
+		t.Fatal("resolvedRuntimeCityDoltTarget() ok = false, want env fallback")
+	}
+	if target.Host != "external-db.example.com" || target.Port != "3307" || !target.External {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() = %+v, want external env target", target)
 	}
 	if _, err := os.Stat(managedDoltStatePath(cityPath)); !os.IsNotExist(err) {
-		t.Fatalf("published state should remain absent for provider-state-only input, stat err = %v", err)
+		t.Fatalf("published state should remain absent for not-owned recovery, stat err = %v", err)
 	}
 }
 
-func TestResolvedRuntimeCityDoltTargetPropagatesMissingPublishedStateBeforeProviderOwnership(t *testing.T) {
+func TestResolvedRuntimeCityDoltTargetSurfacesNotOwnedProviderStateWhenNoFallbackResolves(t *testing.T) {
 	t.Setenv("GC_BEADS", "file")
 	t.Setenv("GC_DOLT", "skip")
 	_ = os.Unsetenv("GC_DOLT_HOST")
@@ -1243,16 +1416,18 @@ dolt.auto-start: false
 	}
 	writeReachableProviderManagedDoltState(t, cityPath)
 
-	target, ok, err := resolvedRuntimeCityDoltTarget(context.Background(), cityPath)
-	if err == nil || !contract.IsManagedRuntimeUnavailable(err) {
-		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v, want managed runtime unavailable", err)
+	target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, true)
+	if err == nil {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() error = nil with ok=%v target=%+v, want not-owned recovery error", ok, target)
 	}
-	if ok {
-		t.Fatalf("resolvedRuntimeCityDoltTarget() ok = true with target %+v, want no target", target)
-	}
+	requireErrorContains(t, err, "managed dolt lifecycle is not owned")
 }
 
-func TestResolvedRuntimeCityDoltTargetPropagatesMissingPublishedStateBeforeProviderPort(t *testing.T) {
+func TestResolvedRuntimeCityDoltTargetFallsBackToResolvablePortWhenPublishWriteFails(t *testing.T) {
+	// Regression test for ga-crh00: when publishManagedDoltRuntimeStateFromState
+	// cannot write dolt-state.json (e.g., write permission failure), the function
+	// must still return the port via the currentResolvableManagedDoltPort fallback
+	// rather than surfacing the publish error.
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_DOLT", "skip")
 	_ = os.Unsetenv("GC_DOLT_HOST")
@@ -1275,15 +1450,31 @@ dolt.auto-start: false
 
 	port := writeReachableProviderManagedDoltState(t, cityPath)
 
-	target, ok, err := resolvedRuntimeCityDoltTarget(context.Background(), cityPath)
-	if err == nil || !contract.IsManagedRuntimeUnavailable(err) {
-		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v, want managed runtime unavailable", err)
+	// Make the dolt state dir read-only to force publishManagedDoltRuntimeStateFromState
+	// to fail — it cannot write dolt-state.json to the read-only directory.
+	doltStateDir := filepath.Join(cityPath, ".gc", "runtime", "packs", "dolt")
+	if err := os.Chmod(doltStateDir, 0o555); err != nil {
+		t.Fatalf("chmod state dir read-only: %v", err)
 	}
-	if ok {
-		t.Fatalf("resolvedRuntimeCityDoltTarget() ok = true with target %+v, want no target", target)
+	t.Cleanup(func() {
+		_ = os.Chmod(doltStateDir, 0o755)
+	})
+
+	target, ok, err := resolvedRuntimeCityDoltTarget(cityPath, true)
+	if err != nil {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() error = %v, want fallback to resolvable port", err)
+	}
+	if !ok {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() ok = false, want fallback target")
+	}
+	if target.Port != strconv.Itoa(port) {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() port = %q, want %d", target.Port, port)
+	}
+	if target.Host != defaultManagedDoltHost {
+		t.Fatalf("resolvedRuntimeCityDoltTarget() host = %q, want %q", target.Host, defaultManagedDoltHost)
 	}
 	if _, err := os.Stat(managedDoltStatePath(cityPath)); !os.IsNotExist(err) {
-		t.Fatalf("published state should remain absent for provider-state-only port %d, stat err = %v", port, err)
+		t.Fatalf("published state should remain absent when write was blocked, stat err = %v", err)
 	}
 }
 
@@ -1326,7 +1517,7 @@ dolt.host: canonical-db.example.com
 		t.Fatalf("write provider state: %v", err)
 	}
 
-	_, _, err := resolvedRuntimeCityDoltTarget(context.Background(), cityPath)
+	_, _, err := resolvedRuntimeCityDoltTarget(cityPath, true)
 	requireErrorContains(t, err, "city_canonical config requires dolt.port")
 }
 
@@ -1353,7 +1544,7 @@ dolt.host: canonical-db.example.com
 	cityDoltConfigs.Store(cityPath, config.DoltConfig{Host: "compat-db.example.com", Port: 4406})
 	t.Cleanup(func() { cityDoltConfigs.Delete(cityPath) })
 
-	_, err := bdRuntimeEnvWithError(context.Background(), cityPath)
+	_, err := bdRuntimeEnvWithError(cityPath)
 	requireErrorContains(t, err, "city_canonical config requires dolt.port")
 }
 
@@ -1380,7 +1571,7 @@ dolt.host: canonical-db.example.com
 	cityDoltConfigs.Store(cityPath, config.DoltConfig{Host: "compat-db.example.com", Port: 4406})
 	t.Cleanup(func() { cityDoltConfigs.Delete(cityPath) })
 
-	_, err := cityRuntimeProcessEnvWithError(context.Background(), cityPath)
+	_, err := cityRuntimeProcessEnvWithError(cityPath)
 	requireErrorContains(t, err, "city_canonical config requires dolt.port")
 }
 
@@ -1408,7 +1599,7 @@ dolt.port: 3307
 	cityDoltConfigs.Store(cityPath, config.DoltConfig{Host: "compat-db.example.com", Port: 4406})
 	t.Cleanup(func() { cityDoltConfigs.Delete(cityPath) })
 
-	_, err := bdRuntimeEnvWithError(context.Background(), cityPath)
+	_, err := bdRuntimeEnvWithError(cityPath)
 	requireErrorContains(t, err, "explicit endpoint origin is invalid for city scope")
 }
 
@@ -1437,7 +1628,7 @@ dolt.user: stale-user
 	cityDoltConfigs.Store(cityPath, config.DoltConfig{Host: "compat-db.example.com", Port: 4406})
 	t.Cleanup(func() { cityDoltConfigs.Delete(cityPath) })
 
-	_, err := bdRuntimeEnvWithError(context.Background(), cityPath)
+	_, err := bdRuntimeEnvWithError(cityPath)
 	requireErrorContains(t, err, "managed city config must not track dolt.host, dolt.port, or dolt.user")
 }
 
@@ -2148,7 +2339,7 @@ name = "demo"
 		t.Fatal(err)
 	}
 
-	rigResult, err := openStoreResultAtForCity(context.Background(), rigDir, cityDir)
+	rigResult, err := openStoreResultAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2160,7 +2351,7 @@ name = "demo"
 		t.Fatalf("Create: %v", err)
 	}
 
-	cityStore, err := openCityStoreAt(context.Background(), cityDir)
+	cityStore, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -2207,7 +2398,7 @@ prefix = "fe"
 		t.Fatal(err)
 	}
 
-	result, err := openStoreResultAtForCity(context.Background(), rigDir, cityDir)
+	result, err := openStoreResultAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2243,7 +2434,7 @@ prefix = "fe"
 		t.Fatal(err)
 	}
 
-	store, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	store, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2266,7 +2457,7 @@ name = "demo"
 	}
 	t.Setenv("GC_BEADS", "file")
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2306,7 +2497,7 @@ name = "demo"
 		t.Fatalf("legacy city Create: %v", err)
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2379,7 +2570,7 @@ func TestBdCommandRunnerForCityPinsCityStoreEnv(t *testing.T) {
 	t.Setenv("GC_RIG", "demo-rig")
 	t.Setenv("GC_RIG_ROOT", "/rig")
 
-	runner := bdCommandRunnerForCity(context.Background(), cityDir)
+	runner := bdCommandRunnerForCity(cityDir)
 	out, err := runner(cityDir, "sh", "-c", `printf '%s\n%s\n%s\n%s\n' "$GC_CITY_PATH" "$BEADS_DIR" "$GC_RIG" "$GC_RIG_ROOT"`)
 	if err != nil {
 		t.Fatal(err)
@@ -2407,7 +2598,7 @@ func TestBdCommandRunnerForCityPinsCityStoreEnv(t *testing.T) {
 	}
 }
 
-func TestBdCommandRunnerForCityPropagatesManagedRuntimeUnavailableWithoutExecuting(t *testing.T) {
+func TestBdCommandRunnerForCityClearsAmbientDoltEnvWhenManagedRuntimeUnavailable(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_DOLT_HOST", "ambient.invalid")
 	t.Setenv("GC_DOLT_PORT", "9999")
@@ -2430,13 +2621,29 @@ dolt.auto-start: false
 		t.Fatal(err)
 	}
 
-	runner := bdCommandRunnerForCity(context.Background(), cityDir)
+	runner := bdCommandRunnerForCity(cityDir)
 	out, err := runner(cityDir, "sh", "-c", `printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$GC_DOLT_HOST" "$GC_DOLT_PORT" "$GC_DOLT_USER" "$GC_DOLT_PASSWORD" "$BEADS_DOLT_SERVER_HOST" "$BEADS_DOLT_SERVER_PORT" "$BEADS_DOLT_SERVER_USER" "$BEADS_DOLT_PASSWORD"`)
-	if err == nil || !contract.IsManagedRuntimeUnavailable(err) {
-		t.Fatalf("runner error = %v, want managed runtime unavailable", err)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if out != nil {
-		t.Fatalf("runner output = %q, want nil because command was not executed", string(out))
+
+	lines := strings.Split(string(out), "\n")
+	if len(lines) != 9 {
+		t.Fatalf("lines = %q, want 9 lines including trailing newline", string(out))
+	}
+	for i, name := range []string{
+		"GC_DOLT_HOST",
+		"GC_DOLT_PORT",
+		"GC_DOLT_USER",
+		"GC_DOLT_PASSWORD",
+		"BEADS_DOLT_SERVER_HOST",
+		"BEADS_DOLT_SERVER_PORT",
+		"BEADS_DOLT_SERVER_USER",
+		"BEADS_DOLT_PASSWORD",
+	} {
+		if lines[i] != "" {
+			t.Fatalf("%s = %q, want empty when managed runtime is unavailable", name, lines[i])
+		}
 	}
 }
 
@@ -2494,7 +2701,7 @@ exit 0
 	t.Setenv("BEADS_DOLT_SERVER_HOST", "stale-city.example.com")
 	t.Setenv("BEADS_DOLT_SERVER_PORT", "9999")
 
-	store, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	store, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -2566,7 +2773,7 @@ dolt.port: 4407
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "my-rig", Path: rigDir}}}
 
-	env, err := nativeDoltOpenEnvForScope(context.Background(), cityDir, cfg, rigDir)
+	env, err := nativeDoltOpenEnvForScope(cityDir, cfg, rigDir)
 	if err != nil {
 		t.Fatalf("nativeDoltOpenEnvForScope: %v", err)
 	}
@@ -2625,7 +2832,7 @@ dolt.auto-start: false
 		t.Fatal(err)
 	}
 
-	env, err := bdRuntimeEnvForRigWithError(context.Background(), cityDir, &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}, rigDir)
+	env, err := bdRuntimeEnvForRigWithError(cityDir, &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}, rigDir)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvForRigWithError() error = %v", err)
 	}
@@ -2706,19 +2913,12 @@ dolt.auto-start: false
 	}
 }
 
-func TestBdRuntimeEnvForRigInheritsAuthoritativeManagedCityPort(t *testing.T) {
+func TestBdRuntimeEnvForRigFallsBackToManagedCityPort(t *testing.T) {
 	cityDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(cityDir, ".gc", "runtime", "packs", "dolt"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(cityDir, ".beads"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(cityDir, ".beads", "config.yaml"), []byte(`issue_prefix: city
-gc.endpoint_origin: managed_city
-gc.endpoint_status: verified
-dolt.auto-start: false
-`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2782,7 +2982,7 @@ dolt.port: 3308
 		t.Fatal(err)
 	}
 
-	_, err := bdRuntimeEnvForRigWithError(context.Background(), cityDir, &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}, rigDir)
+	_, err := bdRuntimeEnvForRigWithError(cityDir, &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}, rigDir)
 	requireErrorContains(t, err, "canonical explicit rig config requires both dolt.host and dolt.port")
 }
 
@@ -2832,7 +3032,7 @@ dolt.user: stale-user
 		t.Fatal(err)
 	}
 
-	_, err = bdRuntimeEnvForRigWithError(context.Background(), cityDir, &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}, rigDir)
+	_, err = bdRuntimeEnvForRigWithError(cityDir, &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}, rigDir)
 	requireErrorContains(t, err, "inherited rig under managed city must not track dolt.host, dolt.port, or dolt.user")
 }
 
@@ -2866,7 +3066,7 @@ dolt.user: rig-user
 		t.Fatal(err)
 	}
 
-	_, err := bdRuntimeEnvForRigWithError(context.Background(), cityDir, &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}, rigDir)
+	_, err := bdRuntimeEnvForRigWithError(cityDir, &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}, rigDir)
 	if err == nil {
 		t.Fatal("bdRuntimeEnvForRigWithError() error = nil, want city metadata parse error")
 	}
@@ -3199,7 +3399,7 @@ func TestOpenCityStoreAtUsesExplicitCityOverGCCity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store, err := openCityStoreAt(context.Background(), explicitCity)
+	store, err := openCityStoreAt(explicitCity)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", explicitCity, err)
 	}
@@ -3731,70 +3931,293 @@ dolt.auto-start: false
 	}
 }
 
-func TestBdOutputIndicatesSilentFallbackDetectsAutoImport(t *testing.T) {
+func TestBdTransportRetryableErrorDoesNotTreatCommandTimeoutAsTransportFailure(t *testing.T) {
+	env := map[string]string{"GC_DOLT_HOST": ""}
+	t.Setenv("GC_BEADS", "bd")
+	cityPath := t.TempDir()
+	if bdTransportRetryableError(cityPath, cityPath, env, fmt.Errorf("timed out after 120s")) {
+		t.Fatal("timed out after 120s should not be treated as transport-retryable")
+	}
+}
+
+func TestBdTransportTransientDisconnectDoesNotTriggerManagedRecovery(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	origRunner := beadsExecCommandRunnerWithEnv
+	origRecover := recoverManagedBDCommand
+	t.Cleanup(func() {
+		beadsExecCommandRunnerWithEnv = origRunner
+		recoverManagedBDCommand = origRecover
+	})
+
+	attempts := 0
+	recoverCalls := 0
+	beadsExecCommandRunnerWithEnv = func(_ map[string]string) beads.CommandRunner {
+		return func(_ string, _ string, _ ...string) ([]byte, error) {
+			attempts++
+			if attempts == 1 {
+				return nil, fmt.Errorf("bad connection: use of closed network connection")
+			}
+			return []byte("ok"), nil
+		}
+	}
+	recoverManagedBDCommand = func(_ string) error {
+		recoverCalls++
+		return nil
+	}
+
+	runner := bdCommandRunnerWithManagedRetry(t.TempDir(), func(_ string) map[string]string {
+		return map[string]string{"GC_DOLT_PORT": "3307"}
+	})
+
+	out, err := runner(t.TempDir(), "bd", "list", "--json")
+	if err != nil {
+		t.Fatalf("runner error = %v, want nil", err)
+	}
+	if string(out) != "ok" {
+		t.Fatalf("runner output = %q, want %q", out, "ok")
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	if recoverCalls != 0 {
+		t.Fatalf("recoverCalls = %d, want 0", recoverCalls)
+	}
+}
+
+// When bd cannot reach the Dolt server it silently falls back to opening the
+// on-disk store and triggers a JSONL auto-import, which manifests as a 2-minute
+// timeout rather than a transport error. Treat the auto-import marker as a
+// transport failure so the managed-retry path can republish the correct port.
+// See gastownhall/gascity#1930.
+func TestBdTransportRetryableErrorTreatsAutoImportAsTransportFailure(t *testing.T) {
+	env := map[string]string{"GC_DOLT_HOST": ""}
+	t.Setenv("GC_BEADS", "bd")
+	cityPath := t.TempDir()
+
 	cases := []string{
 		"bd create: timed out after 2m0s: auto-importing 1927846 bytes from /foo/.beads/issues.jsonl into empty database...",
 		"auto-importing 1899171 bytes from issues.jsonl into empty database",
 	}
 	for _, msg := range cases {
-		if !bdOutputIndicatesSilentFallback(msg) {
-			t.Fatalf("bdOutputIndicatesSilentFallback(%q) = false, want true", msg)
+		if !bdTransportRetryableError(cityPath, cityPath, env, fmt.Errorf("%s", msg)) {
+			t.Fatalf("auto-import fallback should be transport-retryable: %q", msg)
 		}
-	}
-	if bdOutputIndicatesSilentFallback("timed out after 120s") {
-		t.Fatal("plain timeout should not be classified as silent fallback")
 	}
 }
 
-func TestBdCommandRunnerWithEnvErrPropagatesFirstCommandFailure(t *testing.T) {
-	t.Setenv("GC_BEADS", "bd")
-	origRunner := beadsExecCommandRunnerWithEnv
-	t.Cleanup(func() { beadsExecCommandRunnerWithEnv = origRunner })
+func TestBdTransportRetryableErrorUsesScopeProviderForMixedRig(t *testing.T) {
+	cityPath := t.TempDir()
+	_ = writeReachableManagedDoltState(t, cityPath)
+	rigDir := filepath.Join(cityPath, "repo")
+	if err := os.MkdirAll(filepath.Join(rigDir, ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"), []byte(`[workspace]
+name = "demo"
 
-	commandErr := fmt.Errorf("bad connection: use of closed network connection")
+[beads]
+provider = "file"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rigDir, ".beads", "config.yaml"), []byte(`issue_prefix: repo
+gc.endpoint_origin: inherited_city
+gc.endpoint_status: verified
+dolt.auto-start: false
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rigDir, ".beads", "metadata.json"), []byte(`{"database":"dolt","backend":"dolt","dolt_mode":"server","dolt_database":"repo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"GC_DOLT_HOST": "", "GC_DOLT_PORT": "3307"}
+
+	if !bdTransportRetryableError(cityPath, rigDir, env, fmt.Errorf("server unreachable at 127.0.0.1:3307")) {
+		t.Fatal("bd-backed rig under file-backed city should still be transport-retryable")
+	}
+}
+
+// Regression for gastownhall/gascity#1930: when bd silently falls back to the
+// on-disk store and triggers a JSONL auto-import, the managed-retry path must
+// republish the Dolt port and rerun the command.
+func TestBdCommandRunnerWithManagedRetryRecoversFromAutoImportFallback(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	origRunner := beadsExecCommandRunnerWithEnv
+	origRecover := recoverManagedBDCommand
+	t.Cleanup(func() {
+		beadsExecCommandRunnerWithEnv = origRunner
+		recoverManagedBDCommand = origRecover
+	})
+
+	port := "3307"
 	attempts := 0
-	beadsExecCommandRunnerWithEnv = func(_ context.Context, env map[string]string) beads.CommandRunner {
-		if got := env["GC_DOLT_PORT"]; got != "3307" {
-			t.Fatalf("GC_DOLT_PORT = %q, want 3307", got)
+	recoverCalls := 0
+
+	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
+		copied := map[string]string{}
+		for key, value := range env {
+			copied[key] = value
 		}
 		return func(_ string, _ string, _ ...string) ([]byte, error) {
 			attempts++
-			return []byte("first-attempt output"), commandErr
+			if attempts == 1 {
+				msg := "timed out after 2m0s: auto-importing 1927846 bytes from /foo/.beads/issues.jsonl into empty database"
+				return nil, fmt.Errorf("%s", msg)
+			}
+			return []byte("ok"), nil
 		}
 	}
+	recoverManagedBDCommand = func(_ string) error {
+		recoverCalls++
+		port = "3308"
+		return nil
+	}
 
-	runner := bdCommandRunnerWithEnvErr(context.Background(), t.TempDir(), func(_ string) (map[string]string, error) {
-		return map[string]string{"GC_DOLT_PORT": "3307"}, nil
+	runner := bdCommandRunnerWithManagedRetry(t.TempDir(), func(_ string) map[string]string {
+		return map[string]string{"GC_DOLT_PORT": port}
 	})
-	out, err := runner(t.TempDir(), "bd", "list", "--json")
-	if !errors.Is(err, commandErr) {
-		t.Fatalf("runner error = %v, want first command error", err)
+
+	out, err := runner(t.TempDir(), "bd", "create", "--json", "title")
+	if err != nil {
+		t.Fatalf("runner error = %v, want nil", err)
 	}
-	if string(out) != "first-attempt output" {
-		t.Fatalf("runner output = %q, want first-attempt output", out)
+	if string(out) != "ok" {
+		t.Fatalf("runner output = %q, want %q", out, "ok")
 	}
-	if attempts != 1 {
-		t.Fatalf("attempts = %d, want 1", attempts)
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2 (first auto-import, retry succeeds)", attempts)
+	}
+	if recoverCalls != 1 {
+		t.Fatalf("recoverCalls = %d, want 1", recoverCalls)
 	}
 }
 
-func TestBdCommandRunnerWithEnvErrReturnsEnvErrorBeforeCommand(t *testing.T) {
+func TestBdStoreGetWithManagedRetryReopensAfterConnectionGenerationChanges(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
-	origRunner := beadsExecCommandRunnerWithEnv
-	t.Cleanup(func() { beadsExecCommandRunnerWithEnv = origRunner })
 
-	called := false
-	beadsExecCommandRunnerWithEnv = func(_ context.Context, _ map[string]string) beads.CommandRunner {
-		called = true
+	origRunner := beadsExecCommandRunnerWithEnv
+	origRecover := recoverManagedBDCommand
+	t.Cleanup(func() {
+		beadsExecCommandRunnerWithEnv = origRunner
+		recoverManagedBDCommand = origRecover
+	})
+
+	generation := 1
+	recoverCalls := 0
+	openedGenerations := make([]int, 0, 3)
+	runnerCalls := make([]int, 0, 3)
+
+	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
+		openedGeneration := 0
+		switch env["GC_DOLT_PORT"] {
+		case "3307":
+			openedGeneration = 1
+		case "3308":
+			openedGeneration = 2
+		default:
+			t.Fatalf("connection opener received unexpected port %q", env["GC_DOLT_PORT"])
+		}
+		openedGenerations = append(openedGenerations, openedGeneration)
+		openID := len(openedGenerations)
 		return func(_ string, _ string, _ ...string) ([]byte, error) {
-			return nil, nil
+			runnerCalls = append(runnerCalls, openID)
+			switch openID {
+			case 1:
+				return nil, fmt.Errorf("server unreachable at 127.0.0.1:3307")
+			case 2:
+				// Recovery has published generation 2, but this first connection
+				// still behaves like a stale pool. BdStore.Get must retry the
+				// managed runner, which opens a new generation-2 connection.
+				return nil, fmt.Errorf("begin read tx: invalid connection")
+			default:
+				return []byte(`[{"id":"fe-rebind","title":"rebound","status":"open","issue_type":"task","created_at":"2025-01-15T10:30:00Z"}]`), nil
+			}
 		}
 	}
+	recoverManagedBDCommand = func(_ string) error {
+		recoverCalls++
+		generation = 2
+		return nil
+	}
+
+	runner := bdCommandRunnerWithManagedRetry(t.TempDir(), func(_ string) map[string]string {
+		return map[string]string{
+			"GC_DOLT_PORT": strconv.Itoa(3306 + generation),
+		}
+	})
+	store := beads.NewBdStoreWithPrefix(t.TempDir(), runner, "fe")
+
+	got, err := store.Get("fe-rebind")
+	if err != nil {
+		t.Fatalf("Get after connection generation changed: %v", err)
+	}
+	if got.ID != "fe-rebind" {
+		t.Fatalf("Get ID = %q, want fe-rebind", got.ID)
+	}
+	if want := []int{1, 2, 2}; !slices.Equal(openedGenerations, want) {
+		t.Fatalf("opened connection generations = %v, want %v", openedGenerations, want)
+	}
+	if want := []int{1, 2, 3}; !slices.Equal(runnerCalls, want) {
+		t.Fatalf("connection runner calls = %v, want %v", runnerCalls, want)
+	}
+	if recoverCalls != 1 {
+		t.Fatalf("recoverCalls = %d, want 1", recoverCalls)
+	}
+}
+
+func TestBdCommandRunnerWithManagedRetryReturnsNilOutputOnRetryEnvError(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	origRunner := beadsExecCommandRunnerWithEnv
+	origRecover := recoverManagedBDCommand
+	t.Cleanup(func() {
+		beadsExecCommandRunnerWithEnv = origRunner
+		recoverManagedBDCommand = origRecover
+	})
+
+	beadsExecCommandRunnerWithEnv = func(_ map[string]string) beads.CommandRunner {
+		return func(_ string, _ string, _ ...string) ([]byte, error) {
+			return []byte("stale first-attempt output"), fmt.Errorf("bad connection: use of closed network connection")
+		}
+	}
+	recoverManagedBDCommand = func(_ string) error {
+		return nil
+	}
+
+	retryEnvErr := fmt.Errorf("retry env failed")
+	calls := 0
+	runner := bdCommandRunnerWithManagedRetryErr(t.TempDir(), func(_ string) (map[string]string, error) {
+		calls++
+		if calls == 2 {
+			return nil, retryEnvErr
+		}
+		return map[string]string{"GC_DOLT_PORT": "3307"}, nil
+	})
+
+	out, err := runner(t.TempDir(), "bd", "list", "--json")
+	if !errors.Is(err, retryEnvErr) {
+		t.Fatalf("runner error = %v, want retry env error", err)
+	}
+	if out != nil {
+		t.Fatalf("runner output = %q, want nil after retry env error", out)
+	}
+}
+
+func TestBdCommandRunnerWithManagedRetryReturnsEnvErrorBeforeMutatingNilEnv(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
 
 	envErr := fmt.Errorf("env failed")
-	runner := bdCommandRunnerWithEnvErr(context.Background(), t.TempDir(), func(_ string) (map[string]string, error) {
+	runner := bdCommandRunnerWithManagedRetryErr(t.TempDir(), func(_ string) (map[string]string, error) {
 		return nil, envErr
 	})
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("runner panicked before returning env error: %v", r)
+		}
+	}()
 	out, err := runner(t.TempDir(), "bd", "list", "--json")
 	if !errors.Is(err, envErr) {
 		t.Fatalf("runner error = %v, want env error", err)
@@ -3802,8 +4225,223 @@ func TestBdCommandRunnerWithEnvErrReturnsEnvErrorBeforeCommand(t *testing.T) {
 	if out != nil {
 		t.Fatalf("runner output = %q, want nil after env error", out)
 	}
-	if called {
-		t.Fatal("command runner was constructed after env error")
+}
+
+func TestBdCommandRunnerWithManagedRetrySkipsRecoveryForLoopbackExternalEndpoint(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	cityPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cityPath, ".beads", "config.yaml"), []byte(`issue_prefix: demo
+gc.endpoint_origin: city_canonical
+gc.endpoint_status: verified
+dolt.auto-start: false
+dolt.host: 127.0.0.1
+dolt.port: 3307
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	origRunner := beadsExecCommandRunnerWithEnv
+	origRecover := recoverManagedBDCommand
+	t.Cleanup(func() {
+		beadsExecCommandRunnerWithEnv = origRunner
+		recoverManagedBDCommand = origRecover
+	})
+
+	attempts := 0
+	recoverCalls := 0
+	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
+		return func(_ string, _ string, _ ...string) ([]byte, error) {
+			attempts++
+			return nil, fmt.Errorf("server unreachable at 127.0.0.1:%s", env["GC_DOLT_PORT"])
+		}
+	}
+	recoverManagedBDCommand = func(_ string) error {
+		recoverCalls++
+		return nil
+	}
+
+	runner := bdCommandRunnerWithManagedRetry(cityPath, func(_ string) map[string]string {
+		return map[string]string{
+			"GC_DOLT_HOST": "127.0.0.1",
+			"GC_DOLT_PORT": "3307",
+		}
+	})
+
+	_, err := runner(cityPath, "bd", "list", "--json")
+	if err == nil || !strings.Contains(err.Error(), "server unreachable") {
+		t.Fatalf("runner error = %v, want transport failure", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+	if recoverCalls != 0 {
+		t.Fatalf("recoverCalls = %d, want 0", recoverCalls)
+	}
+}
+
+func TestBdCommandRunnerWithManagedRetrySkipsRecoveryForNonLocalManagedOverride(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+	t.Setenv("GC_DOLT_HOST", "host.docker.internal")
+
+	cityPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cityPath, ".beads", "config.yaml"), []byte(`issue_prefix: demo
+gc.endpoint_origin: managed_city
+gc.endpoint_status: verified
+dolt.auto-start: false
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	origRunner := beadsExecCommandRunnerWithEnv
+	origRecover := recoverManagedBDCommand
+	t.Cleanup(func() {
+		beadsExecCommandRunnerWithEnv = origRunner
+		recoverManagedBDCommand = origRecover
+	})
+
+	attempts := 0
+	recoverCalls := 0
+	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
+		return func(_ string, _ string, _ ...string) ([]byte, error) {
+			attempts++
+			return nil, fmt.Errorf("server unreachable at %s:%s", env["GC_DOLT_HOST"], env["GC_DOLT_PORT"])
+		}
+	}
+	recoverManagedBDCommand = func(_ string) error {
+		recoverCalls++
+		return nil
+	}
+
+	runner := bdCommandRunnerWithManagedRetry(cityPath, func(_ string) map[string]string {
+		return map[string]string{
+			"GC_DOLT_HOST": "host.docker.internal",
+			"GC_DOLT_PORT": "3307",
+		}
+	})
+
+	_, err := runner(cityPath, "bd", "list", "--json")
+	if err == nil || !strings.Contains(err.Error(), "server unreachable") {
+		t.Fatalf("runner error = %v, want transport failure", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+	if recoverCalls != 0 {
+		t.Fatalf("recoverCalls = %d, want 0", recoverCalls)
+	}
+}
+
+func TestBdCommandRunnerWithManagedRetrySkipsRecoveryForUnavailableNonLocalManagedRuntime(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+	t.Setenv("GC_DOLT_HOST", "192.0.2.1")
+
+	cityPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cityPath, ".beads", "config.yaml"), []byte(`issue_prefix: demo
+gc.endpoint_origin: managed_city
+gc.endpoint_status: verified
+dolt.auto-start: false
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeDoltState(cityPath, doltRuntimeState{
+		Running:   true,
+		PID:       os.Getpid(),
+		Port:      3307,
+		DataDir:   filepath.Join(cityPath, ".beads", "dolt"),
+		StartedAt: "2026-04-02T08:00:00Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	origRunner := beadsExecCommandRunnerWithEnv
+	origRecover := recoverManagedBDCommand
+	t.Cleanup(func() {
+		beadsExecCommandRunnerWithEnv = origRunner
+		recoverManagedBDCommand = origRecover
+	})
+
+	attempts := 0
+	recoverCalls := 0
+	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
+		return func(_ string, _ string, _ ...string) ([]byte, error) {
+			attempts++
+			return nil, fmt.Errorf("server unreachable at %s:%s", env["GC_DOLT_HOST"], env["GC_DOLT_PORT"])
+		}
+	}
+	recoverManagedBDCommand = func(_ string) error {
+		recoverCalls++
+		return nil
+	}
+
+	runner := bdCommandRunnerWithManagedRetry(cityPath, func(_ string) map[string]string {
+		return map[string]string{
+			"GC_DOLT_HOST": "192.0.2.1",
+			"GC_DOLT_PORT": "3307",
+		}
+	})
+
+	_, err := runner(cityPath, "bd", "list", "--json")
+	if err == nil || !strings.Contains(err.Error(), "server unreachable") {
+		t.Fatalf("runner error = %v, want transport failure", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+	if recoverCalls != 0 {
+		t.Fatalf("recoverCalls = %d, want 0", recoverCalls)
+	}
+}
+
+// TestBDCommandRunnerManagedRetry_RetryDelayApplied guards that
+// bdCommandRunnerWithManagedRetryErr sleeps bdCommandRetryBaseDelay before the
+// single retry on the transport-retryable path.
+func TestBDCommandRunnerManagedRetry_RetryDelayApplied(t *testing.T) {
+	t.Setenv("GC_BEADS", "bd")
+
+	origRunner := beadsExecCommandRunnerWithEnv
+	origRecover := recoverManagedBDCommand
+	origSleep := bdCommandRetrySleep
+	t.Cleanup(func() {
+		beadsExecCommandRunnerWithEnv = origRunner
+		recoverManagedBDCommand = origRecover
+		bdCommandRetrySleep = origSleep
+	})
+
+	var sleepCalled time.Duration
+	bdCommandRetrySleep = func(d time.Duration) { sleepCalled = d }
+
+	attempts := 0
+	beadsExecCommandRunnerWithEnv = func(_ map[string]string) beads.CommandRunner {
+		return func(_ string, _ string, _ ...string) ([]byte, error) {
+			attempts++
+			if attempts == 1 {
+				return nil, fmt.Errorf("server unreachable")
+			}
+			return []byte("ok"), nil
+		}
+	}
+	recoverManagedBDCommand = func(_ string) error { return nil }
+
+	cityPath := t.TempDir()
+	runner := bdCommandRunnerWithManagedRetry(cityPath, func(_ string) map[string]string {
+		return map[string]string{}
+	})
+
+	if _, err := runner(cityPath, "bd", "list", "--json"); err != nil {
+		t.Fatalf("runner error = %v, want nil", err)
+	}
+	if sleepCalled != bdCommandRetryBaseDelay {
+		t.Fatalf("bdCommandRetrySleep called with %v, want %v", sleepCalled, bdCommandRetryBaseDelay)
 	}
 }
 
@@ -3846,7 +4484,7 @@ func TestControlBdCommandRunnerDefaultsBeadsActorToControllerWhenUnset(t *testin
 	t.Cleanup(func() { beadsExecCommandRunnerWithEnv = origRunner })
 
 	var captured map[string]string
-	beadsExecCommandRunnerWithEnv = func(_ context.Context, env map[string]string) beads.CommandRunner {
+	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
 		captured = map[string]string{}
 		for key, value := range env {
 			captured[key] = value
@@ -3857,7 +4495,7 @@ func TestControlBdCommandRunnerDefaultsBeadsActorToControllerWhenUnset(t *testin
 	}
 
 	cityPath := t.TempDir()
-	runner := controlBdCommandRunnerForCity(context.Background(), cityPath)
+	runner := controlBdCommandRunnerForCity(cityPath)
 	if _, err := runner(cityPath, "bd", "list", "--json"); err != nil {
 		t.Fatalf("control runner error = %v, want nil", err)
 	}
@@ -3979,7 +4617,7 @@ dolt.auto-start: false
 		DoltPort: "3306",
 	}}}
 
-	env, err := bdRuntimeEnvForRigWithError(context.Background(), cityPath, cfg, rigDir)
+	env, err := bdRuntimeEnvForRigWithError(cityPath, cfg, rigDir)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvForRigWithError() error = %v", err)
 	}
@@ -4029,7 +4667,7 @@ dolt.auto-start: false
 		DoltPort: "3306",
 	}}}
 
-	env, err := nativeDoltOpenEnvForScope(context.Background(), cityPath, cfg, rigDir)
+	env, err := nativeDoltOpenEnvForScope(cityPath, cfg, rigDir)
 	if err != nil {
 		t.Fatalf("nativeDoltOpenEnvForScope() error = %v", err)
 	}
@@ -4042,7 +4680,7 @@ dolt.auto-start: false
 	}
 }
 
-func TestNativeDoltOpenEnvForScopeCanceledContextDoesNotStartManagedRecovery(t *testing.T) {
+func TestNativeDoltOpenEnvForScopeContextCancelsManagedRecovery(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_DOLT", "")
 	cityPath := t.TempDir()
@@ -4063,14 +4701,25 @@ while :; do sleep 1; done
 	t.Setenv("GC_TEST_CHILD_PID", childPIDFile)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	resultCh := make(chan error, 1)
+	go func() {
+		_, err := nativeDoltOpenEnvForScopeContext(ctx, cityPath, nil, cityPath)
+		resultCh <- err
+	}()
+
+	pid := waitForProviderTestChildPID(t, childPIDFile)
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	cancel()
-	_, err := nativeDoltOpenEnvForScope(ctx, cityPath, nil, cityPath)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("native env resolution error = %v, want context canceled", err)
+
+	select {
+	case err := <-resultCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("native env recovery error = %v, want context canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("native env recovery did not return after parent cancellation")
 	}
-	if _, statErr := os.Stat(childPIDFile); !errors.Is(statErr, os.ErrNotExist) {
-		t.Fatalf("managed recovery child pid file stat err = %v, want absent", statErr)
-	}
+	waitForProviderTestPIDExit(t, pid, "native env recovery")
 }
 
 // TestBdRuntimeEnvForRig_ExplicitLocalExternalRigClearsAmbientTLS is the
@@ -4109,7 +4758,7 @@ dolt.auto-start: false
 		DoltPort: "3307",
 	}}}
 
-	env, err := bdRuntimeEnvForRigWithError(context.Background(), cityPath, cfg, rigDir)
+	env, err := bdRuntimeEnvForRigWithError(cityPath, cfg, rigDir)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvForRigWithError() error = %v", err)
 	}
@@ -4153,7 +4802,7 @@ dolt.auto-start: false
 		DoltPort: "6608",
 	}}}
 
-	env, err := bdRuntimeEnvForRigWithError(context.Background(), cityPath, cfg, rigDir)
+	env, err := bdRuntimeEnvForRigWithError(cityPath, cfg, rigDir)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvForRigWithError() error = %v", err)
 	}
@@ -4195,7 +4844,7 @@ dolt.auto-start: false
 		DoltPort: "3307",
 	}}}
 
-	env, err := nativeDoltOpenEnvForScope(context.Background(), cityPath, cfg, rigDir)
+	env, err := nativeDoltOpenEnvForScope(cityPath, cfg, rigDir)
 	if err != nil {
 		t.Fatalf("nativeDoltOpenEnvForScope() error = %v", err)
 	}
@@ -4233,7 +4882,7 @@ dolt.port: 4406
 		DoltPort: "4406",
 	}}}
 
-	_, err := bdRuntimeEnvForRigWithError(context.Background(), cityPath, cfg, rigDir)
+	_, err := bdRuntimeEnvForRigWithError(cityPath, cfg, rigDir)
 	if err == nil {
 		t.Fatal("bdRuntimeEnvForRigWithError() error = nil, want invalid city endpoint error")
 	}
@@ -4301,22 +4950,6 @@ func TestMergeRuntimeEnvStripsInheritedBeadsBackend(t *testing.T) {
 	}
 }
 
-func TestMergeRuntimeEnvStripsInheritedBeadsDoltServerDatabase(t *testing.T) {
-	result := mergeRuntimeEnv([]string{
-		"BEADS_DOLT_SERVER_DATABASE=foreign_scope",
-		"PATH=/usr/bin",
-	}, nil)
-
-	for _, entry := range result {
-		if strings.HasPrefix(entry, "BEADS_DOLT_SERVER_DATABASE=") {
-			t.Fatalf("inherited BEADS_DOLT_SERVER_DATABASE leaked into scoped runtime env: %v", result)
-		}
-	}
-	if !slices.Contains(result, "PATH=/usr/bin") {
-		t.Fatalf("PATH was not preserved in merged runtime env: %v", result)
-	}
-}
-
 func projectedKeyStripped(key string) bool {
 	out := mergeRuntimeEnv([]string{key + "=PARENT"}, nil)
 	for _, entry := range out {
@@ -4370,7 +5003,7 @@ func TestBdRuntimeEnvDisablesAutoExport(t *testing.T) {
 	t.Setenv("GC_DOLT", "skip")
 
 	cityPath := t.TempDir()
-	env, err := bdRuntimeEnvWithError(context.Background(), cityPath)
+	env, err := bdRuntimeEnvWithError(cityPath)
 	if err != nil {
 		t.Fatalf("bdRuntimeEnvWithError: %v", err)
 	}
@@ -4505,7 +5138,7 @@ func TestControlBdStoreForCityReapsStaleBdExportJSONL(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	controlBdStoreForCity(context.Background(), cityPath, cityPath, nil)
+	controlBdStoreForCity(cityPath, cityPath, nil)
 
 	if _, err := os.Stat(jsonlPath); !os.IsNotExist(err) {
 		t.Fatalf("jsonl present after control city store construction; stat err = %v, want IsNotExist", err)
@@ -4529,7 +5162,7 @@ func TestControlBdStoreForRigReapsStaleBdExportJSONL(t *testing.T) {
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir, Prefix: "repo"}}}
 
-	controlBdStoreForRig(context.Background(), rigDir, cityPath, cfg)
+	controlBdStoreForRig(rigDir, cityPath, cfg)
 
 	if _, err := os.Stat(jsonlPath); !os.IsNotExist(err) {
 		t.Fatalf("jsonl present after control rig store construction; stat err = %v, want IsNotExist", err)
@@ -4889,12 +5522,17 @@ func TestCityRuntimeProcessEnvCarriesTLSForExternalCity(t *testing.T) {
 	}
 }
 
-// TestCityRuntimeProcessEnvPropagatesDoltResolutionErrorAndClearsAmbientTLS is
-// the error-branch companion to
-// TestCityRuntimeProcessEnvClearsAmbientTLSForNonExternalCity. Even while
-// returning the causal managed-runtime error, the partial env must explicitly
-// clear BEADS_DOLT_SERVER_TLS so no child process can inherit stale hosted TLS.
-func TestCityRuntimeProcessEnvPropagatesDoltResolutionErrorAndClearsAmbientTLS(t *testing.T) {
+// TestCityRuntimeProcessEnvClearsAmbientTLSOnDoltResolutionError is the
+// error-branch companion to TestCityRuntimeProcessEnvClearsAmbientTLSForNonExternalCity.
+// When applyResolvedCityDoltEnv cannot resolve the city Dolt target (here a managed-city
+// config whose Dolt runtime is not published), cityRuntimeProcessEnvWithError clears the
+// projected Dolt keys and falls back to a local/plaintext bd env. That fallback must also
+// carry BEADS_DOLT_SERVER_TLS="": clearProjectedDoltEnv does not touch TLS (it is a
+// hosted-gateway passthrough key, not a projected key), so without the mirror the ambient
+// TLS=1 is re-injected by preserveHostedBeadsCredentialEnv and forces TLS against the
+// plaintext fallback. Regression for the review finding that the dolt-resolution error
+// branch omitted the clear the postgres-error branch already performs.
+func TestCityRuntimeProcessEnvClearsAmbientTLSOnDoltResolutionError(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	_ = os.Unsetenv("GC_DOLT")
 	_ = os.Unsetenv("GC_DOLT_HOST")
@@ -4921,13 +5559,17 @@ dolt.auto-start: false
 		t.Fatal(err)
 	}
 
-	entries, err := cityRuntimeProcessEnvWithError(context.Background(), cityPath)
-	if err == nil || !contract.IsManagedRuntimeUnavailable(err) {
-		t.Fatalf("cityRuntimeProcessEnvWithError() error = %v, want managed runtime unavailable", err)
+	// The dolt-resolution error is a soft fallback: cityRuntimeProcessEnvWithError
+	// returns a usable env with a nil error (only the postgres branch surfaces a
+	// projection error). A non-nil error would mean the config drove a different
+	// branch than the one under test.
+	entries, err := cityRuntimeProcessEnvWithError(cityPath)
+	if err != nil {
+		t.Fatalf("cityRuntimeProcessEnvWithError() error = %v, want nil (dolt resolution error is a soft fallback)", err)
 	}
 	env := envEntriesMap(entries)
 	if got, ok := env["BEADS_DOLT_SERVER_TLS"]; !ok || got != "" {
-		t.Fatalf("BEADS_DOLT_SERVER_TLS = %q (present=%v), want present and empty: ambient hosted-gateway TLS must not be re-injected on the error env", got, ok)
+		t.Fatalf("BEADS_DOLT_SERVER_TLS = %q (present=%v), want present and empty: ambient hosted-gateway TLS must not be re-injected on the dolt-resolution error fallback", got, ok)
 	}
 }
 

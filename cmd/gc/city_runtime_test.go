@@ -437,16 +437,16 @@ func TestSweepUndesiredPoolSessionBeads_SkipsProtectedCreateBeforeRuntimeProbe(t
 // opening which otherwise force a real dolt spawn.
 func stubManagedDoltStoreOpeners(t *testing.T) {
 	t.Helper()
-	prevCityStore := newControllerStateOpenCityStoreContext
+	prevCityStore := newControllerStateOpenCityStore
 	prevSweepStore := newCityRuntimeOpenSweepStore
-	newControllerStateOpenCityStoreContext = func(context.Context, string, gate.Mode) (beads.StoreOpenResult, error) {
+	newControllerStateOpenCityStore = func(string, gate.Mode) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: beads.NewMemStore()}, nil
 	}
-	newCityRuntimeOpenSweepStore = func(context.Context, string, string) (beads.Store, error) {
+	newCityRuntimeOpenSweepStore = func(string, string) (beads.Store, error) {
 		return beads.NewMemStore(), nil
 	}
 	t.Cleanup(func() {
-		newControllerStateOpenCityStoreContext = prevCityStore
+		newControllerStateOpenCityStore = prevCityStore
 		newCityRuntimeOpenSweepStore = prevSweepStore
 	})
 }
@@ -803,7 +803,7 @@ func TestCityRuntimeDemandSnapshotReusesStablePatrolDemand(t *testing.T) {
 		},
 		stderr: io.Discard,
 	}
-	cr.buildFnWithSessionBeads = func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+	cr.buildFnWithSessionBeads = func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 		buildCalls++
 		return DesiredStateResult{
 			State: map[string]TemplateParams{
@@ -822,8 +822,8 @@ func TestCityRuntimeDemandSnapshotReusesStablePatrolDemand(t *testing.T) {
 		},
 	}})
 
-	first := cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "patrol", false)
-	second := cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "patrol", false)
+	first := cr.loadDemandSnapshot(sessionBeads, nil, "patrol", false)
+	second := cr.loadDemandSnapshot(sessionBeads, nil, "patrol", false)
 
 	if buildCalls != 1 {
 		t.Fatalf("buildDesiredState call count = %d, want 1 for stable patrol reuse", buildCalls)
@@ -842,12 +842,12 @@ func TestCityRuntimeDemandSnapshotReusesStablePatrolDemand(t *testing.T) {
 			"pending_create_claim": "true",
 		},
 	}})
-	_ = cr.loadDemandSnapshot(context.Background(), changedSessionBeads, nil, "patrol", false)
+	_ = cr.loadDemandSnapshot(changedSessionBeads, nil, "patrol", false)
 	if buildCalls != 2 {
 		t.Fatalf("buildDesiredState call count after session change = %d, want 2", buildCalls)
 	}
 
-	_ = cr.loadDemandSnapshot(context.Background(), changedSessionBeads, nil, "poke", false)
+	_ = cr.loadDemandSnapshot(changedSessionBeads, nil, "poke", false)
 	if buildCalls != 3 {
 		t.Fatalf("buildDesiredState call count after poke = %d, want 3", buildCalls)
 	}
@@ -882,13 +882,13 @@ func TestCityRuntimeDemandSnapshotRefreshesForNewRoutedReadyWork(t *testing.T) {
 		stderr: io.Discard,
 	}
 	buildCalls := 0
-	cr.buildFnWithSessionBeads = func(_ context.Context, cfg *config.City, sp runtime.Provider, store beads.Store, rigStores map[string]beads.Store, sessionBeads *sessionBeadSnapshot, trace *sessionReconcilerTraceCycle) DesiredStateResult {
+	cr.buildFnWithSessionBeads = func(cfg *config.City, sp runtime.Provider, store beads.Store, rigStores map[string]beads.Store, sessionBeads *sessionBeadSnapshot, trace *sessionReconcilerTraceCycle) DesiredStateResult {
 		buildCalls++
-		return buildDesiredStateWithSessionBeads(context.Background(), "test-city", cityPath, time.Now(), cfg, sp, store, rigStores, sessionBeads, trace, io.Discard)
+		return buildDesiredStateWithSessionBeads("test-city", cityPath, time.Now(), cfg, sp, store, rigStores, sessionBeads, trace, io.Discard)
 	}
 	sessionBeads := newSessionBeadSnapshot(nil)
 
-	first := cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "patrol", false)
+	first := cr.loadDemandSnapshot(sessionBeads, nil, "patrol", false)
 	if got := first.result.PoolDesiredCounts[template]; got != 0 {
 		t.Fatalf("initial PoolDesiredCounts[%s] = %d, want 0", template, got)
 	}
@@ -903,7 +903,7 @@ func TestCityRuntimeDemandSnapshotRefreshesForNewRoutedReadyWork(t *testing.T) {
 		t.Fatalf("Create routed work: %v", err)
 	}
 
-	second := cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "patrol", false)
+	second := cr.loadDemandSnapshot(sessionBeads, nil, "patrol", false)
 	if buildCalls != 2 {
 		t.Fatalf("buildDesiredState call count = %d, want 2 after ready-demand change", buildCalls)
 	}
@@ -919,7 +919,7 @@ func TestCityRuntimeEnsureManagedDoltPublishedForTickCallsHealthWhenManagedPortM
 	cr := &CityRuntime{
 		cityPath: "/tmp/test-city",
 		stderr:   io.Discard,
-		managedDoltHealth: func(_ context.Context, cityPath string) error {
+		managedDoltHealth: func(cityPath string) error {
 			healthCalls++
 			if cityPath != "/tmp/test-city" {
 				t.Fatalf("health cityPath = %q, want %q", cityPath, "/tmp/test-city")
@@ -939,7 +939,7 @@ func TestCityRuntimeEnsureManagedDoltPublishedForTickCallsHealthWhenManagedPortM
 			return ""
 		},
 	}
-	cr.ensureManagedDoltPublishedForTick(context.Background())
+	cr.ensureManagedDoltPublishedForTick()
 
 	if healthCalls != 1 {
 		t.Fatalf("healthCalls = %d, want 1", healthCalls)
@@ -953,7 +953,7 @@ func TestCityRuntimeEnsureManagedDoltPublishedForTickSkipsHealthWhenManagedPortP
 	cr := &CityRuntime{
 		cityPath: "/tmp/test-city",
 		stderr:   io.Discard,
-		managedDoltHealth: func(context.Context, string) error {
+		managedDoltHealth: func(string) error {
 			healthCalls++
 			return nil
 		},
@@ -964,7 +964,7 @@ func TestCityRuntimeEnsureManagedDoltPublishedForTickSkipsHealthWhenManagedPortP
 			return "3307"
 		},
 	}
-	cr.ensureManagedDoltPublishedForTick(context.Background())
+	cr.ensureManagedDoltPublishedForTick()
 
 	if healthCalls != 0 {
 		t.Fatalf("healthCalls = %d, want 0", healthCalls)
@@ -980,7 +980,7 @@ func TestCityRuntimeEnsureManagedDoltPublishedForTickLogsOwnershipError(t *testi
 		cityPath:  "/tmp/test-city",
 		logPrefix: "gc test",
 		stderr:    &stderr,
-		managedDoltHealth: func(context.Context, string) error {
+		managedDoltHealth: func(string) error {
 			healthCalls++
 			return nil
 		},
@@ -991,7 +991,7 @@ func TestCityRuntimeEnsureManagedDoltPublishedForTickLogsOwnershipError(t *testi
 			return ""
 		},
 	}
-	cr.ensureManagedDoltPublishedForTick(context.Background())
+	cr.ensureManagedDoltPublishedForTick()
 
 	if healthCalls != 0 {
 		t.Fatalf("healthCalls = %d, want 0", healthCalls)
@@ -1016,12 +1016,11 @@ func TestCityRuntimeTickPreflightsManagedDoltBeforeSessionSnapshot(t *testing.T)
 	}
 	sp := runtime.NewFake()
 	cr := &CityRuntime{
-		ctx:      context.Background(),
 		cityPath: cityPath,
 		cityName: "test-city",
 		cfg:      &config.City{},
 		sp:       sp,
-		buildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		dops:          newDrainOps(sp),
@@ -1030,7 +1029,7 @@ func TestCityRuntimeTickPreflightsManagedDoltBeforeSessionSnapshot(t *testing.T)
 		logPrefix:     "gc test",
 		stdout:        io.Discard,
 		stderr:        io.Discard,
-		managedDoltHealth: func(context.Context, string) error {
+		managedDoltHealth: func(string) error {
 			orderEvents.record("preflight")
 			return nil
 		},
@@ -1075,7 +1074,7 @@ func TestCityRuntimeTickPreflightsManagedDoltBeforeDueOrderDispatch(t *testing.T
 		cityName: "test-city",
 		cfg:      &config.City{},
 		sp:       sp,
-		buildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		dops:          newDrainOps(sp),
@@ -1085,7 +1084,7 @@ func TestCityRuntimeTickPreflightsManagedDoltBeforeDueOrderDispatch(t *testing.T
 		logPrefix:     "gc test",
 		stdout:        io.Discard,
 		stderr:        io.Discard,
-		managedDoltHealth: func(context.Context, string) error {
+		managedDoltHealth: func(string) error {
 			orderEvents.record("preflight")
 			return nil
 		},
@@ -1147,13 +1146,12 @@ func TestCityRuntimeRunStartupPreflightsManagedDoltBeforeSessionSnapshot(t *test
 	defer cancel()
 
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops: newDrainOps(sp),
@@ -1161,7 +1159,7 @@ func TestCityRuntimeRunStartupPreflightsManagedDoltBeforeSessionSnapshot(t *test
 		OnStarted: func() {
 			cancel()
 		},
-		ManagedDoltHealth: func(context.Context, string) error {
+		ManagedDoltHealth: func(string) error {
 			orderEvents.record("preflight")
 			return nil
 		},
@@ -1216,7 +1214,7 @@ func TestCityRuntimeControlDispatcherPreflightsManagedDoltBeforeSessionSnapshot(
 		logPrefix:     "gc test",
 		stdout:        io.Discard,
 		stderr:        io.Discard,
-		managedDoltHealth: func(context.Context, string) error {
+		managedDoltHealth: func(string) error {
 			orderEvents.record("preflight")
 			return nil
 		},
@@ -1250,12 +1248,11 @@ func TestNewCityRuntimePreflightsManagedDoltPublicationBeforeStartupStoreWork(t 
 	cleanupManagedDoltTestCity(t, cityPath)
 	sp := runtime.NewFake()
 	if _, err := newCityRuntime(CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		Cfg:      &config.City{},
 		SP:       sp,
-		ManagedDoltHealth: func(_ context.Context, cityPath string) error {
+		ManagedDoltHealth: func(cityPath string) error {
 			healthCalls++
 			if cityPath == "" {
 				t.Fatal("health preflight got empty cityPath")
@@ -1268,7 +1265,7 @@ func TestNewCityRuntimePreflightsManagedDoltPublicationBeforeStartupStoreWork(t 
 		ManagedDoltPort: func(string) string {
 			return ""
 		},
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -1293,19 +1290,18 @@ func TestNewCityRuntimePreflightUsesResolvableProviderStateByDefault(t *testing.
 	writeReachableProviderManagedDoltState(t, cityPath)
 	sp := runtime.NewFake()
 	if _, err := newCityRuntime(CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		Cfg:      &config.City{},
 		SP:       sp,
-		ManagedDoltHealth: func(context.Context, string) error {
+		ManagedDoltHealth: func(string) error {
 			healthCalls++
 			return nil
 		},
 		ManagedDoltOwned: func(string) (bool, error) {
 			return true, nil
 		},
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -1331,7 +1327,7 @@ func TestCityRuntimeTickPreflightUsesResolvableProviderStateByDefault(t *testing
 		cityPath:  cityPath,
 		logPrefix: "gc test",
 		stderr:    io.Discard,
-		managedDoltHealth: func(context.Context, string) error {
+		managedDoltHealth: func(string) error {
 			healthCalls++
 			return nil
 		},
@@ -1340,7 +1336,7 @@ func TestCityRuntimeTickPreflightUsesResolvableProviderStateByDefault(t *testing
 		},
 	}
 
-	cr.ensureManagedDoltPublishedForTick(context.Background())
+	cr.ensureManagedDoltPublishedForTick()
 
 	if healthCalls != 0 {
 		t.Fatalf("healthCalls = %d, want 0 when provider state is already resolvable", healthCalls)
@@ -1406,11 +1402,11 @@ func TestCityRuntimeDemandSnapshotRetainsOnlyPoolScaleCheckPartials(t *testing.T
 				},
 				stderr: io.Discard,
 			}
-			cr.buildFnWithSessionBeads = func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+			cr.buildFnWithSessionBeads = func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 				return tc.result
 			}
 
-			snapshot := cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "poke", false)
+			snapshot := cr.loadDemandSnapshot(sessionBeads, nil, "poke", false)
 
 			if got := snapshot.result.PoolDesiredCounts["worker"]; got != tc.want {
 				t.Fatalf("PoolDesiredCounts[worker] = %d, want %d", got, tc.want)
@@ -1564,7 +1560,7 @@ func TestCityRuntimeTickDispatchesOrdersBeforeDemandSnapshot(t *testing.T) {
 		stdout:              io.Discard,
 		stderr:              io.Discard,
 	}
-	cr.buildFnWithSessionBeads = func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+	cr.buildFnWithSessionBeads = func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 		if !od.called.Load() {
 			t.Fatal("order dispatch should happen before demand snapshot build")
 		}
@@ -1645,7 +1641,7 @@ func TestCityRuntimeSweepReconcilesGraphStepClosedWithNoEvent(t *testing.T) {
 		cfg:      cs.cfg,
 		sp:       runtime.NewFake(),
 		cs:       cs,
-		buildFnWithSessionBeads: func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+		buildFnWithSessionBeads: func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		stdout: io.Discard,
@@ -1709,7 +1705,7 @@ func TestCityRuntimeTickReturnsBeforeDemandWhenCanceled(t *testing.T) {
 		stdout:              io.Discard,
 		stderr:              io.Discard,
 	}
-	cr.buildFnWithSessionBeads = func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+	cr.buildFnWithSessionBeads = func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 		t.Fatal("demand snapshot should not run after city context is canceled")
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}
@@ -1745,7 +1741,7 @@ func TestCityRuntimeTickReturnsBeforeDemandWhenCanceledDuringOrderDispatch(t *te
 		stdout:              io.Discard,
 		stderr:              io.Discard,
 	}
-	cr.buildFnWithSessionBeads = func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+	cr.buildFnWithSessionBeads = func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 		t.Fatal("demand snapshot should not run after order dispatch cancels the city context")
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}
@@ -1777,13 +1773,12 @@ func TestCityRuntimeRunDispatchesOrdersBeforeStartupReconcile(t *testing.T) {
 
 	var started atomic.Bool
 	cr, runtimeErr := newCityRuntime(CityRuntimeParams{
-		Ctx:      ctx,
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			if !od.called.Load() {
 				t.Fatal("order dispatch should happen before startup reconcile")
 			}
@@ -1839,13 +1834,12 @@ func TestCityRuntimeRunStartupOrderDispatchPanicIsRecovered(t *testing.T) {
 	var stderr bytes.Buffer
 	var started atomic.Bool
 	cr, runtimeErr := newCityRuntime(CityRuntimeParams{
-		Ctx:      ctx,
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops: newDrainOps(sp),
@@ -2147,7 +2141,7 @@ func TestOrderTrackingSweepWatchdogFallsBackToConfiguredRigStore(t *testing.T) {
 	cityPath := t.TempDir()
 	rigPath := filepath.Join(cityPath, "frontend")
 	prevOpenSweepStore := newCityRuntimeOpenSweepStore
-	newCityRuntimeOpenSweepStore = func(_ context.Context, scopeRoot, gotCityPath string) (beads.Store, error) {
+	newCityRuntimeOpenSweepStore = func(scopeRoot, gotCityPath string) (beads.Store, error) {
 		if gotCityPath != cityPath {
 			return nil, fmt.Errorf("city path = %q, want %q", gotCityPath, cityPath)
 		}
@@ -2235,14 +2229,14 @@ func TestCityRuntimeDemandSnapshotCachesCustomDemandCommands(t *testing.T) {
 				},
 				stderr: io.Discard,
 			}
-			cr.buildFnWithSessionBeads = func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+			cr.buildFnWithSessionBeads = func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 				buildCalls++
 				return DesiredStateResult{State: map[string]TemplateParams{}}
 			}
 
 			sessionBeads := newSessionBeadSnapshot(nil)
-			_ = cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "patrol", false)
-			_ = cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "patrol", false)
+			_ = cr.loadDemandSnapshot(sessionBeads, nil, "patrol", false)
+			_ = cr.loadDemandSnapshot(sessionBeads, nil, "patrol", false)
 
 			if buildCalls != tc.wantBuilds {
 				t.Fatalf("buildDesiredState call count = %d, want %d", buildCalls, tc.wantBuilds)
@@ -2268,7 +2262,7 @@ func TestCityRuntimeDemandSnapshotThrottlesScaleCheckPatrolReeval(t *testing.T) 
 		},
 		stderr: io.Discard,
 	}
-	cr.buildFnWithSessionBeads = func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+	cr.buildFnWithSessionBeads = func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 		buildCalls++
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}
@@ -2281,22 +2275,22 @@ func TestCityRuntimeDemandSnapshotThrottlesScaleCheckPatrolReeval(t *testing.T) 
 	sessionBeads := newSessionBeadSnapshot(nil)
 
 	// First patrol builds; a second immediate patrol is throttled.
-	_ = cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "patrol", false)
-	_ = cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "patrol", false)
+	_ = cr.loadDemandSnapshot(sessionBeads, nil, "patrol", false)
+	_ = cr.loadDemandSnapshot(sessionBeads, nil, "patrol", false)
 	if buildCalls != 1 {
 		t.Fatalf("buildDesiredState calls after two immediate patrols = %d, want 1 (throttled)", buildCalls)
 	}
 
 	// Once the floor elapses, the next patrol re-runs the probe.
 	cr.demandSnapshot.createdAt = time.Now().Add(-2 * scaleCheckDemandMinInterval)
-	_ = cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "patrol", false)
+	_ = cr.loadDemandSnapshot(sessionBeads, nil, "patrol", false)
 	if buildCalls != 2 {
 		t.Fatalf("buildDesiredState calls after interval elapsed = %d, want 2", buildCalls)
 	}
 
 	// Non-patrol triggers (routed-work pokes/events) bypass the floor so pools
 	// wake immediately, even within the throttle window.
-	_ = cr.loadDemandSnapshot(context.Background(), sessionBeads, nil, "poke", false)
+	_ = cr.loadDemandSnapshot(sessionBeads, nil, "poke", false)
 	if buildCalls != 3 {
 		t.Fatalf("buildDesiredState calls after poke = %d, want 3 (event-driven wake must bypass throttle)", buildCalls)
 	}
@@ -2307,7 +2301,7 @@ func TestCityRuntimeDemandSnapshotThrottlesScaleCheckPatrolReeval(t *testing.T) 
 		Status:   "open",
 		Metadata: map[string]string{"session_name": "polecat-1", "template": "polecat", "state": "active"},
 	}})
-	_ = cr.loadDemandSnapshot(context.Background(), changed, nil, "patrol", false)
+	_ = cr.loadDemandSnapshot(changed, nil, "patrol", false)
 	if buildCalls != 4 {
 		t.Fatalf("buildDesiredState calls after session change = %d, want 4", buildCalls)
 	}
@@ -2329,11 +2323,11 @@ func TestCityRuntimeDemandSnapshotDoesNotRunControllerWorkQuery(t *testing.T) {
 		},
 		stderr: io.Discard,
 	}
-	cr.buildFnWithSessionBeads = func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+	cr.buildFnWithSessionBeads = func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}
 
-	snapshot := cr.loadDemandSnapshot(context.Background(), newSessionBeadSnapshot(nil), nil, "patrol", false)
+	snapshot := cr.loadDemandSnapshot(newSessionBeadSnapshot(nil), nil, "patrol", false)
 
 	if len(snapshot.result.WorkSet) != 0 {
 		t.Fatalf("WorkSet = %#v, want empty; controller demand must not run work_query", snapshot.result.WorkSet)
@@ -2368,7 +2362,7 @@ func TestCityRuntimeDemandSnapshotReplaysACPRoutesOnCacheHit(t *testing.T) {
 		}},
 	}
 
-	_ = cr.loadDemandSnapshot(context.Background(), nil, nil, "patrol", false)
+	_ = cr.loadDemandSnapshot(nil, nil, "patrol", false)
 
 	if err := sp.Attach("headless-agent"); err == nil || !strings.Contains(err.Error(), "ACP transport") {
 		t.Fatalf("Attach(headless-agent) error = %v, want ACP transport route", err)
@@ -2425,12 +2419,12 @@ func TestCityRuntimeDemandSnapshotPokeDoesNotScanReadyFingerprint(t *testing.T) 
 		},
 		stderr: io.Discard,
 	}
-	cr.buildFnWithSessionBeads = func(context.Context, *config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
+	cr.buildFnWithSessionBeads = func(*config.City, runtime.Provider, beads.Store, map[string]beads.Store, *sessionBeadSnapshot, *sessionReconcilerTraceCycle) DesiredStateResult {
 		buildCalls++
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}
 
-	_ = cr.loadDemandSnapshot(context.Background(), newSessionBeadSnapshot(nil), nil, "poke", false)
+	_ = cr.loadDemandSnapshot(newSessionBeadSnapshot(nil), nil, "poke", false)
 
 	if buildCalls != 1 {
 		t.Fatalf("buildDesiredState calls = %d, want 1", buildCalls)
@@ -3494,10 +3488,10 @@ func TestCityRuntimeBeadReconcileTick_IdleClaimNudgeSeesReadyUnassignedRoutedTri
 	snapshot := newSessionBeadSnapshot([]beads.Bead{sessionBead})
 	rigStores := map[string]beads.Store{"fixture": rigStore}
 	var buildLog strings.Builder
-	result := buildDesiredStateWithSessionBeads(context.Background(),
+	result := buildDesiredStateWithSessionBeads(
 		"test-city", cityPath, time.Now().UTC(), cfg, sp,
-		cityStore, rigStores, snapshot, nil, &buildLog)
-
+		cityStore, rigStores, snapshot, nil, &buildLog,
+	)
 	if len(result.AssignedWorkBeads) != 0 {
 		t.Fatalf("AssignedWorkBeads = %#v, want empty for ready routed unassigned work", result.AssignedWorkBeads)
 	}
@@ -3608,7 +3602,7 @@ func TestCityRuntimeBeadReconcileTick_ScaleCheckPartialKeepsOnlyAffectedPoolSess
 
 	snapshot := newSessionBeadSnapshot([]beads.Bead{worker, helper})
 	var stderr strings.Builder
-	result := buildDesiredStateWithSessionBeads(context.Background(), "maintainer-city", cityPath, time.Now().UTC(), cfg, sp, store, nil, snapshot, nil, &stderr)
+	result := buildDesiredStateWithSessionBeads("maintainer-city", cityPath, time.Now().UTC(), cfg, sp, store, nil, snapshot, nil, &stderr)
 	if result.StoreQueryPartial {
 		t.Fatalf("StoreQueryPartial = true, want false for scoped scale_check failure; stderr=%s", stderr.String())
 	}
@@ -3676,7 +3670,7 @@ func TestCityRuntimeBeadReconcileTick_ScaleCheckPartialPreservesDormantAffectedP
 
 	snapshot := newSessionBeadSnapshot([]beads.Bead{worker})
 	var stderr strings.Builder
-	result := buildDesiredStateWithSessionBeads(context.Background(), "maintainer-city", cityPath, time.Now().UTC(), cfg, sp, store, nil, snapshot, nil, &stderr)
+	result := buildDesiredStateWithSessionBeads("maintainer-city", cityPath, time.Now().UTC(), cfg, sp, store, nil, snapshot, nil, &stderr)
 	if _, ok := result.State["worker-bd-123"]; !ok {
 		t.Fatalf("affected dormant worker session not preserved in desired state: keys=%v stderr=%s", mapKeys(result.State), stderr.String())
 	}
@@ -3815,7 +3809,7 @@ func TestCityRuntimeTick_LogsWispGCPurgeCountWithNonFatalError(t *testing.T) {
 		logPrefix:           "test-city",
 		stdout:              &stdout,
 		stderr:              &stderr,
-		buildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 	}
@@ -3851,7 +3845,7 @@ func TestCityRuntimeTick_PrefixesEachJoinedWispGCErrorLine(t *testing.T) {
 		logPrefix: "test-city",
 		stdout:    io.Discard,
 		stderr:    &stderr,
-		buildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 	}
@@ -4080,19 +4074,15 @@ func TestCityRuntimeTick_RefreshesManualSessionOverlayAfterSync(t *testing.T) {
 		stdout:              io.Discard,
 		stderr:              &stderr,
 	}
-	cr.buildFnWithSessionBeads = func(_ context.Context, c *config.City,
-
+	cr.buildFnWithSessionBeads = func(
+		c *config.City,
 		currentSP runtime.Provider,
-
 		store beads.Store,
-
 		rigStores map[string]beads.Store,
-
 		sessionBeads *sessionBeadSnapshot,
-
 		trace *sessionReconcilerTraceCycle,
 	) DesiredStateResult {
-		result := buildDesiredStateWithSessionBeads(context.Background(), "my-city", cityPath, time.Now(), c, currentSP, store, rigStores, sessionBeads, trace, &stderr)
+		result := buildDesiredStateWithSessionBeads("my-city", cityPath, time.Now(), c, currentSP, store, rigStores, sessionBeads, trace, &stderr)
 		if !mutated {
 			if err := store.SetMetadata(manual.ID, "session_name", sessionNameFromBeadID(manual.ID)); err != nil {
 				t.Fatalf("SetMetadata(session_name): %v", err)
@@ -4143,7 +4133,7 @@ func TestCityRuntimeTickRunsOnDeathWithCanonicalRigEnv(t *testing.T) {
 		MaxActiveSessions: intPtr(2),
 	}
 
-	handlers := computePoolDeathHandlers(context.Background(), cfg, "my-city", cityPath, runtime.NewFake(), nil)
+	handlers := computePoolDeathHandlers(cfg, "my-city", cityPath, runtime.NewFake(), nil)
 	if len(handlers) == 0 {
 		t.Fatal("computePoolDeathHandlers returned no handlers")
 	}
@@ -4167,7 +4157,7 @@ func TestCityRuntimeTickRunsOnDeathWithCanonicalRigEnv(t *testing.T) {
 		rec:                 events.Discard,
 		stdout:              io.Discard,
 		stderr:              &stderr,
-		buildFnWithSessionBeads: func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store, _ map[string]beads.Store, _ *sessionBeadSnapshot, _ *sessionReconcilerTraceCycle) DesiredStateResult {
+		buildFnWithSessionBeads: func(_ *config.City, _ runtime.Provider, _ beads.Store, _ map[string]beads.Store, _ *sessionBeadSnapshot, _ *sessionReconcilerTraceCycle) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 	}
@@ -4211,7 +4201,7 @@ func TestCityRuntimeTickSkipsOnDeathWhenSessionListingIsPartial(t *testing.T) {
 		rec:    events.Discard,
 		stdout: io.Discard,
 		stderr: &stderr,
-		buildFnWithSessionBeads: func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store, _ map[string]beads.Store, _ *sessionBeadSnapshot, _ *sessionReconcilerTraceCycle) DesiredStateResult {
+		buildFnWithSessionBeads: func(_ *config.City, _ runtime.Provider, _ beads.Store, _ map[string]beads.Store, _ *sessionBeadSnapshot, _ *sessionReconcilerTraceCycle) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 	}
@@ -4456,7 +4446,7 @@ func TestCityRuntimeBuildDesiredState_StandaloneIncludesRigStores(t *testing.T) 
 		sp:                  runtime.NewFake(),
 		standaloneCityStore: cityStore,
 		standaloneRigStores: map[string]beads.Store{"gascity": rigStore},
-		buildFnWithSessionBeads: func(_ context.Context, _ *config.City, _ runtime.Provider, store beads.Store, rigStores map[string]beads.Store, _ *sessionBeadSnapshot, _ *sessionReconcilerTraceCycle) DesiredStateResult {
+		buildFnWithSessionBeads: func(_ *config.City, _ runtime.Provider, store beads.Store, rigStores map[string]beads.Store, _ *sessionBeadSnapshot, _ *sessionReconcilerTraceCycle) DesiredStateResult {
 			if store != cityStore {
 				t.Fatalf("store = %v, want city store", store)
 			}
@@ -4465,7 +4455,7 @@ func TestCityRuntimeBuildDesiredState_StandaloneIncludesRigStores(t *testing.T) 
 		},
 	}
 
-	cr.buildDesiredState(context.Background(), nil, nil)
+	cr.buildDesiredState(nil, nil)
 
 	if len(gotRigStores) != 1 {
 		t.Fatalf("len(rigStores) = %d, want 1", len(gotRigStores))
@@ -4487,13 +4477,12 @@ func TestCityRuntimeReloadProviderSwapPreservesDrainTracker(t *testing.T) {
 	sp := runtime.NewFake()
 	var stdout bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -4537,13 +4526,12 @@ func TestCityRuntimeReloadProviderSwapFailsOnPartialSessionListing(t *testing.T)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -4588,13 +4576,12 @@ func TestCityRuntimeReloadProviderSwapFailsOnSessionListingError(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -4636,13 +4623,12 @@ func TestCityRuntimeReloadAllowsRegistryAliasDifferentFromWorkspaceName(t *testi
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "machine-alias",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -4681,14 +4667,13 @@ func TestCityRuntimeReloadLifecycleFailureKeepsOldConfig(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:       context.Background(),
 		CityPath:  cityPath,
 		CityName:  "test-city",
 		TomlPath:  tomlPath,
 		LogPrefix: "gc reload",
 		Cfg:       cfg,
 		SP:        sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -4708,7 +4693,7 @@ func TestCityRuntimeReloadLifecycleFailureKeepsOldConfig(t *testing.T) {
 	oldRev := cr.configRev
 
 	prev := cityRuntimeStartBeadsLifecycle
-	cityRuntimeStartBeadsLifecycle = func(context.Context, string, string, *config.City, io.Writer) error {
+	cityRuntimeStartBeadsLifecycle = func(string, string, *config.City, io.Writer) error {
 		return fmt.Errorf("boom")
 	}
 	t.Cleanup(func() {
@@ -4754,7 +4739,7 @@ func TestCityRuntimeReloadLifecycleFailureKeepsOldConfig(t *testing.T) {
 	}
 }
 
-func TestCityRuntimeReloadPropagatesFirstTransientLifecycleFailure(t *testing.T) {
+func TestCityRuntimeReloadRetriesTransientLifecycleFailure(t *testing.T) {
 	cityPath := t.TempDir()
 	tomlPath := filepath.Join(cityPath, "city.toml")
 	writeCityRuntimeConfig(t, tomlPath, "fake")
@@ -4767,14 +4752,13 @@ func TestCityRuntimeReloadPropagatesFirstTransientLifecycleFailure(t *testing.T)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:       context.Background(),
 		CityPath:  cityPath,
 		CityName:  "test-city",
 		TomlPath:  tomlPath,
 		LogPrefix: "gc reload",
 		Cfg:       cfg,
 		SP:        sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -4789,18 +4773,22 @@ func TestCityRuntimeReloadPropagatesFirstTransientLifecycleFailure(t *testing.T)
 	cr.sessionDrains = newDrainTracker()
 
 	oldCfg := cr.cfg
-	oldSP := cr.sp
-	oldDops := cr.dops
 	oldRev := cr.configRev
 
 	prevStart := cityRuntimeStartBeadsLifecycle
+	prevDelay := cityRuntimeReloadLifecycleRetryDelay
 	var calls int
-	cityRuntimeStartBeadsLifecycle = func(context.Context, string, string, *config.City, io.Writer) error {
+	cityRuntimeStartBeadsLifecycle = func(string, string, *config.City, io.Writer) error {
 		calls++
-		return fmt.Errorf("init city beads: exec beads init: signal: terminated")
+		if calls == 1 {
+			return fmt.Errorf("init city beads: exec beads init: signal: terminated")
+		}
+		return nil
 	}
+	cityRuntimeReloadLifecycleRetryDelay = 0
 	t.Cleanup(func() {
 		cityRuntimeStartBeadsLifecycle = prevStart
+		cityRuntimeReloadLifecycleRetryDelay = prevDelay
 	})
 
 	data := []byte("[workspace]\nname = \"test-city\"\n\n[beads]\nprovider = \"file\"\n\n[session]\nprovider = \"fake\"\n\n[daemon]\nshutdown_timeout = \"1s\"\n")
@@ -4810,38 +4798,32 @@ func TestCityRuntimeReloadPropagatesFirstTransientLifecycleFailure(t *testing.T)
 	lastProviderName := "fake"
 	reply := cr.reloadConfigTraced(context.Background(), &lastProviderName, cityPath, nil, reloadSourceManual)
 
-	if calls != 1 {
-		t.Fatalf("cityRuntimeStartBeadsLifecycle calls = %d, want first failure only", calls)
+	if calls != 2 {
+		t.Fatalf("cityRuntimeStartBeadsLifecycle calls = %d, want 2", calls)
 	}
-	if reply.Outcome != reloadOutcomeFailed {
-		t.Fatalf("reply.Outcome = %q, want %q", reply.Outcome, reloadOutcomeFailed)
+	if reply.Outcome != reloadOutcomeApplied {
+		t.Fatalf("reply.Outcome = %q, want %q", reply.Outcome, reloadOutcomeApplied)
 	}
-	if !strings.Contains(reply.Error, "init city beads: exec beads init: signal: terminated") {
-		t.Fatalf("reply.Error = %q, want first lifecycle failure", reply.Error)
+	if reply.Error != "" {
+		t.Fatalf("reply.Error = %q, want empty", reply.Error)
 	}
-	if warningsContain(reply.Warnings, "transient bead lifecycle failure") {
-		t.Fatalf("reply.Warnings = %v, want no transient retry warning", reply.Warnings)
+	if !warningsContain(reply.Warnings, "transient bead lifecycle failure") {
+		t.Fatalf("reply.Warnings = %v, want transient retry warning", reply.Warnings)
 	}
-	if cr.cfg != oldCfg {
-		t.Fatal("cfg changed after lifecycle reload failure")
+	if cr.cfg == oldCfg {
+		t.Fatal("cfg did not change after successful retry")
 	}
-	if cr.sp != oldSP {
-		t.Fatal("provider changed after lifecycle reload failure")
-	}
-	if cr.dops != oldDops {
-		t.Fatal("drain ops changed after lifecycle reload failure")
-	}
-	if cr.configRev != oldRev {
-		t.Fatalf("configRev = %q, want %q", cr.configRev, oldRev)
+	if cr.configRev == oldRev {
+		t.Fatalf("configRev = %q, want new revision", cr.configRev)
 	}
 	if lastProviderName != "fake" {
 		t.Fatalf("lastProviderName = %q, want fake", lastProviderName)
 	}
-	if strings.Contains(stdout.String(), "Config reloaded:") {
-		t.Fatalf("stdout = %q, want no reload success message", stdout.String())
+	if !strings.Contains(stdout.String(), "Config reloaded:") {
+		t.Fatalf("stdout = %q, want reload success message", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "keeping old config") {
-		t.Fatalf("stderr = %q, want reload failure", stderr.String())
+	if strings.Contains(stderr.String(), "keeping old config") {
+		t.Fatalf("stderr = %q, want no reload failure", stderr.String())
 	}
 }
 
@@ -4862,14 +4844,13 @@ func TestCityRuntimeReloadStrictWarningsReturnedOnFailure(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:       context.Background(),
 		CityPath:  cityPath,
 		CityName:  "test-city",
 		TomlPath:  tomlPath,
 		LogPrefix: "gc reload",
 		Cfg:       cfg,
 		SP:        sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -4937,14 +4918,13 @@ func TestCityRuntimeReloadNonStrictWarningsReturnedOnValidationFailure(t *testin
 	sp := runtime.NewFake()
 	var stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:       context.Background(),
 		CityPath:  cityPath,
 		CityName:  "test-city",
 		TomlPath:  tomlPath,
 		LogPrefix: "gc reload",
 		Cfg:       cfg,
 		SP:        sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -5064,14 +5044,13 @@ func TestCityRuntimeReloadSameRevisionIsNoOp(t *testing.T) {
 	sp := runtime.NewFake()
 	var stdout bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:       context.Background(),
 		CityPath:  cityPath,
 		CityName:  "test-city",
 		TomlPath:  tomlPath,
 		ConfigRev: configRev,
 		Cfg:       cfg,
 		SP:        sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -5114,14 +5093,13 @@ func TestCityRuntimeReloadSameRevisionRefreshesStoresWhenMetadataChanges(t *test
 
 	var stdout bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:       context.Background(),
 		CityPath:  cityPath,
 		CityName:  "test-city",
 		TomlPath:  tomlPath,
 		ConfigRev: configRev,
 		Cfg:       cfg,
 		SP:        sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -5327,14 +5305,13 @@ name = "fresh-agent"
 
 	var sawFreshAgent atomic.Bool
 	cr, runtimeErr := newCityRuntime(CityRuntimeParams{
-		Ctx:       ctx,
 		CityPath:  cityPath,
 		CityName:  "test-city",
 		TomlPath:  tomlPath,
 		ConfigRev: configRev,
 		Cfg:       cfg,
 		SP:        sp,
-		BuildFn: func(_ context.Context, cfg *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+		BuildFn: func(cfg *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 			for _, agent := range cfg.Agents {
 				if agent.Name == "fresh-agent" {
 					sawFreshAgent.Store(true)
@@ -5374,13 +5351,12 @@ func TestNewCityRuntimeUsesRegisteredAliasForEffectiveIdentity(t *testing.T) {
 
 	sp := runtime.NewFake()
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "machine-alias",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -5409,14 +5385,13 @@ func TestCityRuntimeReloadKeepsRegisteredAliasForEffectiveIdentity(t *testing.T)
 
 	sp := runtime.NewFake()
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:       context.Background(),
 		CityPath:  cityPath,
 		CityName:  "machine-alias",
 		TomlPath:  tomlPath,
 		ConfigRev: configRev,
 		Cfg:       cfg,
 		SP:        sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -5478,7 +5453,6 @@ func TestCityRuntimeManualHardReloadRepliesBeforeDispatch(t *testing.T) {
 		},
 	}
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:         context.Background(),
 		CityPath:    cityPath,
 		CityName:    "test-city",
 		TomlPath:    tomlPath,
@@ -5486,7 +5460,7 @@ func TestCityRuntimeManualHardReloadRepliesBeforeDispatch(t *testing.T) {
 		ConfigDirty: dirty,
 		Cfg:         cfg,
 		SP:          sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			if len(doneCh) == 0 {
 				t.Error("desired-state rebuild ran before the manual hard-reload reply was sent (#3206)")
 			}
@@ -5589,7 +5563,6 @@ func TestCityRuntimeSoftReloadAcceptsDriftForAppliedAndNoChange(t *testing.T) {
 			dirty.Store(true)
 			var stdout, stderr bytes.Buffer
 			cr := newTestCityRuntime(t, CityRuntimeParams{
-				Ctx:         context.Background(),
 				CityPath:    cityPath,
 				CityName:    "test-city",
 				TomlPath:    tomlPath,
@@ -5597,7 +5570,7 @@ func TestCityRuntimeSoftReloadAcceptsDriftForAppliedAndNoChange(t *testing.T) {
 				ConfigDirty: dirty,
 				Cfg:         cfg,
 				SP:          sp,
-				BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+				BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 					return DesiredStateResult{State: map[string]TemplateParams{
 						"worker": {Command: tc.desiredCommand, SessionName: "worker", TemplateName: "worker"},
 					}}
@@ -5672,7 +5645,6 @@ func TestCityRuntimeReloadRestartsConfigWatcherWithNewPackTargets(t *testing.T) 
 	pokeCh := make(chan struct{}, 8)
 	var stdout, stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:          context.Background(),
 		CityPath:     cityPath,
 		CityName:     "test-city",
 		TomlPath:     tomlPath,
@@ -5681,7 +5653,7 @@ func TestCityRuntimeReloadRestartsConfigWatcherWithNewPackTargets(t *testing.T) 
 		ConfigDirty:  dirty,
 		Cfg:          cfg,
 		SP:           sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -5788,7 +5760,6 @@ func TestCityRuntimeReloadMaterializesNewlyAddedSkill(t *testing.T) {
 	pokeCh := make(chan struct{}, 8)
 	var stdout, stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:          context.Background(),
 		CityPath:     cityPath,
 		CityName:     "test-city",
 		TomlPath:     tomlPath,
@@ -5797,7 +5768,7 @@ func TestCityRuntimeReloadMaterializesNewlyAddedSkill(t *testing.T) {
 		ConfigDirty:  dirty,
 		Cfg:          cfg,
 		SP:           sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -5853,7 +5824,6 @@ func TestCityRuntimeReloadRejectsCollidingSkillMaterialization(t *testing.T) {
 	pokeCh := make(chan struct{}, 8)
 	var stdout, stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:          context.Background(),
 		CityPath:     cityPath,
 		CityName:     "test-city",
 		TomlPath:     tomlPath,
@@ -5862,7 +5832,7 @@ func TestCityRuntimeReloadRejectsCollidingSkillMaterialization(t *testing.T) {
 		ConfigDirty:  dirty,
 		Cfg:          cfg,
 		SP:           sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:   newDrainOps(sp),
@@ -5927,7 +5897,6 @@ func TestCityRuntimeManualReloadPanicAfterReloadKeepsReloadReplyAndClears(t *tes
 	sp := runtime.NewFake()
 	var stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:         context.Background(),
 		CityPath:    cityPath,
 		CityName:    "test-city",
 		TomlPath:    tomlPath,
@@ -5935,7 +5904,7 @@ func TestCityRuntimeManualReloadPanicAfterReloadKeepsReloadReplyAndClears(t *tes
 		ConfigDirty: dirty,
 		Cfg:         cfg,
 		SP:          sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			panic("manual reload boom")
 		},
 		Dops:   newDrainOps(sp),
@@ -5983,7 +5952,6 @@ func TestCityRuntimeWatchReloadPanicRestoresDirty(t *testing.T) {
 	sp := runtime.NewFake()
 	var stderr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:         context.Background(),
 		CityPath:    cityPath,
 		CityName:    "test-city",
 		TomlPath:    tomlPath,
@@ -5991,7 +5959,7 @@ func TestCityRuntimeWatchReloadPanicRestoresDirty(t *testing.T) {
 		ConfigDirty: dirty,
 		Cfg:         cfg,
 		SP:          sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			panic("watch reload boom")
 		},
 		Dops:   newDrainOps(sp),
@@ -6030,13 +5998,12 @@ func TestCityRuntimeRunStopsBeforeStartedWhenCanceledDuringStartup(t *testing.T)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			cancel()
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
@@ -6151,13 +6118,12 @@ func TestCityRuntimeRun_PanicInStartupDoesNotShutdownCity(t *testing.T) {
 	t.Cleanup(cancel)
 
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			n := buildCalls.Add(1)
 			if n == 1 {
 				panic("simulated dolt eof nil deref")
@@ -6216,13 +6182,12 @@ func TestCityRuntimeRun_RetriesStartupAfterRecoveredPanicBeforeStarted(t *testin
 	t.Cleanup(cancel)
 
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			n := buildCalls.Add(1)
 			if n == 1 {
 				panic("simulated startup panic")
@@ -6307,13 +6272,12 @@ func TestCityRuntimeRun_ConvergenceStartupErrorDoesNotBlockStarted(t *testing.T)
 	t.Cleanup(cancel)
 
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:             newDrainOps(sp),
@@ -6364,13 +6328,12 @@ func TestCityRuntimeRun_RetriesConvergenceStartupUntilIndexPopulated(t *testing.
 	t.Cleanup(cancel)
 
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:             newDrainOps(sp),
@@ -6424,13 +6387,12 @@ func TestCityRuntimeRunShutsDownSessionsOnContextCancel(t *testing.T) {
 	var stdout bytes.Buffer
 	ctx, cancel := context.WithCancel(context.Background())
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			cancel()
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
@@ -6965,13 +6927,12 @@ func TestCityRuntimeRunEmitsStartupPhaseTimingLogs(t *testing.T) {
 
 	stderr := &lockedWriter{w: &bytes.Buffer{}}
 	cr, runtimeErr := newCityRuntime(CityRuntimeParams{
-		Ctx:      ctx,
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
 		Dops:      newDrainOps(sp),
@@ -7022,13 +6983,12 @@ func TestCityRuntimeStartupWatchdogDumpsGoroutinesOnSlowStartup(t *testing.T) {
 	stderr := &lockedWriter{w: &bytes.Buffer{}}
 	var sleepOnce sync.Once
 	cr, runtimeErr := newCityRuntime(CityRuntimeParams{
-		Ctx:      ctx,
 		CityPath: cityPath,
 		CityName: "test-city",
 		TomlPath: tomlPath,
 		Cfg:      cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			sleepOnce.Do(func() {
 				// Sleep past startReadyTimeout/2 (50ms) so the watchdog
 				// fires, but cap at a small bound so the test stays fast.

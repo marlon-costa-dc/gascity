@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -82,9 +81,10 @@ func TestNamedWorkReadyMatchesRuntimeSessionNameAssignee(t *testing.T) {
 		}},
 	}
 
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"gc", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"gascity": rigStore}, nil, nil, io.Discard)
+		cityStore, map[string]beads.Store{"gascity": rigStore}, nil, nil, io.Discard,
+	)
 
 	if !dsResult.NamedSessionDemand[identity] {
 		t.Fatalf("named session %q has an in_progress bead assigned to its runtime session name %q "+
@@ -139,9 +139,10 @@ func TestNamedWorkReadyStillIgnoresUnrelatedAssignee(t *testing.T) {
 		}},
 	}
 
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"gc", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"gascity": rigStore}, nil, nil, io.Discard)
+		cityStore, map[string]beads.Store{"gascity": rigStore}, nil, nil, io.Discard,
+	)
 
 	if dsResult.NamedSessionDemand["gascity/patrol"] {
 		t.Fatalf("a bead assigned to gascity/somebody-else woke named session gascity/patrol "+

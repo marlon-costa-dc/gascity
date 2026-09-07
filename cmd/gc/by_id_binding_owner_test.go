@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -34,7 +33,7 @@ func convoyCityConfig(t *testing.T, cityPath string) *config.City {
 func resolveThroughTheConvoyScan(t *testing.T, cityPath, id string) (beads.Store, string) {
 	t.Helper()
 	store, dir, err := resolveOwningStoreDir(id, convoyCityConfig(t, cityPath), cityPath, func(storeDir string) (beads.Store, error) {
-		return openStoreAtForCity(context.Background(), storeDir, cityPath)
+		return openStoreAtForCity(storeDir, cityPath)
 	})
 	if err != nil {
 		t.Fatalf("resolving the store that owns %s: %v", id, err)
@@ -135,7 +134,7 @@ func TestConvoyResolutionDoesNotRefuseDualResidenceAsAmbiguous(t *testing.T) {
 	resident := classResidentWorkShapedBead(t, classStore, shadow.ID, "the class-binding copy")
 
 	store, _, err := resolveOwningStoreDir(resident.ID, convoyCityConfig(t, cityPath), cityPath, func(storeDir string) (beads.Store, error) {
-		return openStoreAtForCity(context.Background(), storeDir, cityPath)
+		return openStoreAtForCity(storeDir, cityPath)
 	})
 	if err != nil {
 		t.Fatalf("a dual-resident id resolved to %v; dual residency is the migration working, not two ledgers disagreeing", err)
@@ -172,7 +171,7 @@ func TestConvoyResolutionUnchangedOnACityThatRelocatesNothing(t *testing.T) {
 	}
 
 	if _, _, err := resolveOwningStoreDir("gc-nothing-here", convoyCityConfig(t, cityPath), cityPath, func(storeDir string) (beads.Store, error) {
-		return openStoreAtForCity(context.Background(), storeDir, cityPath)
+		return openStoreAtForCity(storeDir, cityPath)
 	}); !errors.Is(err, beads.ErrNotFound) {
 		t.Errorf("an absent id resolved to %v, want beads.ErrNotFound — the scan's own miss shape", err)
 	}
@@ -210,7 +209,7 @@ func TestAutocloseOwningStoreAnnouncesAFaultOnce(t *testing.T) {
 	failClassBindingReads(t, cityPath, errors.New("the class binding is having a bad day"))
 
 	for range 2 {
-		if store, _, ok := autocloseOwningStore(context.Background(), "hq-1", cityPath); ok {
+		if store, _, ok := autocloseOwningStore("hq-1", cityPath); ok {
 			t.Fatalf("a failing binding resolved to %p; the fault must not be answered by the work ledger", store)
 		}
 	}
@@ -232,7 +231,7 @@ func TestAutocloseOwningStoreStaysQuietOnAbsence(t *testing.T) {
 	cityPath, _ := foreignProviderCity(t)
 	sink := captureCLIStorageStderr(t)
 
-	if store, _, ok := autocloseOwningStore(context.Background(), "hq-nothing-here", cityPath); ok {
+	if store, _, ok := autocloseOwningStore("hq-nothing-here", cityPath); ok {
 		t.Fatalf("an absent id resolved to %p", store)
 	}
 	if bytes.Contains(sink.Bytes(), []byte("gc autoclose:")) {
@@ -253,7 +252,7 @@ func TestBeadsShowFallbackServesTheBindingCopy(t *testing.T) {
 	resident := classResidentWorkShapedBead(t, classStore, shadow.ID, "the class-binding copy")
 
 	var stdout, stderr bytes.Buffer
-	if code := doBeadsShowFallback(context.Background(), cityPath, resident.ID, "json", &stdout, &stderr); code != 0 {
+	if code := doBeadsShowFallback(cityPath, resident.ID, "json", &stdout, &stderr); code != 0 {
 		t.Fatalf("gc beads show %s exited %d: %s", resident.ID, code, stderr.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte("the class-binding copy")) {
@@ -273,7 +272,7 @@ func TestBeadsShowFallbackScansForAnIdNoBindingHolds(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doBeadsShowFallback(context.Background(), cityPath, bead.ID, "json", &stdout, &stderr); code != 0 {
+	if code := doBeadsShowFallback(cityPath, bead.ID, "json", &stdout, &stderr); code != 0 {
 		t.Fatalf("gc beads show %s exited %d: %s", bead.ID, code, stderr.String())
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte("a work bead the binding never held")) {

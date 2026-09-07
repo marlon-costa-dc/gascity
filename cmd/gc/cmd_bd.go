@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,14 +118,14 @@ auto-export behavior, invoke bd directly.`,
   gc bd heartbeat my-project-abc     # refresh the claim lease you hold
   gc bd release-if-current my-project-abc worker-1`,
 		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			// Plumb doBd's numeric exit code through exitForCode so the
 			// process exit code matches the documented contract above
 			// (bdSilentFallbackExitCode = 4) and bd's own exit codes are
 			// preserved. Returning errExit on any non-zero would collapse
 			// every code to 1 and defeat the operator/CI signal the loud-
 			// fail was meant to provide.
-			return exitForCode(doBd(cmd.Context(), args, stdout, stderr))
+			return exitForCode(doBd(args, stdout, stderr))
 		},
 	}
 	return cmd
@@ -136,8 +135,8 @@ auto-export behavior, invoke bd directly.`,
 // called only to decide which store a bd invocation is scoped to, so it takes
 // the city config the caller already loaded: without it, every candidate probe
 // re-loaded the whole city config inside the store open.
-var bdBeadExists = func(ctx context.Context, cityPath string, cfg *config.City, target execStoreTarget, beadID string) bool {
-	store, err := openStoreAtForCityWithConfig(ctx, target.ScopeRoot, cityPath, cfg)
+var bdBeadExists = func(cityPath string, cfg *config.City, target execStoreTarget, beadID string) bool {
+	store, err := openStoreAtForCityWithConfig(target.ScopeRoot, cityPath, cfg)
 	if err != nil {
 		return false
 	}
@@ -145,13 +144,13 @@ var bdBeadExists = func(ctx context.Context, cityPath string, cfg *config.City, 
 	return err == nil && strings.TrimSpace(bead.ID) != ""
 }
 
-func bdCommandEnv(ctx context.Context, cityPath string, cfg *config.City, target execStoreTarget) ([]string, error) {
+func bdCommandEnv(cityPath string, cfg *config.City, target execStoreTarget) ([]string, error) {
 	var overrides map[string]string
 	var err error
 	if target.ScopeKind == "rig" {
-		overrides, err = bdRuntimeEnvForRigWithError(ctx, cityPath, cfg, target.ScopeRoot)
+		overrides, err = bdRuntimeEnvForRigWithError(cityPath, cfg, target.ScopeRoot)
 	} else {
-		overrides, err = bdRuntimeEnvWithError(ctx, cityPath)
+		overrides, err = bdRuntimeEnvWithError(cityPath)
 	}
 	if err != nil {
 		return nil, err
@@ -315,7 +314,7 @@ func bdRigQualifiedMetadataRefusal(cfg *config.City, bdArgs []string) (string, b
 	return "", false
 }
 
-func doBd(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func doBd(args []string, stdout, stderr io.Writer) int {
 	cityName, rigName, bdArgs := extractBdScopeFlags(args)
 
 	bdArgs, err := rewriteBdHeartbeatArgs(bdArgs)
@@ -352,7 +351,7 @@ func doBd(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	target, err := resolveBdScopeTarget(ctx, cfg, cityPath, rigName, bdArgs, cityName != "", stderr)
+	target, err := resolveBdScopeTarget(cfg, cityPath, rigName, bdArgs, cityName != "", stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc bd: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -420,7 +419,7 @@ func doBd(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "gc bd: %v\n", err) //nolint:errcheck // best-effort stderr
 			return 1
 		}
-		return doBdReleaseIfCurrent(ctx, cityPath, cfg, target, id, expectedAssignee, stdout, stderr)
+		return doBdReleaseIfCurrent(cityPath, cfg, target, id, expectedAssignee, stdout, stderr)
 	}
 
 	// Disclose which store answers a read-only passthrough, so a zero-row
@@ -484,7 +483,7 @@ func doBd(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		if len(writeIDs) > 0 {
-			store, storeErr := openStoreAtForCityWithConfig(ctx, target.ScopeRoot, cityPath, cfg)
+			store, storeErr := openStoreAtForCityWithConfig(target.ScopeRoot, cityPath, cfg)
 			// Store-unavailable: we cannot verify, but we must not block
 			// legitimate writes. Fall through; bd will error on actual problems.
 			if storeErr == nil {
@@ -514,7 +513,7 @@ func doBd(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	// blocks the close only when GC_WORK_RECORD_ENFORCE is set. Reuses the
 	// store/beads the write-ID guard above already opened and read, and the
 	// config the caller already loaded.
-	if runWorkRecordCloseGate(ctx, bdArgs, target.ScopeRoot, cityPath, cfg, guardStore, guardBeads, stderr) {
+	if runWorkRecordCloseGate(bdArgs, target.ScopeRoot, cityPath, cfg, guardStore, guardBeads, stderr) {
 		return 1
 	}
 
@@ -535,7 +534,7 @@ func doBd(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	cmd := exec.CommandContext(ctx, bdPath, bdArgs...)
+	cmd := exec.Command(bdPath, bdArgs...)
 	cmd.Dir = target.ScopeRoot
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = stdout
@@ -546,7 +545,7 @@ func doBd(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	// (close path) — both go through this handoff.
 	stderrScan := &headLimitedWriter{limit: bdStderrScanLimit}
 	cmd.Stderr = io.MultiWriter(stderr, stderrScan)
-	env, err := bdCommandEnv(ctx, cityPath, cfg, target)
+	env, err := bdCommandEnv(cityPath, cfg, target)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc bd: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -728,8 +727,8 @@ func bdMutationWriteID(args []string) (string, bool) {
 	return ids[0], true
 }
 
-func doBdReleaseIfCurrent(ctx context.Context, cityPath string, cfg *config.City, target execStoreTarget, id, expectedAssignee string, stdout, stderr io.Writer) int {
-	store, err := openStoreAtForCityWithConfig(ctx, target.ScopeRoot, cityPath, cfg)
+func doBdReleaseIfCurrent(cityPath string, cfg *config.City, target execStoreTarget, id, expectedAssignee string, stdout, stderr io.Writer) int {
+	store, err := openStoreAtForCityWithConfig(target.ScopeRoot, cityPath, cfg)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc bd release-if-current: opening store: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -827,7 +826,7 @@ func extractBdDirectoryFlag(args []string) string {
 // stderr receives a best-effort warning when a set-but-unresolvable GC_RIG is
 // discarded (see the GC_RIG block below); pass io.Discard when the caller does
 // not care.
-func resolveBdScopeTarget(ctx context.Context, cfg *config.City, cityPath, rigName string, args []string, cityExplicit bool, stderr io.Writer) (execStoreTarget, error) {
+func resolveBdScopeTarget(cfg *config.City, cityPath, rigName string, args []string, cityExplicit bool, stderr io.Writer) (execStoreTarget, error) {
 	resolveRigPaths(cityPath, cfg.Rigs)
 	if rigName != "" {
 		rig, ok := rigByName(cfg, rigName)
@@ -857,7 +856,7 @@ func resolveBdScopeTarget(ctx context.Context, cfg *config.City, cityPath, rigNa
 			if strings.HasPrefix(arg, "-") || beadPrefix(cfg, arg) != cityPrefix {
 				continue
 			}
-			if bdBeadExists(ctx, cityPath, cfg, cityTarget, arg) {
+			if bdBeadExists(cityPath, cfg, cityTarget, arg) {
 				return cityTarget, nil
 			}
 		}
@@ -876,7 +875,7 @@ func resolveBdScopeTarget(ctx context.Context, cfg *config.City, cityPath, rigNa
 				continue
 			}
 			target := bdRigScopeTarget(cityPath, rig)
-			if bdBeadExists(ctx, cityPath, cfg, target, arg) {
+			if bdBeadExists(cityPath, cfg, target, arg) {
 				return target, nil
 			}
 		}
