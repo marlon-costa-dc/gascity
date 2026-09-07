@@ -1,0 +1,9 @@
+[supervisor]
+bind = "127.0.0.1"
+port = 18372
+
+[[credentials.encrypted]]
+id = "gct-whpkb3-proof"
+path = "/home/marlonsc/worktrees/gascity-gct-jpkla/.codex/gct-whpkb.3-systemd-creds-proof/encrypted/gct-whpkb3-proof.cred"
+env = "OPENAI_API_KEY"
+providers = ["codex"]

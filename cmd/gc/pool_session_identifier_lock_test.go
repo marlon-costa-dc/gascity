@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io"
 	"sort"
@@ -279,7 +280,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_TransientExactNameRace(t *testing
 			MaxActiveSessions: intPtr(2),
 		}},
 	}
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
 	bp.sessionBeads = newSessionBeadSnapshot(nil)
 	locker := newTwoCallPoolIdentifierLocker()
 
@@ -312,7 +313,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_AliasedSlot2ExactNameRace(t *test
 			},
 		},
 	}
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
 	bp.sessionBeads = newSessionBeadSnapshot(nil)
 	locker := newTwoCallPoolIdentifierLocker()
 
@@ -337,7 +338,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_AliasAvailabilityErrorNeverCreate
 			TmuxAlias:         "crew",
 		}},
 	}
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
 	bp.sessionBeads = newSessionBeadSnapshot(nil)
 
 	info, err := createPoolSessionBeadWithGuardedAlias(bp, &cfg.Agents[0], "worker", "worker-1", 1, nil)
@@ -386,7 +387,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_ProvenAliasCollisionDefersAlias(t
 			NamepoolNames:     []string{"furiosa", "nux"},
 		}},
 	}
-	bp := newAgentBuildParams("test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, io.Discard)
 	bp.sessionBeads = newSessionBeadSnapshotFromInfos(nil)
 	bp.sessionOccupancyInfos = bp.sessionBeads.OpenInfos()
 	bp.sessionSnapshotCompletenessKnown = true
@@ -452,7 +453,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_ForeignAliasCollisionDefersAlias(
 		}},
 	}
 	holder := seedGuardedPoolSessionHolder(t, foreign, "foreign alias holder", "rig/manual", "rig/furiosa", "manual-furiosa")
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
 	primeGuardedPoolCrossStoreCensus(t, bp, map[string]beads.Store{"rig": foreign})
 
 	_, qualifiedInstance, slot := poolDesiredRequestIdentity(&cfg.Agents[0], 1)
@@ -499,7 +500,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_LateForeignExactNameHolderBlocksC
 			MaxActiveSessions: &maxSessions,
 		}},
 	}
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
 	rigStores := map[string]beads.Store{"rig": foreign}
 	primeGuardedPoolCrossStoreCensus(t, bp, rigStores)
 	if len(bp.sessionOccupancyInfos) != 0 {
@@ -541,12 +542,29 @@ func TestCreatePoolSessionBeadWithGuardedAlias_LiveRecensusBypassesStaleForeignC
 	rigPath := t.TempDir()
 	primaryBacking := beads.NewMemStore()
 	primary := beads.NewCachingStoreForTest(primaryBacking, nil)
-	if err := primary.PrimeActive(); err != nil {
+<<<<<<< HEAD
+	if err := primary.PrimeActive(context.Background()); err != nil {
+=======
+	// Both caches are fully primed (cacheLive) rather than active-only. A
+	// partial prime answers no broad non-closed list query from cache at all,
+	// so the ordinary census below would fall back to the backing store and
+	// observe the external write immediately, collapsing the staleness window
+	// this test exists to reproduce. A fully primed cache serves that census
+	// from its own snapshot, which is the production shape: complete as of the
+	// prime and still blind to a later write committed by another process.
+	// Note the two unrelated senses of "live" here: this is the cache STATE,
+	// whereas the lock-time recensus bypass below is session.ListAllOptions.Live.
+	if err := primary.Prime(context.Background()); err != nil {
+>>>>>>> main
 		t.Fatalf("prime primary cache: %v", err)
 	}
 	foreignBacking := beads.NewMemStore()
 	foreign := beads.NewCachingStoreForTest(foreignBacking, nil)
-	if err := foreign.PrimeActive(); err != nil {
+<<<<<<< HEAD
+	if err := foreign.PrimeActive(context.Background()); err != nil {
+=======
+	if err := foreign.Prime(context.Background()); err != nil {
+>>>>>>> main
 		t.Fatalf("prime foreign cache: %v", err)
 	}
 	maxSessions := 2
@@ -560,7 +578,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_LiveRecensusBypassesStaleForeignC
 			MaxActiveSessions: &maxSessions,
 		}},
 	}
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
 	rigStores := map[string]beads.Store{"rig": foreign}
 	primeGuardedPoolCrossStoreCensus(t, bp, rigStores)
 
@@ -618,7 +636,7 @@ func TestCreatePoolSessionBeadWithGuardedAlias_ForeignRecensusErrorNeverCreates(
 			MaxActiveSessions: &maxSessions,
 		}},
 	}
-	bp := newAgentBuildParams("test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
+	bp := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, runtime.NewFake(), time.Now().UTC(), primary, io.Discard)
 	primeGuardedPoolCrossStoreCensus(t, bp, map[string]beads.Store{"rig": foreign})
 	foreign.fail = true // the foreign leg degrades after planning, before lock-time proof
 

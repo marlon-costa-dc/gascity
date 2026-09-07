@@ -1,0 +1,6 @@
+{"seq":1,"type":"supervisor.started","ts":"2026-09-02T10:12:12.10037784-03:00","actor":"supervisor","subject":"supervisor","payload":{"previous_exit":"unknown"}}
+{"seq":2,"type":"supervisor.started","ts":"2026-09-02T23:04:30.007186972-03:00","actor":"supervisor","subject":"supervisor","payload":{"previous_exit":"crash"}}
+{"seq":3,"type":"supervisor.shutdown_requested","ts":"2026-09-03T12:00:13.993588355-03:00","actor":"supervisor","subject":"supervisor","payload":{"source":"signal","signal":"terminated","mode":"preserve_sessions"}}
+{"seq":4,"type":"supervisor.started","ts":"2026-09-04T00:15:02.078418694-03:00","actor":"supervisor","subject":"supervisor","payload":{"previous_exit":"clean"}}
+{"seq":5,"type":"supervisor.shutdown_requested","ts":"2026-09-04T01:45:35.844915158-03:00","actor":"supervisor","subject":"supervisor","payload":{"source":"socket_stop","client_addr":"@","mode":"destructive"}}
+{"seq":6,"type":"supervisor.shutdown_requested","ts":"2026-09-04T01:45:35.848153273-03:00","actor":"supervisor","subject":"supervisor","payload":{"source":"signal","signal":"terminated","mode":"preserve_sessions"}}

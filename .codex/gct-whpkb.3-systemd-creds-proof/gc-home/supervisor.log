@@ -1,0 +1,17 @@
+gc supervisor: started: previous_exit=unknown
+Supervisor API listening on http://127.0.0.1:18372
+Dashboard:  http://127.0.0.1:18372/
+Supervisor started.
+gc supervisor: started: previous_exit=crash
+Supervisor API listening on http://127.0.0.1:18372
+Dashboard:  http://127.0.0.1:18372/
+Supervisor started.
+gc supervisor: shutdown requested: source=signal signal="terminated" client="" mode=preserve_sessions
+Supervisor stopped.
+gc supervisor: started: previous_exit=clean
+Supervisor API listening on http://127.0.0.1:18372
+Dashboard:  http://127.0.0.1:18372/
+Supervisor started.
+gc supervisor: shutdown requested: source=socket_stop signal="" client="@" mode=destructive
+Supervisor stopped.
+gc supervisor: shutdown requested: source=signal signal="terminated" client="" mode=preserve_sessions

@@ -1,0 +1,4 @@
+schema = 2
+repository = "https://github.com/gastownhall/gascity.git"
+commit = "f895c0ff47d6ee9334ed282a416387eb5b084d24"
+content_hash = "sha256:3a219aa0ecc8220aca9a40bbe48e4267d95897f6f73d8ee2dd282ca204ffa2d1"
