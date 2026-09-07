@@ -57,7 +57,7 @@ With --claim: runs the standard startup claim protocol for one work item.
 	cmd.Flags().StringVar(&hookFormat, "hook-format", "", "format hook output for a provider")
 	cmd.Flags().BoolVar(&claim, "claim", false, "atomically claim one routed work item for the current session")
 	cmd.Flags().BoolVar(&drainAck, "drain-ack", false, "with --claim, acknowledge runtime drain when no work is available")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "with --claim, emit a JSON protocol result")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit a JSON protocol result (always with --claim; on the discovery door only for a drain refusal)")
 	if flag := cmd.Flags().Lookup("hook-format"); flag != nil {
 		flag.Hidden = true
 	}
@@ -78,9 +78,7 @@ func newHookRunCmd(stdout, stderr io.Writer) *cobra.Command {
 
 This protects provider hook callbacks from wedged data-plane commands. The
 child process is the current gc executable, and <gc args...> are passed to it
-verbatim. With --when-managed-session, the child runs only when the callback
-has a complete Gas City session identity. An unmanaged callback is not selected
-and exits successfully; a partial identity fails before the child starts.`,
+verbatim.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -92,71 +90,17 @@ and exits successfully; a partial identity fails before the child starts.`,
 	}
 	cmd.Flags().DurationVar(&opts.Timeout, "timeout", defaultHookRunTimeout, "hard timeout for the managed hook command")
 	cmd.Flags().IntVar(&opts.TimeoutExitCode, "timeout-exit-code", 124, "exit code to return when the managed hook command times out")
-	cmd.Flags().BoolVar(&opts.WhenManagedSession, "when-managed-session", false, "run only with complete Gas City managed-session context")
 	return cmd
 }
 
 const defaultHookRunTimeout = 15 * time.Second
 
 type hookRunOptions struct {
-	Timeout            time.Duration
-	TimeoutExitCode    int
-	WhenManagedSession bool
+	Timeout         time.Duration
+	TimeoutExitCode int
 }
 
 var hookRunExecutable = os.Executable
-
-type managedSessionHookSelection uint8
-
-const (
-	managedSessionHookAbsent managedSessionHookSelection = iota
-	managedSessionHookPartial
-	managedSessionHookSelected
-)
-
-var managedSessionHookEnvKeys = []string{
-	"GC_SESSION_ID",
-	"GC_SESSION_NAME",
-	"GC_ALIAS",
-	"GC_AGENT",
-	"GC_CITY",
-	"GC_CITY_PATH",
-	"GC_CITY_ROOT",
-}
-
-func selectManagedSessionHook(lookup func(string) string) (managedSessionHookSelection, []string) {
-	valuePresent := func(key string) bool {
-		return strings.TrimSpace(lookup(key)) != ""
-	}
-	anyPresent := false
-	for _, key := range managedSessionHookEnvKeys {
-		if valuePresent(key) {
-			anyPresent = true
-			break
-		}
-	}
-	if !anyPresent {
-		return managedSessionHookAbsent, nil
-	}
-
-	missing := make([]string, 0, 4)
-	if !valuePresent("GC_SESSION_ID") {
-		missing = append(missing, "GC_SESSION_ID")
-	}
-	if !valuePresent("GC_SESSION_NAME") {
-		missing = append(missing, "GC_SESSION_NAME")
-	}
-	if !valuePresent("GC_ALIAS") && !valuePresent("GC_AGENT") {
-		missing = append(missing, "one of GC_ALIAS/GC_AGENT")
-	}
-	if !valuePresent("GC_CITY") && !valuePresent("GC_CITY_PATH") && !valuePresent("GC_CITY_ROOT") {
-		missing = append(missing, "one of GC_CITY/GC_CITY_PATH/GC_CITY_ROOT")
-	}
-	if len(missing) > 0 {
-		return managedSessionHookPartial, missing
-	}
-	return managedSessionHookSelected, nil
-}
 
 func cmdHookRun(args []string, opts hookRunOptions, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -169,24 +113,6 @@ func cmdHookRun(args []string, opts hookRunOptions, stdin io.Reader, stdout, std
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	payload := drainHookStdin(ctx, stdin)
-	if ctx.Err() == context.DeadlineExceeded {
-		fmt.Fprintf(stderr, "gc hook run: command timed out after %s\n", timeout) //nolint:errcheck
-		return opts.TimeoutExitCode
-	}
-	if opts.WhenManagedSession {
-		selection, missing := selectManagedSessionHook(os.Getenv)
-		switch selection {
-		case managedSessionHookAbsent:
-			fmt.Fprintln(stderr, "gc hook run: NOT SELECTED: managed session context absent") //nolint:errcheck
-			return 0
-		case managedSessionHookPartial:
-			fmt.Fprintf(stderr, "gc hook run: partial managed session context: missing %s\n", strings.Join(missing, ", ")) //nolint:errcheck
-			return 1
-		case managedSessionHookSelected:
-			// Continue to the managed child below.
-		}
-	}
 
 	exe, err := hookRunExecutable()
 	if err != nil {
@@ -227,7 +153,7 @@ func cmdHookRun(args []string, opts hookRunOptions, stdin io.Reader, stdout, std
 	// with ctx already expired, so cmd.Run() sees the canceled context and never
 	// spawns the child: gc hook run fails open to the timeout exit code in the
 	// timeout branch below instead of hanging before it spawns.
-	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Stdin = bytes.NewReader(drainHookStdin(ctx, stdin))
 	// Buffer child stdout instead of streaming it straight to the provider so
 	// a wedged command cannot leak partial injectable output before the
 	// fail-open timeout path runs. The buffer is flushed only on a clean or
@@ -554,7 +480,13 @@ func cmdHookWithOptions(args []string, opts hookCommandOptions, stdout, stderr i
 		}
 		return claimHookWork(cityPath, workQuery, workDir, queryEnv, stores, claimOpts, emitQueryFailure, stdout, stderr)
 	}
-	return doHook(workQuery, workDir, false, runner, stdout, stderr, hookVisibility{
+	// The discovery door is fenced too: a draining seat must not be handed its
+	// preassigned continuation sibling by the packs' post-close `gc hook`.
+	return doHookDiscovery(workQuery, workDir, false, hookClaimOptions{
+		Env:      queryEnv,
+		DrainAck: opts.DrainAck,
+		JSON:     opts.JSON,
+	}, hookClaimOps{}, runner, stdout, stderr, hookVisibility{
 		Identities:   identityCandidates,
 		RouteTargets: routeTargets,
 	})
@@ -1043,6 +975,45 @@ type hookVisibility struct {
 // results based on mode. Without inject: prints normalized ready-only output,
 // returns 0 if work exists, 1 if empty. With inject: skips the work query and
 // returns 0.
+// doHookDiscovery is the drain-fenced entry point for plain `gc hook`, the
+// DISCOVERY door. doHook itself stays a pure query-and-print function; this
+// wrapper is where the F-D fence lives for the non-claim path.
+//
+// It exists because F-D on --claim was only half the fence. Every workflows-pack
+// prompt's post-close lifecycle tells an agent to run plain `gc hook` and
+// continue any work sharing its root/continuation group — no --claim, because
+// the continuation sibling was PREASSIGNED to this session at claim time and is
+// already open under its assignee. Discovery listed that sibling for a draining
+// seat exactly as for a healthy one, so the fleet's dominant workflow walked
+// its seats back into multi-hour chains without ever crossing the fence.
+//
+// The refusal reuses the discovery no-work contract (nothing on stdout, exit 1)
+// because the packs ALREADY route that answer to `gc runtime drain-ack` and
+// exit. No prompt changes are needed to make the seat leave; the answer it
+// already knows how to obey is simply now the true one.
+func doHookDiscovery(workQuery, dir string, inject bool, opts hookClaimOptions, ops hookClaimOps, runner WorkQueryRunner, stdout, stderr io.Writer, visibility hookVisibility) int {
+	// An inject invocation reads nothing and answers nothing, so there is no
+	// work to withhold and no reason to pay for a probe.
+	if inject {
+		return doHook(workQuery, dir, inject, runner, stdout, stderr, visibility)
+	}
+	ops.applyDefaults()
+	if sessionID := hookClaimSessionID(opts.Env); sessionID != "" {
+		pending, err := ops.DrainPending(sessionID)
+		switch {
+		case err != nil:
+			// Fail open, and say so off-pane — same posture and same reasoning as
+			// the claim door: a blind probe must not stop a healthy fleet finding
+			// work, and must not go inert quietly.
+			fmt.Fprintf(stderr, "gc hook: drain-pending probe unavailable for %s: %v; proceeding to discovery\n", sessionID, err) //nolint:errcheck
+			hookEmitDrainFenceUnavailable(stderr, sessionID, hookClaimEnvValue(opts.Env, "GC_TEMPLATE"), err)
+		case pending:
+			return writeHookClaimDrainPending(hookDiscoveryLabel, sessionID, opts, ops, stdout, stderr)
+		}
+	}
+	return doHook(workQuery, dir, inject, runner, stdout, stderr, visibility)
+}
+
 func doHook(workQuery, dir string, inject bool, runner WorkQueryRunner, stdout, stderr io.Writer, visibility hookVisibility) int {
 	if inject {
 		return 0

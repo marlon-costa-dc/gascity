@@ -341,17 +341,17 @@ func cmdNudgeStatus(args []string, jsonOutput bool, stdout, stderr io.Writer) in
 		return 1
 	}
 
-	pending, inFlight, dead, err := listQueuedNudgesForTargetSnapshot(target.cityPath, target, time.Now())
+	pending, inFlight, dead, err := listQueuedNudgesForTarget(target.cityPath, target, time.Now())
 	if err != nil {
 		fmt.Fprintf(stderr, "gc nudge status: %v\n", err) //nolint:errcheck
 		return 1
 	}
 
 	// City-wide (not agent-scoped) skip-reason totals from the supervisor
-	// dispatch tick. The snapshot read above is lock-free and runs no
-	// maintenance sweep, so this is simply a second raw read for a field
-	// that is not agent-scoped. Best-effort: a load failure here must not
-	// fail the whole status command over a diagnostics-only field.
+	// dispatch tick, read directly off the persisted queue state — a raw
+	// read so this doesn't re-run the maintenance sweep listQueuedNudgesForTarget
+	// above already ran. Best-effort: a load failure here must not fail the
+	// whole status command over a diagnostics-only field.
 	var dispatchSkips map[string]int64
 	if qs, qsErr := nudgequeue.LoadState(target.cityPath); qsErr == nil {
 		dispatchSkips = qs.DispatchSkips
@@ -775,8 +775,59 @@ func cmdNudgePoll(args []string, sessionName string, interval, quiescence time.D
 		if delivered {
 			continue
 		}
+		// Mirror dispatchAllQueuedNudges' skip accounting (nudge_dispatcher.go),
+		// gate included: "not-delivered" means this target HAD due queued work
+		// and still got nothing this tick -- most commonly
+		// tryDeliverQueuedNudgesByPoller's quiescence gate rejecting a
+		// continuously busy session. A running session with nothing queued is
+		// the dispatcher's separate "not-matched" class and is deliberately not
+		// counted here: the poll loop never exits while the session runs, so
+		// counting it would turn this into a tick counter and take the queue
+		// flock every interval. See #5317.
+		if nudgePollTargetHasDueWork(target, time.Now()) {
+			skipReason := "not-delivered"
+			if pollErr != nil {
+				skipReason = "not-delivered-error"
+			}
+			if recErr := recordNudgeDispatchSkips(target.cityPath, map[string]int64{skipReason: 1}); recErr != nil {
+				fmt.Fprintf(stderr, "gc nudge poll: recording dispatch skip counter: %v\n", recErr) //nolint:errcheck
+			}
+		}
 		time.Sleep(interval)
 	}
+}
+
+// nudgePollTargetHasDueWork reports whether the queue currently holds work
+// this target could have received on this tick: a due pending item, or an
+// in-flight item whose lease has expired (recoverable on the next claim).
+// It mirrors the dispatcher's pendingAgents gate (nudge_dispatcher.go) so the
+// poll loop's "not-delivered" means the same thing the dispatcher's does.
+// Read-only on purpose: the skip counter must not take the queue flock on
+// every tick.
+func nudgePollTargetHasDueWork(target nudgeTarget, now time.Time) bool {
+	state, err := nudgequeue.LoadState(target.cityPath)
+	if err != nil {
+		return false
+	}
+	for _, item := range state.Pending {
+		if !target.matchesQueueAgent(item.Agent) {
+			continue
+		}
+		if !item.DeliverAfter.IsZero() && item.DeliverAfter.After(now) {
+			continue
+		}
+		return true
+	}
+	for _, item := range state.InFlight {
+		if !target.matchesQueueAgent(item.Agent) {
+			continue
+		}
+		if item.LeaseUntil.IsZero() || !item.LeaseUntil.Before(now) {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func shouldKeepNudgePollerAlive(target nudgeTarget, missingSince, now time.Time) bool {
@@ -2005,84 +2056,6 @@ func listQueuedNudges(cityPath, agentName string, now time.Time) ([]queuedNudge,
 		return nil
 	})
 	return pending, inFlight, dead, err
-}
-
-// listQueuedNudgesForTargetSnapshot returns target's queue buckets from a
-// lock-free read of the persisted state. It is the read-only peer of
-// listQueuedNudgesForTarget: it runs no maintenance pass, opens no bead store,
-// takes no flock, and never writes.
-//
-// `gc nudge status` is a read, so it must not wait on the queue's writer lock.
-// It used to reach the queue through listQueuedNudgesForTarget, which takes the
-// city-wide exclusive flock in nudgequeue.WithState and then drains the whole
-// backlog under it via serial `bd` subprocesses. On a busy city that lock is
-// permanently contended, so status blocked in flock(2) and printed nothing at
-// all -- no output and no error -- until its caller timed out (ga-cn8dkj).
-//
-// Reading without the lock is safe because WithState rewrites state.json
-// atomically (temp file + rename), so a reader observes one whole snapshot,
-// never a torn one.
-//
-// The bucketing below mirrors the in-memory effect of the recover/prune passes
-// so the displayed buckets match what a maintaining caller would report, while
-// mutating nothing. Dead-letter retention pruning is deliberately NOT mirrored:
-// it depends on the bead store, and showing a dead letter that has not been
-// swept yet is harmless in a status view.
-func listQueuedNudgesForTargetSnapshot(cityPath string, target nudgeTarget, now time.Time) ([]queuedNudge, []queuedNudge, []queuedNudge, error) {
-	state, err := nudgequeue.LoadState(cityPath)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	var pending, inFlight, dead []queuedNudge
-	add := func(bucket *[]queuedNudge, item queuedNudge) {
-		if target.matchesQueueAgent(item.Agent) {
-			*bucket = append(*bucket, item)
-		}
-	}
-	expired := func(item queuedNudge) bool {
-		return !item.ExpiresAt.IsZero() && !item.ExpiresAt.After(now)
-	}
-	// Mirrors recoverExpiredInFlightNudges: expired in-flight items read as
-	// dead, and lease-expired ones read as pending again. The field
-	// projection matches that pass exactly, so a lease the item no longer
-	// holds never surfaces on a pending item in `--json`.
-	for _, item := range state.InFlight {
-		switch {
-		case expired(item):
-			item.DeadAt = now.UTC()
-			if item.LastError == "" {
-				item.LastError = "expired"
-			}
-			add(&dead, item)
-		case item.LeaseUntil.IsZero() || !item.LeaseUntil.After(now):
-			item.ClaimedAt = time.Time{}
-			item.LeaseUntil = time.Time{}
-			item.DeliverAfter = now.UTC()
-			add(&pending, item)
-		default:
-			add(&inFlight, item)
-		}
-	}
-	// Mirrors pruneExpiredQueuedNudges: expired pending items read as dead.
-	for _, item := range state.Pending {
-		if expired(item) {
-			item.DeadAt = now.UTC()
-			if item.LastError == "" {
-				item.LastError = "expired"
-			}
-			add(&dead, item)
-			continue
-		}
-		add(&pending, item)
-	}
-	for _, item := range state.Dead {
-		add(&dead, item)
-	}
-	// Re-sort with the queue's own comparator: re-bucketing changed the
-	// fields it orders on, so the source order no longer holds.
-	projected := nudgeQueueState{Pending: pending, InFlight: inFlight, Dead: dead}
-	sortQueuedNudges(&projected)
-	return projected.Pending, projected.InFlight, projected.Dead, nil
 }
 
 func listQueuedNudgesForTarget(cityPath string, target nudgeTarget, now time.Time) ([]queuedNudge, []queuedNudge, []queuedNudge, error) {
