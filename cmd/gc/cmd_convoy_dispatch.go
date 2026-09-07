@@ -37,8 +37,8 @@ var dispatchControlSessionProvider = newSessionProvider
 
 const maxControlQuarantineReasonMetadata = 512
 
-func sourceWorkflowCommandContext(parent context.Context) (context.Context, context.CancelFunc) {
-	return signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+func sourceWorkflowCommandContext() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
 // convoyDispatchSubcommands returns the dispatch-related subcommands to add to gc convoy.
@@ -73,17 +73,17 @@ func newConvoyControlCmd(stdout, stderr io.Writer) *cobra.Command {
 with --serve to continuously process ready control beads.
 Use --follow <agent> to filter the serve loop to a specific agent template.`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(c *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			if serve || follow != "" {
 				if follow != "" {
 					args = append(args, follow)
 				}
-				return runConvoyControlServe(c.Context(), args, stdout, stderr)
+				return runConvoyControlServe(args, stdout, stderr)
 			}
 			if len(args) == 0 {
 				return fmt.Errorf("bead-id is required (or use --serve)")
 			}
-			if err := runControlDispatcher(c.Context(), args[0], stdout, stderr); err != nil {
+			if err := runControlDispatcher(args[0], stdout, stderr); err != nil {
 				if errors.Is(err, dispatch.ErrControlPending) {
 					return nil
 				}
@@ -127,7 +127,7 @@ func pokeControlDispatch(cityPath string) error {
 	return pokeController(cityPath)
 }
 
-func runControlDispatcher(ctx context.Context, beadID string, stdout, stderr io.Writer) error {
+func runControlDispatcher(beadID string, stdout, stderr io.Writer) error {
 	cityPath, err := resolveCity()
 	if err != nil {
 		return err
@@ -137,15 +137,15 @@ func runControlDispatcher(ctx context.Context, beadID string, stdout, stderr io.
 	// bead ID across city and rig stores. That resolution answers WHICH SCOPE
 	// owns the id; the bead the dispatch gates on is read below from the store
 	// it is about to mutate, not from the unrouted scope store searched here.
-	store, storePath, err := findBeadScopeAcrossStores(ctx, cityPath, beadID, stderr)
+	store, storePath, err := findBeadScopeAcrossStores(cityPath, beadID, stderr)
 	if err != nil {
 		return fmt.Errorf("loading bead %s: %w", beadID, err)
 	}
 
-	return runControlDispatcherWithStore(ctx, cityPath, storePath, store, beadID, stdout, stderr)
+	return runControlDispatcherWithStore(cityPath, storePath, store, beadID, stdout, stderr)
 }
 
-func runControlDispatcherInStore(ctx context.Context, cityPath, storePath, beadID string, stdout, stderr io.Writer) error {
+func runControlDispatcherInStore(cityPath, storePath, beadID string, stdout, stderr io.Writer) error {
 	if cityPath == "" {
 		var err error
 		cityPath, err = resolveCity()
@@ -162,16 +162,16 @@ func runControlDispatcherInStore(ctx context.Context, cityPath, storePath, beadI
 		return err
 	}
 	resolveRigPaths(cityPath, cfg.Rigs)
-	store, err := openControlStoreAtForCity(ctx, storePath, cityPath, cfg)
+	store, err := openControlStoreAtForCity(storePath, cityPath, cfg)
 	if err != nil {
 		return fmt.Errorf("opening scoped control store %q: %w", storePath, err)
 	}
 
-	return runControlDispatcherWithStoreAndConfig(ctx, cityPath, storePath, store, beadID, cfg, stdout, stderr)
+	return runControlDispatcherWithStoreAndConfig(cityPath, storePath, store, beadID, cfg, stdout, stderr)
 }
 
-func runControlDispatcherWithStore(ctx context.Context, cityPath, storePath string, store beads.Store, beadID string, stdout, stderr io.Writer) error {
-	return runControlDispatcherWithStoreAndConfig(ctx, cityPath, storePath, store, beadID, nil, stdout, stderr)
+func runControlDispatcherWithStore(cityPath, storePath string, store beads.Store, beadID string, stdout, stderr io.Writer) error {
+	return runControlDispatcherWithStoreAndConfig(cityPath, storePath, store, beadID, nil, stdout, stderr)
 }
 
 // runControlDispatcherWithStoreAndConfig reads the control bead itself rather
@@ -180,7 +180,7 @@ func runControlDispatcherWithStore(ctx context.Context, cityPath, storePath stri
 // above resolve a SCOPE and hand it over; a bead value resolved alongside that
 // scope comes from an unrouted store, and gating on it while writing elsewhere
 // re-runs a control kind the graph store had already finished.
-func runControlDispatcherWithStoreAndConfig(ctx context.Context, cityPath, storePath string, store beads.Store, beadID string, cfg *config.City, stdout, stderr io.Writer) error {
+func runControlDispatcherWithStoreAndConfig(cityPath, storePath string, store beads.Store, beadID string, cfg *config.City, stdout, stderr io.Writer) error {
 	restoreTraceWarnings := useWorkflowTraceWarnings(stderr)
 	defer restoreTraceWarnings()
 	var cfgLoadErr error
@@ -232,23 +232,23 @@ func runControlDispatcherWithStoreAndConfig(ctx context.Context, cityPath, store
 			}
 			return fmt.Errorf("loading city config for %s: unavailable after warning-only load", cityPath)
 		}
-		opts.ResolveStoreRef = makeStoreRefResolver(ctx, cityPath, cfg)
+		opts.ResolveStoreRef = makeStoreRefResolver(cityPath, cfg)
 		if bead.Metadata[beadmeta.KindMetadataKey] == beadmeta.KindWorkflowFinalize {
-			sourceWorkflowCtx, cancelSourceWorkflowCtx := sourceWorkflowCommandContext(ctx)
+			sourceWorkflowCtx, cancelSourceWorkflowCtx := sourceWorkflowCommandContext()
 			defer cancelSourceWorkflowCtx()
 			opts.SourceWorkflowLock = makeSourceWorkflowLocker(sourceWorkflowCtx, cityPath, cfg, storePath)
-			opts.SourceWorkflowStores = makeSourceWorkflowStoresLister(sourceWorkflowCtx, cityPath, cfg)
+			opts.SourceWorkflowStores = makeSourceWorkflowStoresLister(cityPath, cfg)
 		}
 		switch bead.Metadata[beadmeta.KindMetadataKey] {
 		case "check", "fanout":
 			opts.FormulaSearchPaths = workflowFormulaSearchPaths(cfg, bead)
 			opts.PrepareFragment = func(fragment *formula.FragmentRecipe, source beads.Bead) error {
-				return decorateDynamicFragmentRecipe(ctx, fragment, source, graphStore, loadedCityName(cfg, cityPath), cityPath, cfg)
+				return decorateDynamicFragmentRecipe(fragment, source, graphStore, loadedCityName(cfg, cityPath), cityPath, cfg)
 			}
 		case "drain":
 			opts.FormulaSearchPaths = workflowFormulaSearchPaths(cfg, bead)
 			opts.PrepareRecipe = func(recipe *formula.Recipe, source beads.Bead) error {
-				return decorateDrainItemRecipe(ctx, recipe, source, graphStore, workflowStoreRefForDir(storePath, cityPath, loadedCityName(cfg, cityPath), cfg), loadedCityName(cfg, cityPath), cityPath, cfg)
+				return decorateDrainItemRecipe(recipe, source, graphStore, workflowStoreRefForDir(storePath, cityPath, loadedCityName(cfg, cityPath), cfg), loadedCityName(cfg, cityPath), cityPath, cfg)
 			}
 			// A drain is the one control kind that reads beads it did not
 			// create. Its control and item roots are graph class and run
@@ -270,7 +270,7 @@ func runControlDispatcherWithStoreAndConfig(ctx context.Context, cityPath, store
 				opts.MemberStores = []beads.Store{store}
 			}
 		case "retry-eval":
-			sp, err := dispatchControlSessionProvider(ctx)
+			sp, err := dispatchControlSessionProvider()
 			if err != nil {
 				return err
 			}
@@ -282,7 +282,7 @@ func runControlDispatcherWithStoreAndConfig(ctx context.Context, cityPath, store
 			}
 		case "retry", "ralph":
 			opts.FormulaSearchPaths = workflowFormulaSearchPaths(cfg, bead)
-			sp, err := dispatchControlSessionProvider(ctx)
+			sp, err := dispatchControlSessionProvider()
 			if err != nil {
 				return err
 			}
@@ -303,7 +303,7 @@ func runControlDispatcherWithStoreAndConfig(ctx context.Context, cityPath, store
 		rootID := strings.TrimSpace(bead.Metadata[beadmeta.RootBeadIDMetadataKey])
 		if rootID != "" {
 			recorder := openCityRecorderAt(cityPath, stderr)
-			emitErr := executionevent.EmitCurrent(recorder, beads.GraphStore{Store: graphStore}, beads.WorkStore{Store: executionEmitStore(ctx, store, cityPath)}, rootID, "control-dispatch")
+			emitErr := executionevent.EmitCurrent(recorder, beads.GraphStore{Store: graphStore}, beads.WorkStore{Store: executionEmitStore(store, cityPath)}, rootID, "control-dispatch")
 			var closeErr error
 			if closer, ok := recorder.(io.Closer); ok {
 				closeErr = closer.Close()
@@ -511,7 +511,7 @@ func controlQuarantineReason(cause error, fallback string) string {
 // chain across store boundaries so a successful rig-scope workflow closes
 // the city-scope source bead that spawned it (e.g. PR-review "Adopt PR"
 // requests).
-func makeStoreRefResolver(ctx context.Context, cityPath string, cfg *config.City) func(string) (beads.Store, error) {
+func makeStoreRefResolver(cityPath string, cfg *config.City) func(string) (beads.Store, error) {
 	cityName := loadedCityName(cfg, cityPath)
 	return func(ref string) (beads.Store, error) {
 		ref = strings.TrimSpace(ref)
@@ -527,7 +527,7 @@ func makeStoreRefResolver(ctx context.Context, cityPath string, cfg *config.City
 			if name != "" && cityName != "" && name != cityName {
 				return nil, fmt.Errorf("city ref %q does not match this city %q", ref, cityName)
 			}
-			return openStoreAtForCity(ctx, cityPath, cityPath)
+			return openStoreAtForCity(cityPath, cityPath)
 		case strings.HasPrefix(ref, "rig:"):
 			name := strings.TrimSpace(strings.TrimPrefix(ref, "rig:"))
 			if name == "" {
@@ -540,7 +540,7 @@ func makeStoreRefResolver(ctx context.Context, cityPath string, cfg *config.City
 				if rig.Name != name {
 					continue
 				}
-				return openControlStoreAtForCity(ctx, rig.Path, cityPath, cfg)
+				return openControlStoreAtForCity(rig.Path, cityPath, cfg)
 			}
 			return nil, fmt.Errorf("rig %q not found in city config", name)
 		default:
@@ -573,12 +573,12 @@ func makeSourceWorkflowLocker(ctx context.Context, cityPath string, cfg *config.
 // The hop is scope-guarded by controlGraphBinding, so rig scopes keep their own
 // stores; a relocated scope does not open the scope store at all, because that
 // would be a bd process this scan never reads.
-func makeSourceWorkflowStoresLister(ctx context.Context, cityPath string, cfg *config.City) func() ([]dispatch.SourceWorkflowStore, error) {
+func makeSourceWorkflowStoresLister(cityPath string, cfg *config.City) func() ([]dispatch.SourceWorkflowStore, error) {
 	return makeSourceWorkflowStoresListerWithOpenStore(cityPath, cfg, func(dir string) (beads.Store, error) {
 		if binding, relocated := controlGraphBinding(cityPath, dir); relocated {
 			return binding, nil
 		}
-		return openStoreAtForCity(ctx, dir, cityPath)
+		return openStoreAtForCity(dir, cityPath)
 	})
 }
 
@@ -835,15 +835,15 @@ func controlGraphStore(cityPath, storePath string, cfg *config.City, scopeStore 
 // that scope — is applied by controlGraphStore at the point of use, because the
 // control dispatcher needs BOTH: the graph store that owns control beads, and
 // this scope/work store that owns the input convoy an execution snapshot reads.
-func openControlStoreAtForCity(ctx context.Context, storePath, cityPath string, cfg *config.City) (beads.Store, error) {
+func openControlStoreAtForCity(storePath, cityPath string, cfg *config.City) (beads.Store, error) {
 	scopeRoot := resolveStoreScopeRoot(cityPath, storePath)
 	provider := rawBeadsProviderForScope(scopeRoot, cityPath)
 	if provider == "file" || strings.HasPrefix(provider, "exec:") {
-		return openStoreAtForCity(ctx, storePath, cityPath)
+		return openStoreAtForCity(storePath, cityPath)
 	}
 	if samePath(scopeRoot, cityPath) {
 		return openControlBdStoreThroughFactory(scopeRoot, cityPath, provider, cfg, func() (beads.Store, error) {
-			return controlBdStoreForCity(ctx, scopeRoot, cityPath, cfg), nil
+			return controlBdStoreForCity(scopeRoot, cityPath, cfg), nil
 		})
 	}
 	if cfg != nil {
@@ -854,7 +854,7 @@ func openControlStoreAtForCity(ctx context.Context, storePath, cityPath string, 
 			}
 			if samePath(rigPath, scopeRoot) {
 				return openControlBdStoreThroughFactory(scopeRoot, cityPath, provider, cfg, func() (beads.Store, error) {
-					return controlBdStoreForRig(ctx, scopeRoot, cityPath, cfg), nil
+					return controlBdStoreForRig(scopeRoot, cityPath, cfg), nil
 				})
 			}
 		}
@@ -862,7 +862,7 @@ func openControlStoreAtForCity(ctx context.Context, storePath, cityPath string, 
 	// A bd-backed scope can outlive its rig entry in city.toml. Control paths
 	// still need write-capable bd commands with auto-export suppressed.
 	return openControlBdStoreThroughFactory(scopeRoot, cityPath, provider, cfg, func() (beads.Store, error) {
-		return controlBdStoreForRig(ctx, scopeRoot, cityPath, cfg), nil
+		return controlBdStoreForRig(scopeRoot, cityPath, cfg), nil
 	})
 }
 
@@ -874,9 +874,9 @@ func openControlStoreAtForCity(ctx context.Context, storePath, cityPath string, 
 // split city a graph-class bead's value here is the copy the migration retained,
 // and a caller that gated on it while writing the graph store would act on work
 // the graph store had already finished.
-func findBeadScopeAcrossStores(ctx context.Context, cityPath, beadID string, warningWriter io.Writer) (beads.Store, string, error) {
+func findBeadScopeAcrossStores(cityPath, beadID string, warningWriter io.Writer) (beads.Store, string, error) {
 	// Try city store first.
-	cityStore, err := openStoreAtForCity(ctx, cityPath, cityPath)
+	cityStore, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("opening city store: %w", err)
 	}
@@ -893,7 +893,7 @@ func findBeadScopeAcrossStores(ctx context.Context, cityPath, beadID string, war
 	}
 	resolveRigPaths(cityPath, cfg.Rigs)
 	for _, rig := range cfg.Rigs {
-		store, err := openControlStoreAtForCity(ctx, rig.Path, cityPath, cfg)
+		store, err := openControlStoreAtForCity(rig.Path, cityPath, cfg)
 		if err != nil {
 			return nil, "", fmt.Errorf("opening rig store %q: %w", rig.Name, err)
 		}
@@ -912,7 +912,7 @@ func findBeadScopeAcrossStores(ctx context.Context, cityPath, beadID string, war
 	// control beads there and routes them to a rig by name, so the manual entry
 	// point must consult that binding before declaring an id unreachable — the
 	// same leg the serve loop federates.
-	if store, storePath, err := graphBindingResidentScope(ctx, cityPath, cfg, beadID); err == nil {
+	if store, storePath, err := graphBindingResidentScope(cityPath, cfg, beadID); err == nil {
 		return store, storePath, nil
 	} else if !errors.Is(err, beads.ErrNotFound) {
 		return nil, "", fmt.Errorf("getting bead %q from the city graph binding: %w", beadID, err)
@@ -941,7 +941,7 @@ func findBeadScopeAcrossStores(ctx context.Context, cityPath, beadID string, war
 // plane is already down by the boot gate's own verdict, and the bead is equally
 // unreachable to every scope — so this returns not-found and lets the caller
 // report it, exactly as controlGraphExtraLeg skips the same leg on the serve side.
-func graphBindingResidentScope(ctx context.Context, cityPath string, cfg *config.City, beadID string) (beads.Store, string, error) {
+func graphBindingResidentScope(cityPath string, cfg *config.City, beadID string) (beads.Store, string, error) {
 	binding, relocated := controlGraphBinding(cityPath, cityPath)
 	if !relocated || binding == nil {
 		return nil, "", beads.ErrNotFound
@@ -961,7 +961,7 @@ func graphBindingResidentScope(ctx context.Context, cityPath string, cfg *config
 	if cfg != nil {
 		if rigContext := workflowExecutionRigContext(bead); rigContext != "" {
 			if rig, ok := rigByName(cfg, rigContext); ok {
-				store, err := openControlStoreAtForCity(ctx, rig.Path, cityPath, cfg)
+				store, err := openControlStoreAtForCity(rig.Path, cityPath, cfg)
 				if err != nil {
 					return nil, "", fmt.Errorf("opening rig store %q for binding-resident control bead %q: %w", rig.Name, beadID, err)
 				}
@@ -970,7 +970,7 @@ func graphBindingResidentScope(ctx context.Context, cityPath string, cfg *config
 		}
 	}
 
-	cityStore, err := openStoreAtForCity(ctx, cityPath, cityPath)
+	cityStore, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("opening city store for binding-resident control bead %q: %w", beadID, err)
 	}
@@ -1071,11 +1071,11 @@ func workflowFormulaSearchPaths(cfg *config.City, bead beads.Bead) []string {
 	return cfg.FormulaLayers.City
 }
 
-func decorateDynamicFragmentRecipe(ctx context.Context, fragment *formula.FragmentRecipe, source beads.Bead, store beads.Store, cityName, cityPath string, cfg *config.City) error {
+func decorateDynamicFragmentRecipe(fragment *formula.FragmentRecipe, source beads.Bead, store beads.Store, cityName, cityPath string, cfg *config.City) error {
 	if fragment == nil {
 		return fmt.Errorf("fragment recipe is nil")
 	}
-	defaultRoute, err := graphFallbackBindingForBead(ctx, source, store, cityName, cityPath, cfg)
+	defaultRoute, err := graphFallbackBindingForBead(source, store, cityName, cityPath, cfg)
 	if err != nil {
 		return err
 	}
@@ -1133,7 +1133,7 @@ func decorateDynamicFragmentRecipe(ctx context.Context, fragment *formula.Fragme
 		case "workflow", "scope", "ralph", "retry", "spec":
 			continue
 		}
-		binding, err := resolveGraphStepBinding(ctx, step.ID, stepByID, stepAlias, depsByStep, bindingCache, resolving, defaultRoute, routingRigContext, store, cityName, cityPath, cfg)
+		binding, err := resolveGraphStepBinding(step.ID, stepByID, stepAlias, depsByStep, bindingCache, resolving, defaultRoute, routingRigContext, store, cityName, cityPath, cfg)
 		if err != nil {
 			return err
 		}
@@ -1169,7 +1169,7 @@ func graphRouteBindingRigContext(binding graphRouteBinding) string {
 	return graphroute.GraphRouteRigContext(binding.QualifiedName)
 }
 
-func decorateDrainItemRecipe(ctx context.Context, recipe *formula.Recipe, source beads.Bead, store beads.Store, storeRef, cityName, cityPath string, cfg *config.City) error {
+func decorateDrainItemRecipe(recipe *formula.Recipe, source beads.Bead, store beads.Store, storeRef, cityName, cityPath string, cfg *config.City) error {
 	if recipe == nil {
 		return fmt.Errorf("recipe is nil")
 	}
@@ -1182,9 +1182,9 @@ func decorateDrainItemRecipe(ctx context.Context, recipe *formula.Recipe, source
 			}
 			scopeKind := strings.TrimSpace(source.Metadata[beadmeta.ScopeKindMetadataKey])
 			scopeRef := strings.TrimSpace(source.Metadata[beadmeta.ScopeRefMetadataKey])
-			return graphroute.DecorateGraphWorkflowRecipeWithDefaultBinding(ctx, recipe, graphroute.GraphWorkflowRouteVars(recipe, vars), "", scopeKind, scopeRef, storeRef, graphroute.GraphRouteBinding{}, store, cityName, cfg, cliGraphrouteDeps(cityPath))
+			return graphroute.DecorateGraphWorkflowRecipeWithDefaultBinding(recipe, graphroute.GraphWorkflowRouteVars(recipe, vars), "", scopeKind, scopeRef, storeRef, graphroute.GraphRouteBinding{}, store, cityName, cfg, cliGraphrouteDeps(cityPath))
 		}
-		binding, err := graphFallbackBindingForBead(ctx, source, store, cityName, cityPath, cfg)
+		binding, err := graphFallbackBindingForBead(source, store, cityName, cityPath, cfg)
 		if err != nil {
 			return err
 		}
@@ -1197,7 +1197,7 @@ func decorateDrainItemRecipe(ctx context.Context, recipe *formula.Recipe, source
 		}
 		scopeKind := strings.TrimSpace(source.Metadata[beadmeta.ScopeKindMetadataKey])
 		scopeRef := strings.TrimSpace(source.Metadata[beadmeta.ScopeRefMetadataKey])
-		return graphroute.DecorateGraphWorkflowRecipe(ctx, recipe, graphroute.GraphWorkflowRouteVars(recipe, vars), "", scopeKind, scopeRef, storeRef, binding.QualifiedName, binding.SessionName, store, cityName, cfg, cliGraphrouteDeps(cityPath))
+		return graphroute.DecorateGraphWorkflowRecipe(recipe, graphroute.GraphWorkflowRouteVars(recipe, vars), "", scopeKind, scopeRef, storeRef, binding.QualifiedName, binding.SessionName, store, cityName, cfg, cliGraphrouteDeps(cityPath))
 	}
 	vars, err := drainItemRecipeVars(recipe)
 	if err != nil {
@@ -1205,13 +1205,13 @@ func decorateDrainItemRecipe(ctx context.Context, recipe *formula.Recipe, source
 	}
 	scopeKind := strings.TrimSpace(source.Metadata[beadmeta.ScopeKindMetadataKey])
 	scopeRef := strings.TrimSpace(source.Metadata[beadmeta.ScopeRefMetadataKey])
-	if binding, ok, err := graphroute.ResolveGraphDirectSessionBinding(ctx, store, cityName, cfg, routedTo, workflowExecutionRigContext(source), cliGraphrouteDeps(cityPath)); err != nil {
+	if binding, ok, err := graphroute.ResolveGraphDirectSessionBinding(store, cityName, cfg, routedTo, workflowExecutionRigContext(source), cliGraphrouteDeps(cityPath)); err != nil {
 		return err
 	} else if ok {
 		defaultRoute := graphroute.GraphRouteBinding{DirectSessionID: binding.DirectSessionID, RigContext: binding.RigContext}
-		return graphroute.DecorateGraphWorkflowRecipeWithDefaultBinding(ctx, recipe, graphroute.GraphWorkflowRouteVars(recipe, vars), "", scopeKind, scopeRef, storeRef, defaultRoute, store, cityName, cfg, cliGraphrouteDeps(cityPath))
+		return graphroute.DecorateGraphWorkflowRecipeWithDefaultBinding(recipe, graphroute.GraphWorkflowRouteVars(recipe, vars), "", scopeKind, scopeRef, storeRef, defaultRoute, store, cityName, cfg, cliGraphrouteDeps(cityPath))
 	}
-	return applyGraphRouting(ctx, recipe, nil, routedTo, vars, scopeKind, scopeRef, storeRef, store, cityName, cityPath, cfg)
+	return applyGraphRouting(recipe, nil, routedTo, vars, scopeKind, scopeRef, storeRef, store, cityName, cityPath, cfg)
 }
 
 func workflowExecutionRigContext(bead beads.Bead) string {
@@ -1241,13 +1241,13 @@ func drainItemRecipeVars(recipe *formula.Recipe) (map[string]string, error) {
 	return vars, nil
 }
 
-func graphFallbackBindingForBead(ctx context.Context, source beads.Bead, store beads.Store, cityName, cityPath string, cfg *config.City) (graphRouteBinding, error) {
+func graphFallbackBindingForBead(source beads.Bead, store beads.Store, cityName, cityPath string, cfg *config.City) (graphRouteBinding, error) {
 	routedTo := graphroute.WorkflowExecutionRoute(source)
 	if routedTo == "" {
 		return graphRouteBinding{SessionName: source.Assignee}, nil
 	}
 	rigContext := workflowExecutionRigContext(source)
-	if binding, ok, err := graphroute.ResolveGraphDirectSessionBinding(ctx, store, cityName, cfg, routedTo, rigContext, cliGraphrouteDeps(cityPath)); err != nil {
+	if binding, ok, err := graphroute.ResolveGraphDirectSessionBinding(store, cityName, cfg, routedTo, rigContext, cliGraphrouteDeps(cityPath)); err != nil {
 		return graphRouteBinding{}, err
 	} else if ok {
 		return binding, nil
@@ -1330,8 +1330,8 @@ with matching gc.root_bead_id. Without --force, shows a preview.
 By default, beads are closed with gc.outcome=skipped. Use --delete to
 remove them from the store via bd delete --cascade --force.`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if cmdWorkflowDelete(cmd.Context(), args[0], force, deleteBeads, stdout, stderr) != 0 {
+		RunE: func(_ *cobra.Command, args []string) error {
+			if cmdWorkflowDelete(args[0], force, deleteBeads, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -1354,7 +1354,7 @@ func newConvoyDeleteSourceCmd(stdout, stderr io.Writer) *cobra.Command {
 its subtree. By default this is a preview. Use --apply to mutate.
 Use --delete with --apply to also delete closed beads.`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			if deleteBeads && !apply {
 				fmt.Fprintln(stderr, "gc workflow delete-source: --delete requires --apply") //nolint:errcheck
 				return errExit
@@ -1364,7 +1364,7 @@ Use --delete with --apply to also delete closed beads.`,
 				_, _ = fmt.Fprintf(stderr, "gc workflow delete-source: %v\n", err)
 				return errExit
 			}
-			return exitForCode(cmdWorkflowDeleteSource(cmd.Context(), args[0], selector, apply, deleteBeads, stdout, stderr))
+			return exitForCode(cmdWorkflowDeleteSource(args[0], selector, apply, deleteBeads, stdout, stderr))
 		},
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "Actually close/delete matched workflows")
@@ -1381,13 +1381,13 @@ func newConvoyReopenSourceCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "reopen-source <source-bead-id>",
 		Short: "Reopen a source bead after workflow cleanup",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			selector, err := parseSourceWorkflowStoreSelector(rigName, storeRef)
 			if err != nil {
 				_, _ = fmt.Fprintf(stderr, "gc workflow reopen-source: %v\n", err)
 				return errExit
 			}
-			return exitForCode(cmdWorkflowReopenSource(cmd.Context(), args[0], selector, stdout, stderr))
+			return exitForCode(cmdWorkflowReopenSource(args[0], selector, stdout, stderr))
 		},
 	}
 	cmd.Flags().StringVar(&rigName, "rig", "", "Select the rig store for the source bead")
@@ -1479,7 +1479,7 @@ func cmdWorkflowDelete(workflowID string, force, deleteBeads bool, stdout, stder
 	var matches []workflowStoreMatch
 
 	stores, err := openConvoyStores(cfg, cityPath, workflowID, func(dir string) (beads.Store, error) {
-		return openControlStoreAtForCity(ctx, dir, cityPath, cfg)
+		return openControlStoreAtForCity(dir, cityPath, cfg)
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "gc workflow delete: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -1642,11 +1642,11 @@ func verifyWorkflowMatchesClosed(matches []workflowStoreMatch) error {
 	return nil
 }
 
-func workflowDeleteRunnerForPath(ctx context.Context, cfg *config.City, cityPath, scopePath string) beads.CommandRunner {
+func workflowDeleteRunnerForPath(cfg *config.City, cityPath, scopePath string) beads.CommandRunner {
 	if samePath(scopePath, cityPath) {
-		return bdCommandRunnerForCity(ctx, cityPath)
+		return bdCommandRunnerForCity(cityPath)
 	}
-	return bdCommandRunnerForRig(ctx, cityPath, cfg, scopePath)
+	return bdCommandRunnerForRig(cityPath, cfg, scopePath)
 }
 
 // deleteWorkflowMatches erases every matched bead in every matched store.
@@ -1737,11 +1737,11 @@ func parseSourceWorkflowStoreSelector(rigName, storeRef string) (sourceWorkflowS
 	return sourceWorkflowStoreSelector{storeRef: storeRef}, nil
 }
 
-func resolveSourceWorkflowTarget(ctx context.Context, cfg *config.City, cityPath, sourceBeadID string, selector sourceWorkflowStoreSelector, requireSource bool) (resolvedSourceWorkflowTarget, error) {
+func resolveSourceWorkflowTarget(cfg *config.City, cityPath, sourceBeadID string, selector sourceWorkflowStoreSelector, requireSource bool) (resolvedSourceWorkflowTarget, error) {
 	sourceBeadID = sourceworkflow.NormalizeSourceBeadID(sourceBeadID)
 	target := resolvedSourceWorkflowTarget{sourceBeadID: sourceBeadID}
 	if selector.storeRef != "" {
-		view, resolvedStoreRef, err := openSourceWorkflowStoreRef(ctx, cfg, cityPath, selector.storeRef)
+		view, resolvedStoreRef, err := openSourceWorkflowStoreRef(cfg, cityPath, selector.storeRef)
 		if err != nil {
 			return resolvedSourceWorkflowTarget{}, err
 		}
@@ -1760,7 +1760,7 @@ func resolveSourceWorkflowTarget(ctx context.Context, cfg *config.City, cityPath
 		}
 		return target, nil
 	}
-	view, bead, err := findUniqueBeadAcrossStoresView(ctx, cityPath, sourceBeadID)
+	view, bead, err := findUniqueBeadAcrossStoresView(cityPath, sourceBeadID)
 	if err != nil {
 		if errors.Is(err, beads.ErrNotFound) && !requireSource {
 			return target, nil
@@ -1786,11 +1786,11 @@ func sourceWorkflowSelectionError(err error, sourceBeadID string) error {
 	return err
 }
 
-func openSourceWorkflowStoreRef(ctx context.Context, cfg *config.City, cityPath, storeRef string) (convoyStoreView, string, error) {
+func openSourceWorkflowStoreRef(cfg *config.City, cityPath, storeRef string) (convoyStoreView, string, error) {
 	storeRef = strings.TrimSpace(storeRef)
 	switch {
 	case storeRef == "", storeRef == "city":
-		store, err := openStoreAtForCity(ctx, cityPath, cityPath)
+		store, err := openStoreAtForCity(cityPath, cityPath)
 		if err != nil {
 			return convoyStoreView{}, "", fmt.Errorf("opening city store: %w", err)
 		}
@@ -1800,7 +1800,7 @@ func openSourceWorkflowStoreRef(ctx context.Context, cfg *config.City, cityPath,
 		}
 		return convoyStoreView{path: cityPath, store: store}, "city:" + cityName, nil
 	case strings.HasPrefix(storeRef, "city:"):
-		store, err := openStoreAtForCity(ctx, cityPath, cityPath)
+		store, err := openStoreAtForCity(cityPath, cityPath)
 		if err != nil {
 			return convoyStoreView{}, "", fmt.Errorf("opening city store: %w", err)
 		}
@@ -1812,7 +1812,7 @@ func openSourceWorkflowStoreRef(ctx context.Context, cfg *config.City, cityPath,
 				continue
 			}
 			rigPath := resolveStoreScopeRoot(cityPath, rig.Path)
-			store, err := openStoreAtForCity(ctx, rigPath, cityPath)
+			store, err := openStoreAtForCity(rigPath, cityPath)
 			if err != nil {
 				return convoyStoreView{}, "", fmt.Errorf("opening rig store %s: %w", rigName, err)
 			}
@@ -1855,7 +1855,7 @@ func deleteSourceWorkflowMatchBeads(match sourceWorkflowStoreMatch, ids []string
 	return deleteWorkflowBeads(match.store, ids)
 }
 
-func cmdWorkflowDeleteSource(ctx context.Context, sourceBeadID string, selector sourceWorkflowStoreSelector, apply, deleteBeads bool, stdout, stderr io.Writer) int {
+func cmdWorkflowDeleteSource(sourceBeadID string, selector sourceWorkflowStoreSelector, apply, deleteBeads bool, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "gc workflow delete-source: %v\n", err)
@@ -1871,7 +1871,7 @@ func cmdWorkflowDeleteSource(ctx context.Context, sourceBeadID string, selector 
 		resultCode int
 		runErr     error
 	)
-	target, err := resolveSourceWorkflowTarget(ctx, cfg, cityPath, sourceBeadID, selector, false)
+	target, err := resolveSourceWorkflowTarget(cfg, cityPath, sourceBeadID, selector, false)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "gc workflow delete-source: %v\n", err)
 		return 1
@@ -1887,14 +1887,14 @@ func cmdWorkflowDeleteSource(ctx context.Context, sourceBeadID string, selector 
 	if strings.TrimSpace(lockScope) == "" {
 		lockScope = cityPath
 	}
-	lockCtx, cancel := sourceWorkflowCommandContext(ctx)
+	ctx, cancel := sourceWorkflowCommandContext()
 	defer cancel()
-	runErr = sourceworkflow.WithLock(lockCtx, cityPath, lockScope, sourceBeadID, func() error {
-		target, err := resolveSourceWorkflowTarget(lockCtx, cfg, cityPath, sourceBeadID, selector, false)
+	runErr = sourceworkflow.WithLock(ctx, cityPath, lockScope, sourceBeadID, func() error {
+		target, err := resolveSourceWorkflowTarget(cfg, cityPath, sourceBeadID, selector, false)
 		if err != nil {
 			return err
 		}
-		matches, skips, err := collectSourceWorkflowMatches(lockCtx, cfg, cityPath, sourceBeadID, target.storeRef)
+		matches, skips, err := collectSourceWorkflowMatches(cfg, cityPath, sourceBeadID, target.storeRef)
 		if err != nil {
 			return err
 		}
@@ -1915,7 +1915,7 @@ func cmdWorkflowDeleteSource(ctx context.Context, sourceBeadID string, selector 
 			cleared := false
 			if apply {
 				var clearErr error
-				cleared, clearErr = clearSourceWorkflowMetadata(lockCtx, cfg, cityPath, target)
+				cleared, clearErr = clearSourceWorkflowMetadata(cfg, cityPath, target)
 				if clearErr != nil {
 					return clearErr
 				}
@@ -1973,7 +1973,7 @@ func cmdWorkflowDeleteSource(ctx context.Context, sourceBeadID string, selector 
 		cleared := false
 		if !incomplete {
 			var clearErr error
-			cleared, clearErr = clearSourceWorkflowMetadata(lockCtx, cfg, cityPath, target)
+			cleared, clearErr = clearSourceWorkflowMetadata(cfg, cityPath, target)
 			if clearErr != nil {
 				return clearErr
 			}
@@ -2012,7 +2012,7 @@ func cmdWorkflowDeleteSource(ctx context.Context, sourceBeadID string, selector 
 	return resultCode
 }
 
-func cmdWorkflowReopenSource(ctx context.Context, sourceBeadID string, selector sourceWorkflowStoreSelector, stdout, stderr io.Writer) int {
+func cmdWorkflowReopenSource(sourceBeadID string, selector sourceWorkflowStoreSelector, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "gc workflow reopen-source: %v\n", err)
@@ -2025,7 +2025,7 @@ func cmdWorkflowReopenSource(ctx context.Context, sourceBeadID string, selector 
 	}
 
 	resultCode := 0
-	target, err := resolveSourceWorkflowTarget(ctx, cfg, cityPath, sourceBeadID, selector, true)
+	target, err := resolveSourceWorkflowTarget(cfg, cityPath, sourceBeadID, selector, true)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "gc workflow reopen-source: %v\n", err)
 		return 1
@@ -2034,7 +2034,7 @@ func cmdWorkflowReopenSource(ctx context.Context, sourceBeadID string, selector 
 		_, _ = fmt.Fprintf(stderr, "gc workflow reopen-source: getting bead %q: %v\n", sourceBeadID, beads.ErrNotFound)
 		return 1
 	}
-	lockCtx, cancel := sourceWorkflowCommandContext(ctx)
+	ctx, cancel := sourceWorkflowCommandContext()
 	defer cancel()
 	// The scope, not the view — see cmdWorkflowDeleteSource. Reopen and delete
 	// have to key on the same thing or they do not exclude each other.
@@ -2046,7 +2046,7 @@ func cmdWorkflowReopenSource(ctx context.Context, sourceBeadID string, selector 
 		if target.storeView.store == nil || strings.TrimSpace(target.sourceBead.ID) == "" {
 			return fmt.Errorf("getting bead %q: %w", sourceBeadID, beads.ErrNotFound)
 		}
-		matches, skips, err := collectSourceWorkflowMatches(lockCtx, cfg, cityPath, sourceBeadID, target.storeRef)
+		matches, skips, err := collectSourceWorkflowMatches(cfg, cityPath, sourceBeadID, target.storeRef)
 		if err != nil {
 			return err
 		}
@@ -2252,8 +2252,8 @@ func restoreWorkflowDeleteDeps(store beads.Store, downDeps, upDeps []beads.Dep) 
 	return restoreErr
 }
 
-func collectSourceWorkflowMatches(ctx context.Context, cfg *config.City, cityPath, sourceBeadID, sourceStoreRef string) ([]sourceWorkflowStoreMatch, []sourceWorkflowStoreSkip, error) {
-	stores, skips, err := openSourceWorkflowStores(ctx, cfg, cityPath, sourceBeadID)
+func collectSourceWorkflowMatches(cfg *config.City, cityPath, sourceBeadID, sourceStoreRef string) ([]sourceWorkflowStoreMatch, []sourceWorkflowStoreSkip, error) {
+	stores, skips, err := openSourceWorkflowStores(cfg, cityPath, sourceBeadID)
 	if err != nil {
 		return nil, skips, err
 	}
@@ -2268,13 +2268,12 @@ func collectSourceWorkflowMatches(ctx context.Context, cfg *config.City, cityPat
 	return collectSourceWorkflowMatchesFromStores(cfg, cityPath, sourceBeadID, sourceStoreRef, stores, skips)
 }
 
-func collectSourceWorkflowMatchesFromStores(ctx context.Context, cfg *config.City, cityPath, sourceBeadID, sourceStoreRef string, stores []convoyStoreView, skips []sourceWorkflowStoreSkip) ([]sourceWorkflowStoreMatch, []sourceWorkflowStoreSkip, error) {
+func collectSourceWorkflowMatchesFromStores(cfg *config.City, cityPath, sourceBeadID, sourceStoreRef string, stores []convoyStoreView, skips []sourceWorkflowStoreSkip) ([]sourceWorkflowStoreMatch, []sourceWorkflowStoreSkip, error) {
 	cityName := loadedCityName(cfg, cityPath)
 	if err := ensureSelectedSourceStorePresent(cfg, cityPath, cityName, sourceStoreRef, stores, skips); err != nil {
 		return nil, skips, err
 	}
 	c := &sourceWorkflowMatchCollector{
-		ctx:            ctx,
 		cfg:            cfg,
 		cityPath:       cityPath,
 		cityName:       cityName,
@@ -2327,7 +2326,6 @@ func ensureSelectedSourceStorePresent(cfg *config.City, cityPath, cityName, sour
 // the selected source store strict, and carries the shared walk state so each
 // step reads as a small, single-purpose method.
 type sourceWorkflowMatchCollector struct {
-	ctx      context.Context
 	cfg      *config.City
 	cityPath string
 	cityName string
@@ -2620,9 +2618,9 @@ func unscannedSourceWorkflowStoreSkips(cfg *config.City, cityPath, selectedStore
 // The second return value lists the stores that were skipped — callers are
 // expected to surface these (see formatSourceWorkflowStoreSkips) so operators
 // can see when singleton coverage degraded.
-func openSourceWorkflowStores(ctx context.Context, cfg *config.City, cityPath, beadID string) ([]convoyStoreView, []sourceWorkflowStoreSkip, error) {
+func openSourceWorkflowStores(cfg *config.City, cityPath, beadID string) ([]convoyStoreView, []sourceWorkflowStoreSkip, error) {
 	return openSourceWorkflowStoresWith(cfg, cityPath, beadID, func(dir string) (beads.Store, error) {
-		return openStoreAtForCity(ctx, dir, cityPath)
+		return openStoreAtForCity(dir, cityPath)
 	})
 }
 
@@ -2663,7 +2661,7 @@ func openSourceWorkflowStoresWithProvider(cfg *config.City, cityPath, beadID str
 	return nil, skips, fmt.Errorf("no source workflow stores available")
 }
 
-func clearSourceWorkflowMetadata(ctx context.Context, cfg *config.City, cityPath string, target resolvedSourceWorkflowTarget) (bool, error) {
+func clearSourceWorkflowMetadata(cfg *config.City, cityPath string, target resolvedSourceWorkflowTarget) (bool, error) {
 	bead := target.sourceBead
 	storeView := target.storeView
 	if storeView.store == nil || strings.TrimSpace(storeView.path) == "" {
@@ -2671,7 +2669,7 @@ func clearSourceWorkflowMetadata(ctx context.Context, cfg *config.City, cityPath
 			return false, nil
 		}
 		var err error
-		storeView, _, err = openSourceWorkflowStoreRef(ctx, cfg, cityPath, target.storeRef)
+		storeView, _, err = openSourceWorkflowStoreRef(cfg, cityPath, target.storeRef)
 		if err != nil {
 			return false, err
 		}
