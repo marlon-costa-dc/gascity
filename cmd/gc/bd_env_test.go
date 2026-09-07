@@ -399,6 +399,25 @@ func TestCityRuntimeProcessEnvStripsAmbientGCDolt(t *testing.T) {
 	}
 }
 
+func TestCityRuntimeProcessEnvCarriesWorkspaceBDBinaryPin(t *testing.T) {
+	cityPath := t.TempDir()
+	pinDir := t.TempDir()
+	pinned := filepath.Join(pinDir, "bd")
+	writeExecutable(t, pinned, "#!/bin/sh\nexit 0\n")
+	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"), []byte("[workspace]\nname = \"demo\"\n[workspace.env]\nPATH = "+strconv.Quote(pinDir)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+
+	env, err := cityRuntimeProcessEnvWithError(cityPath)
+	if err != nil {
+		t.Fatalf("cityRuntimeProcessEnvWithError() error = %v", err)
+	}
+	if got := envEntriesMap(env)["BD_BIN"]; got != pinned {
+		t.Fatalf("BD_BIN = %q, want workspace-pinned %q", got, pinned)
+	}
+}
+
 func TestCityRuntimeProcessEnvUsesNativeOpenEnvSnapshotGuard(t *testing.T) {
 	orig := processEnvSnapshotExcludingNativeDoltOpen
 	called := false
@@ -422,6 +441,77 @@ func TestCityRuntimeProcessEnvUsesNativeOpenEnvSnapshotGuard(t *testing.T) {
 	}
 	if got := envEntriesMap(env)["BEADS_DOLT_SERVER_HOST"]; got == "ambient.example.com" {
 		t.Fatalf("cityRuntimeProcessEnvWithError inherited unprojected native-open env host %q", got)
+	}
+}
+
+func TestRecoverManagedBDCommandUsesNativeOpenEnvSnapshotGuard(t *testing.T) {
+	orig := processEnvSnapshotExcludingNativeDoltOpen
+	called := false
+	processEnvSnapshotExcludingNativeDoltOpen = func() []string {
+		called = true
+		return []string{
+			"PATH=" + os.Getenv("PATH"),
+			"BEADS_DOLT_SERVER_HOST=ambient.example.com",
+		}
+	}
+	t.Cleanup(func() {
+		processEnvSnapshotExcludingNativeDoltOpen = orig
+	})
+
+	cityPath := t.TempDir()
+	capture := filepath.Join(t.TempDir(), "recover-env.txt")
+	script := gcBeadsBdScriptPath(cityPath)
+	if err := os.MkdirAll(filepath.Dir(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"${BEADS_DOLT_SERVER_HOST:-}\" > %q\n", capture)
+	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := recoverManagedBDCommand(cityPath); err != nil {
+		t.Fatalf("recoverManagedBDCommand: %v", err)
+	}
+	if !called {
+		t.Fatal("recoverManagedBDCommand did not use native-open env snapshot guard")
+	}
+	data, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatalf("read captured env: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got == "ambient.example.com" {
+		t.Fatalf("recoverManagedBDCommand inherited unprojected native-open env host %q", got)
+	}
+}
+
+func TestRecoverManagedBDCommandCarriesWorkspaceBDBinaryPin(t *testing.T) {
+	cityPath := t.TempDir()
+	binDir := t.TempDir()
+	pinned := filepath.Join(binDir, "bd")
+	writeExecutable(t, pinned, "#!/bin/sh\nexit 0\n")
+	if err := os.WriteFile(filepath.Join(cityPath, "city.toml"), []byte("[workspace]\nname = \"test-city\"\n[workspace.env]\nPATH = "+strconv.Quote(binDir)+"\n[beads]\nprovider = \"file\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	envFile := filepath.Join(t.TempDir(), "recover-env.txt")
+	scriptPath := gcBeadsBdScriptPath(cityPath)
+	if err := os.MkdirAll(filepath.Dir(scriptPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nprintf '%s\\n' \"$BD_BIN\" > \"" + envFile + "\"\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := recoverManagedBDCommand(cityPath); err != nil {
+		t.Fatalf("recoverManagedBDCommand() error = %v", err)
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatalf("read captured env: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != pinned {
+		t.Fatalf("recover BD_BIN = %q, want workspace-pinned %q", got, pinned)
 	}
 }
 
@@ -4954,6 +5044,17 @@ func TestResolveBdBinaryForScope(t *testing.T) {
 		}
 	})
 
+	t.Run("managed city scope resolves the workspace pin", func(t *testing.T) {
+		cityDir, pinned, _ := newPinnedCity(t, "")
+		got, err := resolveBdBinaryForScope(cityDir, cityDir)
+		if err != nil {
+			t.Fatalf("resolveBdBinaryForScope(city, city) error = %v", err)
+		}
+		if got != pinned {
+			t.Fatalf("resolveBdBinaryForScope(city, city) = %q, want workspace-pinned %q", got, pinned)
+		}
+	})
+
 	t.Run("rig overriding the city backend survives a partial city binding", func(t *testing.T) {
 		cityDir, _, ambient := newPinnedCity(t, partial)
 		rigDir := writeRig(t, cityDir, "dl", `{"backend":"doltlite"}`)
@@ -4980,6 +5081,18 @@ func TestResolveBdBinaryForScope(t *testing.T) {
 
 	t.Run("rig inheriting the city binding resolves the pin", func(t *testing.T) {
 		cityDir, pinned, _ := newPinnedCity(t, complete)
+		rigDir := writeRig(t, cityDir, "inherit", "")
+		got, err := resolveBdBinaryForScope(cityDir, rigDir)
+		if err != nil {
+			t.Fatalf("resolveBdBinaryForScope(city, rig) error = %v", err)
+		}
+		if got != pinned {
+			t.Fatalf("resolveBdBinaryForScope(city, rig) = %q, want workspace-pinned %q", got, pinned)
+		}
+	})
+
+	t.Run("rig inheriting the managed city backend resolves the pin", func(t *testing.T) {
+		cityDir, pinned, _ := newPinnedCity(t, "")
 		rigDir := writeRig(t, cityDir, "inherit", "")
 		got, err := resolveBdBinaryForScope(cityDir, rigDir)
 		if err != nil {

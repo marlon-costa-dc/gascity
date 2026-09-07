@@ -1355,7 +1355,6 @@ func TestResolveTemplateExpandsDefaultBranchInPreStart(t *testing.T) {
 		PreStart: []string{`GC_DEFAULT_BRANCH='{{.DefaultBranch}}' setup.sh`},
 	}
 	bp := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityDir,
 		workspace:  &config.Workspace{Provider: "kimi"},

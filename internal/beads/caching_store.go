@@ -117,6 +117,8 @@ const (
 	cacheDegraded
 )
 
+var partialPrimeStatuses = []string{"open", "in_progress"}
+
 type cacheProblemLogState struct {
 	lastAt     time.Time
 	suppressed int64
@@ -918,10 +920,7 @@ func (c *CachingStore) PrimeActive(ctx context.Context) error {
 
 	var all []Bead
 	var partialErr error
-	for _, status := range []string{"open", "in_progress"} {
-		if err := c.cacheContextErr(ctx); err != nil {
-			return fmt.Errorf("prime active (%s): %w", status, err)
-		}
+	for _, status := range partialPrimeStatuses {
 		beads, err := c.backing.List(ListQuery{Status: status, TierMode: TierBoth})
 		if err != nil {
 			if !IsPartialResult(err) {
