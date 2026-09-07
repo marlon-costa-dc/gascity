@@ -53,7 +53,7 @@ func hookFanoutBaseOps(claim hookClaimFunc) hookClaimOps {
 		Claim:             claim,
 		EmitClaimRejected: func(string, string, string) {},
 		ResolveWorkBranch: func(string) string { return "" },
-		DrainAck:          func(context.Context, io.Writer) error { return nil },
+		DrainAck:          func(io.Writer) error { return nil },
 		StampWorkMeta: func(context.Context, string, []string, string, string, map[string]string) error {
 			return nil
 		},
@@ -119,9 +119,8 @@ func TestClassEscalationWaitsForEveryWorkLeg(t *testing.T) {
 
 	stores := hookFanoutRigFirstStores()
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner(context.Background(), "gc ready --json", "city", stores[0].env, stores, hookFanoutClaimOpts(),
+	code := claimHookWorkWithRunner("gc ready --json", "city", stores[0].env, stores, hookFanoutClaimOpts(),
 		classRoutedHookClaimOps(base, route), run, func(string, error) {}, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("claimHookWorkWithRunner = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -154,9 +153,8 @@ func TestClassEscalationStillReachesABindingOnlyBead(t *testing.T) {
 
 	stores := hookFanoutRigFirstStores()
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner(context.Background(), "gc ready --json", "city", stores[0].env, stores, hookFanoutClaimOpts(),
+	code := claimHookWorkWithRunner("gc ready --json", "city", stores[0].env, stores, hookFanoutClaimOpts(),
 		classRoutedHookClaimOps(base, route), run, func(string, error) {}, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("claimHookWorkWithRunner = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -245,9 +243,8 @@ func TestBindingClaimRefusalIsPerBeadNotPerTick(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			stores := []hookStore{{dir: "city", env: []string{"GC_STORE_SCOPE=city"}}}
 			var stdout, stderr bytes.Buffer
-			code := claimHookWorkWithRunner(context.Background(), "gc ready --json", "city", stores[0].env, stores, hookFanoutClaimOpts(),
+			code := claimHookWorkWithRunner("gc ready --json", "city", stores[0].env, stores, hookFanoutClaimOpts(),
 				tt.ops(t), run, func(string, error) {}, &stdout, &stderr)
-
 			if code != 0 {
 				t.Fatalf("claimHookWorkWithRunner = %d, want 0: a bead this session provably does not own in the work store cannot make the tick terminal; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 			}
@@ -272,16 +269,15 @@ func TestBindingClaimRefusalAloneStillDrains(t *testing.T) {
 		return beads.Bead{}, false, fmt.Errorf("claiming bead %q: %w", beadID, beads.ErrNotFound)
 	})
 	drained := false
-	base.DrainAck = func(context.Context, io.Writer) error {
+	base.DrainAck = func(io.Writer) error {
 		drained = true
 		return nil
 	}
 
 	stores := []hookStore{{dir: "city", env: []string{"GC_STORE_SCOPE=city"}}}
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner(context.Background(), "gc ready --json", "city", stores[0].env, stores, hookFanoutClaimOpts(),
+	code := claimHookWorkWithRunner("gc ready --json", "city", stores[0].env, stores, hookFanoutClaimOpts(),
 		classRoutedHookClaimOps(base, newCapabilityRefusingRoute(t, "gcg-6")), run, func(string, error) {}, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("claimHookWorkWithRunner = %d, want 0 (structured drain); stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}

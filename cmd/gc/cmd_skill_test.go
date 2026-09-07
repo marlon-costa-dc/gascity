@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -177,7 +176,7 @@ func TestSkillListSessionCatalog(t *testing.T) {
 	writeCatalogFile(t, cityDir, "skills/code-review/SKILL.md", "city skill")
 	writeCatalogFile(t, cityDir, "agents/mayor/skills/private-workflow/SKILL.md", "agent skill")
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}

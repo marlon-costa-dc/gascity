@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
@@ -79,9 +78,10 @@ func TestBuildDesiredState_ScaleFromZero_CrossRig(t *testing.T) {
 	// 3. Find bead-1 in the city store.
 	// 4. Set demand to 1 (max of custom 0 and native 1).
 	// 5. Materialize a new session bead.
-	result := buildDesiredStateWithSessionBeads(context.Background(),
+	result := buildDesiredStateWithSessionBeads(
 		"test-city", tmpDir, time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, sessionBeads, nil, os.Stderr)
+		cityStore, rigStores, sessionBeads, nil, os.Stderr,
+	)
 
 	demand := result.ScaleCheckCounts[qualifiedName]
 	if demand != 1 {
@@ -152,9 +152,10 @@ func TestBuildDesiredState_ScaleFromZero_ClampsWakeDemandToOne(t *testing.T) {
 
 	sessionBeads := &sessionBeadSnapshot{} // Empty city store snapshot
 
-	result := buildDesiredStateWithSessionBeads(context.Background(),
+	result := buildDesiredStateWithSessionBeads(
 		"test-city", tmpDir, time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, sessionBeads, nil, os.Stderr)
+		cityStore, rigStores, sessionBeads, nil, os.Stderr,
+	)
 
 	// Wake-from-zero: demand is clamped to 1 (max of custom 0 and clamped 1),
 	// NOT the routed-bead count of 3.
@@ -244,9 +245,10 @@ func TestBuildDesiredState_ScaleFromZero_IncludesRigSessions(t *testing.T) {
 	// 3. Skip the native probe because ScaleCheck is not empty and it's not cold.
 	// 4. Use custom check (printf 0) -> demand 0.
 	// 5. Resulting demand should be 0.
-	result := buildDesiredStateWithSessionBeads(context.Background(),
+	result := buildDesiredStateWithSessionBeads(
 		"test-city", tmpDir, time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, sessionBeads, nil, os.Stderr)
+		cityStore, rigStores, sessionBeads, nil, os.Stderr,
+	)
 
 	demand := result.ScaleCheckCounts[qualifiedName]
 	if demand != 0 {
@@ -329,9 +331,10 @@ func TestBuildDesiredState_ScaleFromZero_UnqualifiedTemplateDoesNotSuppressCold(
 
 	sessionBeads := &sessionBeadSnapshot{} // Empty city store snapshot
 
-	result := buildDesiredStateWithSessionBeads(context.Background(),
+	result := buildDesiredStateWithSessionBeads(
 		"test-city", tmpDir, time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, sessionBeads, nil, os.Stderr)
+		cityStore, rigStores, sessionBeads, nil, os.Stderr,
+	)
 
 	// rig-A/planner is genuinely cold (the bare "planner" bead is not its
 	// session), so the cold-wake probe fires on the city-routed demand.
@@ -418,9 +421,10 @@ func TestBuildDesiredState_ScaleFromZero_LegacyBoundTemplateSuppressesCold(t *te
 
 	sessionBeads := &sessionBeadSnapshot{} // Empty city store snapshot
 
-	result := buildDesiredStateWithSessionBeads(context.Background(),
+	result := buildDesiredStateWithSessionBeads(
 		"test-city", tmpDir, time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, sessionBeads, nil, os.Stderr)
+		cityStore, rigStores, sessionBeads, nil, os.Stderr,
+	)
 
 	// The adopted legacy-bound session counts as running → pool is not cold →
 	// the custom check's 0 stands and no cold-wake probe inflates demand.
@@ -493,9 +497,10 @@ func TestBuildDesiredState_ScaleFromZero_LegacyBoundUnassignedRoutedWorkWakesCan
 
 	sessionBeads := &sessionBeadSnapshot{} // cold pool: no running sessions
 
-	result := buildDesiredStateWithSessionBeads(context.Background(),
+	result := buildDesiredStateWithSessionBeads(
 		"test-city", tmpDir, time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, sessionBeads, nil, os.Stderr)
+		cityStore, rigStores, sessionBeads, nil, os.Stderr,
+	)
 
 	// The legacy-routed demand is canonicalized to rig-A/planner, so the cold-wake
 	// probe now sees it and wakes the pool from zero (clamped to 1).
@@ -572,7 +577,7 @@ func TestBuildDesiredState_ScaleFromZero_LegacyBoundUnassignedRoutedWorkWakesCan
 		t.Fatal(err)
 	}
 	cityStore := beads.NewCachingStoreForTest(backing, nil)
-	if err := cityStore.PrimeActive(context.Background()); err != nil {
+	if err := cityStore.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -582,9 +587,10 @@ func TestBuildDesiredState_ScaleFromZero_LegacyBoundUnassignedRoutedWorkWakesCan
 
 	sessionBeads := &sessionBeadSnapshot{} // cold pool: no running sessions
 
-	result := buildDesiredStateWithSessionBeads(context.Background(),
+	result := buildDesiredStateWithSessionBeads(
 		"test-city", tmpDir, time.Now(), cfg, &localMockProvider{},
-		cityStore, rigStores, sessionBeads, nil, os.Stderr)
+		cityStore, rigStores, sessionBeads, nil, os.Stderr,
+	)
 
 	// The scale-check probe runs after the same-pass canonicalization write, so
 	// it must observe the canonical route through the CachingStore and wake the

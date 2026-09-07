@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -52,8 +51,8 @@ legacy-to-current pack rewrites that are available on this branch.`,
   gc doctor --verbose
   gc doctor --json`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if doDoctor(cmd.Context(), fix, verbose, jsonOut, checkTimeout, stdout, stderr) != 0 {
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if doDoctor(fix, verbose, jsonOut, checkTimeout, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -155,11 +154,11 @@ type buildDoctorChecksOpts struct {
 	RolloutResolveErr error
 }
 
-func doctorOrderFiringCurrentLastRunFunc(ctx context.Context, cityPath string, cfg *config.City, stderr io.Writer) doctor.OrderFiringCurrentLastRunFunc {
+func doctorOrderFiringCurrentLastRunFunc(cityPath string, cfg *config.City, stderr io.Writer) doctor.OrderFiringCurrentLastRunFunc {
 	if stderr == nil {
 		stderr = io.Discard
 	}
-	resolveStores := cachedOrderHistoryStoresResolver(ctx, cityPath, cfg, stderr)
+	resolveStores := cachedOrderHistoryStoresResolver(cityPath, cfg, stderr)
 	return func(order orders.Order) (time.Time, error) {
 		stores, err := resolveStores(order)
 		if err != nil {
@@ -169,7 +168,7 @@ func doctorOrderFiringCurrentLastRunFunc(ctx context.Context, cityPath string, c
 	}
 }
 
-func buildDoctorChecks(cmdCtx context.Context, cityPath string, cfg *config.City, cfgErr error, opts buildDoctorChecksOpts) []doctor.Check {
+func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts buildDoctorChecksOpts) []doctor.Check {
 	var checks []doctor.Check
 	register := func(c doctor.Check) {
 		checks = append(checks, c)
@@ -219,8 +218,8 @@ func buildDoctorChecks(cmdCtx context.Context, cityPath string, cfg *config.City
 		register(doctor.NewInstructionsFileCheck(cfg, cityPath))
 		register(doctor.NewServiceSecretsPermsCheck(cfg, cityPath))
 		register(doctor.NewSkillCollisionCheck(cfg, cityPath))
-		register(doctor.NewSkillDanglingSinkCheck(doctorSkillStaticSinks(cityPath, cfg), materialize.LegacyOwnedRootsFor(cityPath), doctorLiveSessionSinks(cmdCtx, cityPath, cfg)))
-		register(doctor.NewOrderFiringCurrentCheck(cfg, cityPath, doctor.WithOrderFiringCurrentLastRunFunc(doctorOrderFiringCurrentLastRunFunc(cmdCtx, cityPath, cfg, opts.Stderr))))
+		register(doctor.NewSkillDanglingSinkCheck(doctorSkillStaticSinks(cityPath, cfg), materialize.LegacyOwnedRootsFor(cityPath), doctorLiveSessionSinks(cityPath, cfg)))
+		register(doctor.NewOrderFiringCurrentCheck(cfg, cityPath, doctor.WithOrderFiringCurrentLastRunFunc(doctorOrderFiringCurrentLastRunFunc(cityPath, cfg, opts.Stderr))))
 		register(doctor.NewOrderOutcomeHealthyCheck(cfg, cityPath))
 		register(newCodexHooksDriftCheck(cityPath, codexHookWorkDirs(cityPath, cfg)))
 		register(doctor.NewRigPackCoverageCheck(cfg, cityPath))
@@ -276,7 +275,7 @@ func buildDoctorChecks(cmdCtx context.Context, cityPath string, cfg *config.City
 	if cfgErr == nil && cfg != nil {
 		cityName := loadedCityName(cfg, cityPath)
 		st := cfg.Workspace.SessionTemplate
-		sp, err := newSessionProvider(cmdCtx)
+		sp, err := newSessionProvider()
 		if err != nil {
 			register(doctor.ErrorCheck("session-provider", err.Error()))
 		} else {
@@ -286,7 +285,7 @@ func buildDoctorChecks(cmdCtx context.Context, cityPath string, cfg *config.City
 		}
 	}
 
-	storeFactory := openStoreForCity(cmdCtx, cityPath)
+	storeFactory := openStoreForCity(cityPath)
 
 	// One preflight gates all store-dependent checks so outages are not re-probed (#5064).
 	storeOK := true
@@ -321,7 +320,7 @@ func buildDoctorChecks(cmdCtx context.Context, cityPath string, cfg *config.City
 	if cfgErr == nil && cfg != nil {
 		register(doctor.NewBDSplitStoreCheck(cityPath))
 		if storeOK {
-			register(doctor.NewBeadsStoreCheck(cityPath, openStoreResultForCity(cmdCtx, cityPath)))
+			register(doctor.NewBeadsStoreCheck(cityPath, openStoreResultForCity(cityPath)))
 			register(newV2RoutedToNamespaceCheck(cfg, cityPath, storeFactory))
 			register(newCensusOwnerLivenessCheck(cfg, cityPath, storeFactory))
 			register(newRunTargetRoutedToBackfillCheck(cfg, cityPath, storeFactory))
@@ -429,7 +428,7 @@ func buildDoctorChecks(cmdCtx context.Context, cityPath string, cfg *config.City
 	return checks
 }
 
-func doDoctor(cmdCtx context.Context, fix, verbose, jsonOut bool, checkTimeout time.Duration, stdout, stderr io.Writer) int {
+func doDoctor(fix, verbose, jsonOut bool, checkTimeout time.Duration, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc doctor: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -443,7 +442,7 @@ func doDoctor(cmdCtx context.Context, fix, verbose, jsonOut bool, checkTimeout t
 	// an abandoned check writes only to its own private buffer. A future caller
 	// that reuses a Doctor in-process must call Wait before releasing ctx.
 	d := &doctor.Doctor{CheckTimeout: checkTimeout}
-	checkCtx := &doctor.CheckContext{CityPath: cityPath, Verbose: verbose}
+	ctx := &doctor.CheckContext{CityPath: cityPath, Verbose: verbose}
 	cfg, cfgErr := loadCityConfig(cityPath, stderr)
 	if cfgErr == nil {
 		resolveRigPaths(cityPath, cfg.Rigs)
@@ -463,7 +462,7 @@ func doDoctor(cmdCtx context.Context, fix, verbose, jsonOut bool, checkTimeout t
 	if cfgErr == nil && cfg != nil {
 		rolloutFlags, rolloutResolveErr = rollout.Resolve(cfg, rollout.ResolveOptions{})
 	}
-	for _, check := range buildDoctorChecks(cmdCtx, cityPath, cfg, cfgErr, buildDoctorChecksOpts{
+	for _, check := range buildDoctorChecks(cityPath, cfg, cfgErr, buildDoctorChecksOpts{
 		Stderr:               stderr,
 		ControllerRunning:    controllerRunning,
 		SupervisorRunning:    supervisorRunning,
@@ -478,13 +477,13 @@ func doDoctor(cmdCtx context.Context, fix, verbose, jsonOut bool, checkTimeout t
 
 	var report *doctor.Report
 	if jsonOut {
-		report = d.RunCollect(checkCtx, fix)
+		report = d.RunCollect(ctx, fix)
 		if err := writeDoctorJSON(stdout, report); err != nil {
 			fmt.Fprintf(stderr, "gc doctor: %v\n", err) //nolint:errcheck // best-effort stderr
 			return 1
 		}
 	} else {
-		report = d.Run(checkCtx, stdout, fix)
+		report = d.Run(ctx, stdout, fix)
 		doctor.PrintSummary(stdout, report)
 	}
 
@@ -692,17 +691,17 @@ func collectPackDirs(cfg *config.City) []string {
 // openStoreForCity creates a beads.Store factory rooted in the given city.
 // Doctor uses this so rig stores outside the city tree still inherit the
 // canonical city topology instead of guessing from the rig path.
-func openStoreForCity(ctx context.Context, cityPath string) func(string) (beads.Store, error) {
+func openStoreForCity(cityPath string) func(string) (beads.Store, error) {
 	return func(dirPath string) (beads.Store, error) {
-		return openStoreAtForCity(ctx, dirPath, cityPath)
+		return openStoreAtForCity(dirPath, cityPath)
 	}
 }
 
 // openStoreResultForCity is openStoreForCity's counterpart for checks that
 // need the native/fallback selection diagnostic openStoreForCity discards
 // (gastownhall/gascity#4245).
-func openStoreResultForCity(ctx context.Context, cityPath string) func(string) (beads.StoreOpenResult, error) {
+func openStoreResultForCity(cityPath string) func(string) (beads.StoreOpenResult, error) {
 	return func(dirPath string) (beads.StoreOpenResult, error) {
-		return openStoreResultAtForCity(ctx, dirPath, cityPath)
+		return openStoreResultAtForCity(dirPath, cityPath)
 	}
 }

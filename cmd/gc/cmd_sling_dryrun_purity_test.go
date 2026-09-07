@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"io/fs"
 	"path/filepath"
 	"reflect"
@@ -79,7 +78,7 @@ func assertSlingDryRunPurity(t *testing.T, cityDir string, dirsBefore []string, 
 
 func TestCmdSlingDryRunSingleBeadIsObservationallyPure(t *testing.T) {
 	cityDir := setupCmdSlingBeadExistsFixture(t)
-	rigStore, err := openStoreAtForCity(context.Background(), filepath.Join(cityDir, "frontend"), cityDir)
+	rigStore, err := openStoreAtForCity(filepath.Join(cityDir, "frontend"), cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -94,15 +93,15 @@ func TestCmdSlingDryRunSingleBeadIsObservationallyPure(t *testing.T) {
 	beadsBefore := listAllBeads(t, rigStore)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"frontend/worker", seeded.ID},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		true, false, true,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("dry-run exit = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -117,7 +116,7 @@ func TestCmdSlingDryRunEpicErrorPathIsObservationallyPure(t *testing.T) {
 	// "is an epic" but still provisioned workspace state before the error.
 	// The error must stay, and the failure path must mutate nothing.
 	cityDir := setupCmdSlingBeadExistsFixture(t)
-	rigStore, err := openStoreAtForCity(context.Background(), filepath.Join(cityDir, "frontend"), cityDir)
+	rigStore, err := openStoreAtForCity(filepath.Join(cityDir, "frontend"), cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -135,15 +134,15 @@ func TestCmdSlingDryRunEpicErrorPathIsObservationallyPure(t *testing.T) {
 	beadsBefore := listAllBeads(t, rigStore)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"frontend/worker", epic.ID},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		true, false, true,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code == 0 {
 		t.Fatalf("dry-run sling of an epic returned 0, want nonzero; stdout=%s", stdout.String())
 	}

@@ -77,7 +77,7 @@ func TestCmdStopWaitsForStandaloneControllerExit(t *testing.T) {
 	}
 
 	sp := newGatedStopProvider()
-	buildFn := func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(_ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}
 	const seededSession = "seeded-session"
@@ -110,7 +110,7 @@ func TestCmdStopWaitsForStandaloneControllerExit(t *testing.T) {
 	var stdout, stderr lockedBuffer
 	stopDone := make(chan int, 1)
 	go func() {
-		stopDone <- cmdStop(context.Background(), []string{dir}, &stdout, &stderr, 0, false)
+		stopDone <- cmdStop([]string{dir}, &stdout, &stderr, 0, false)
 	}()
 
 	stopped := sp.waitForStops(t, 1)
@@ -194,7 +194,7 @@ func TestCmdStopWallClockTimeoutBoundsDirectStop(t *testing.T) {
 	oldHook := stopBodyLifecycleHook
 	var bodyDone <-chan struct{}
 	stopBodyLifecycleHook = func(done <-chan struct{}) { bodyDone = done }
-	sessionProviderForStopCity = func(_ context.Context, _ *config.City, _ string) (runtime.Provider, error) {
+	sessionProviderForStopCity = func(*config.City, string) (runtime.Provider, error) {
 		return sp, nil
 	}
 	t.Cleanup(func() {
@@ -215,7 +215,7 @@ func TestCmdStopWallClockTimeoutBoundsDirectStop(t *testing.T) {
 	var stdout, stderr lockedBuffer
 	const testWallClockCap = 100 * time.Millisecond
 	started := time.Now()
-	code := cmdStop(context.Background(), []string{cityDir}, &stdout, &stderr, testWallClockCap, false)
+	code := cmdStop([]string{cityDir}, &stdout, &stderr, testWallClockCap, false)
 	if code != 1 {
 		t.Fatalf("cmdStop() = %d, want timeout code 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -257,7 +257,7 @@ func TestCmdStopForceDelegatesImmediateControllerStop(t *testing.T) {
 	}
 
 	sp := newRecordingStopProvider()
-	buildFn := func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(_ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}
 
@@ -286,7 +286,7 @@ func TestCmdStopForceDelegatesImmediateControllerStop(t *testing.T) {
 	var stdout, stderr lockedBuffer
 	stopDone := make(chan int, 1)
 	go func() {
-		stopDone <- cmdStop(context.Background(), []string{dir}, &stdout, &stderr, 5*time.Second, true)
+		stopDone <- cmdStop([]string{dir}, &stdout, &stderr, 5*time.Second, true)
 	}()
 
 	select {
@@ -333,7 +333,7 @@ func TestCmdStopForceEscalatesInProgressControllerStop(t *testing.T) {
 	}
 
 	sp := newGatedStopProvider()
-	buildFn := func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(_ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}
 
@@ -362,7 +362,7 @@ func TestCmdStopForceEscalatesInProgressControllerStop(t *testing.T) {
 	var normalStdout, normalStderr lockedBuffer
 	normalDone := make(chan int, 1)
 	go func() {
-		normalDone <- cmdStop(context.Background(), []string{dir}, &normalStdout, &normalStderr, 0, false)
+		normalDone <- cmdStop([]string{dir}, &normalStdout, &normalStderr, 0, false)
 	}()
 
 	interrupted := sp.waitForInterrupts(t, 1)
@@ -373,7 +373,7 @@ func TestCmdStopForceEscalatesInProgressControllerStop(t *testing.T) {
 	var forceStdout, forceStderr lockedBuffer
 	forceDone := make(chan int, 1)
 	go func() {
-		forceDone <- cmdStop(context.Background(), []string{dir}, &forceStdout, &forceStderr, 0, true)
+		forceDone <- cmdStop([]string{dir}, &forceStdout, &forceStderr, 0, true)
 	}()
 
 	stopped := sp.waitForStops(t, 1)
@@ -441,13 +441,13 @@ func TestCmdStopExplicitRegisteredRigPathUsesSharedResolver(t *testing.T) {
 	oldFactory := sessionProviderForStopCity
 	t.Cleanup(func() { sessionProviderForStopCity = oldFactory })
 	var gotCityPath string
-	sessionProviderForStopCity = func(_ context.Context, _ *config.City, cityPath string) (runtime.Provider, error) {
+	sessionProviderForStopCity = func(_ *config.City, cityPath string) (runtime.Provider, error) {
 		gotCityPath = cityPath
 		return runtime.NewFake(), nil
 	}
 
 	var stdout, stderr lockedBuffer
-	code := cmdStop(context.Background(), []string{rigDir}, &stdout, &stderr, 0, false)
+	code := cmdStop([]string{rigDir}, &stdout, &stderr, 0, false)
 	if code != 0 {
 		t.Fatalf("cmdStop() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -507,13 +507,13 @@ func TestCmdStopExplicitCityPathIgnoresUnrelatedRegisteredCityLoadErrors(t *test
 			oldFactory := sessionProviderForStopCity
 			t.Cleanup(func() { sessionProviderForStopCity = oldFactory })
 			var gotCityPath string
-			sessionProviderForStopCity = func(_ context.Context, _ *config.City, cityPath string) (runtime.Provider, error) {
+			sessionProviderForStopCity = func(_ *config.City, cityPath string) (runtime.Provider, error) {
 				gotCityPath = cityPath
 				return runtime.NewFake(), nil
 			}
 
 			var stdout, stderr lockedBuffer
-			code := cmdStop(context.Background(), []string{arg}, &stdout, &stderr, 0, false)
+			code := cmdStop([]string{arg}, &stdout, &stderr, 0, false)
 			if code != 0 {
 				t.Fatalf("cmdStop() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 			}
@@ -534,7 +534,7 @@ func TestCmdStopSupervisorManagedInvalidCityTomlWaitsForControllerStop(t *testin
 	}
 
 	var stdout, stderr lockedBuffer
-	code := cmdStop(context.Background(), []string{cityDir}, &stdout, &stderr, 0, false)
+	code := cmdStop([]string{cityDir}, &stdout, &stderr, 0, false)
 	if code != 0 {
 		t.Fatalf("cmdStop() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -645,7 +645,7 @@ func TestCmdStopWallClockTimeoutBoundsSupervisorManagedInvalidConfigStop(t *test
 	started := time.Now()
 	go func() {
 		defer close(commandExited)
-		stopDone <- cmdStopJSON(context.Background(), []string{cityDir}, &stdout, &stderr, testWallClockCap, false, true)
+		stopDone <- cmdStopJSON([]string{cityDir}, &stdout, &stderr, testWallClockCap, false, true)
 	}()
 	t.Cleanup(func() {
 		if !workerDrained {
@@ -749,7 +749,7 @@ func TestCmdStopJSONReportsUnregisteredTrueForSupervisorManagedCity(t *testing.T
 	waitForSupervisorControllerStopHook = func(string, time.Duration) error { return nil }
 
 	var stdout, stderr lockedBuffer
-	code := cmdStopJSON(context.Background(), []string{cityDir}, &stdout, &stderr, 5*time.Second, false, true)
+	code := cmdStopJSON([]string{cityDir}, &stdout, &stderr, 5*time.Second, false, true)
 	if code != 0 {
 		t.Fatalf("cmdStopJSON() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -818,12 +818,12 @@ func TestCmdStopJSONReportsUnregisteredTrueWhenSupervisorNotRunning(t *testing.T
 
 	oldFactory := sessionProviderForStopCity
 	t.Cleanup(func() { sessionProviderForStopCity = oldFactory })
-	sessionProviderForStopCity = func(_ context.Context, _ *config.City, _ string) (runtime.Provider, error) {
+	sessionProviderForStopCity = func(*config.City, string) (runtime.Provider, error) {
 		return runtime.NewFake(), nil
 	}
 
 	var stdout, stderr lockedBuffer
-	code := cmdStopJSON(context.Background(), []string{cityDir}, &stdout, &stderr, 0, false, true)
+	code := cmdStopJSON([]string{cityDir}, &stdout, &stderr, 0, false, true)
 	if code != 0 {
 		t.Fatalf("cmdStopJSON() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -857,7 +857,7 @@ func TestCmdStopSupervisorManagedInvalidCityTomlFailsWhenShutdownFails(t *testin
 	waitForSupervisorControllerStopHook = func(string, time.Duration) error {
 		return nil
 	}
-	overrideShutdownBeadsProviderForStop(t, func(_ context.Context, path string) error {
+	overrideShutdownBeadsProviderForStop(t, func(path string) error {
 		assertSameTestPath(t, path, cityDir)
 		return fmt.Errorf("provider-stop-failed")
 	})
@@ -869,7 +869,7 @@ func TestCmdStopSupervisorManagedInvalidCityTomlFailsWhenShutdownFails(t *testin
 	// run reports a hang budget failure instead of racing a tight deadline.
 	codeCh := make(chan int, 1)
 	go func() {
-		codeCh <- cmdStop(context.Background(), []string{cityDir}, &stdout, &stderr, 0, false)
+		codeCh <- cmdStop([]string{cityDir}, &stdout, &stderr, 0, false)
 	}()
 
 	var code int
@@ -906,14 +906,14 @@ func TestCmdStopInvalidConfigManagedRuntimeStopsAfterVerifiedShutdown(t *testing
 	resetFlags(t)
 	cityDir := setupInvalidConfigManagedRuntime(t)
 	var shutdowns int
-	overrideShutdownBeadsProviderForStop(t, func(_ context.Context, path string) error {
+	overrideShutdownBeadsProviderForStop(t, func(path string) error {
 		shutdowns++
 		assertSameTestPath(t, path, cityDir)
 		return nil
 	})
 
 	var stdout, stderr lockedBuffer
-	code := cmdStop(context.Background(), []string{cityDir}, &stdout, &stderr, 0, false)
+	code := cmdStop([]string{cityDir}, &stdout, &stderr, 0, false)
 	if code != 0 {
 		t.Fatalf("cmdStop() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -933,14 +933,14 @@ func TestCmdStopInvalidConfigManagedRuntimeStopsStandaloneController(t *testing.
 	cityDir := setupInvalidConfigManagedRuntime(t)
 	stopCommands := startAcknowledgingStandaloneController(t, cityDir)
 	var shutdowns int
-	overrideShutdownBeadsProviderForStop(t, func(_ context.Context, path string) error {
+	overrideShutdownBeadsProviderForStop(t, func(path string) error {
 		shutdowns++
 		assertSameTestPath(t, path, cityDir)
 		return nil
 	})
 
 	var stdout, stderr lockedBuffer
-	code := cmdStop(context.Background(), []string{cityDir}, &stdout, &stderr, 0, false)
+	code := cmdStop([]string{cityDir}, &stdout, &stderr, 0, false)
 	if code != 0 {
 		t.Fatalf("cmdStop() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -986,7 +986,7 @@ provider = "file"
 		t.Fatal(err)
 	}
 	oldFactory := sessionProviderForStopCity
-	sessionProviderForStopCity = func(_ context.Context, _ *config.City, _ string) (runtime.Provider, error) {
+	sessionProviderForStopCity = func(*config.City, string) (runtime.Provider, error) {
 		return sp, nil
 	}
 	t.Cleanup(func() { sessionProviderForStopCity = oldFactory })
@@ -997,7 +997,7 @@ provider = "file"
 		Daemon:    config.DaemonConfig{ShutdownTimeout: "0s"},
 	}
 	var stdout, stderr lockedBuffer
-	code := cmdStopBody(context.Background(), cityDir, cfg, false, &stdout, &stderr)
+	code := cmdStopBody(cityDir, cfg, false, &stdout, &stderr)
 
 	if code != 1 {
 		t.Fatalf("cmdStopBody() = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -1019,14 +1019,14 @@ func TestCmdStopInvalidConfigManagedRuntimeFailsWhenShutdownFails(t *testing.T) 
 	resetFlags(t)
 	cityDir := setupInvalidConfigManagedRuntime(t)
 	var shutdowns int
-	overrideShutdownBeadsProviderForStop(t, func(_ context.Context, path string) error {
+	overrideShutdownBeadsProviderForStop(t, func(path string) error {
 		shutdowns++
 		assertSameTestPath(t, path, cityDir)
 		return fmt.Errorf("provider-stop-failed")
 	})
 
 	var stdout, stderr lockedBuffer
-	code := cmdStop(context.Background(), []string{cityDir}, &stdout, &stderr, 0, false)
+	code := cmdStop([]string{cityDir}, &stdout, &stderr, 0, false)
 	if code != 1 {
 		t.Fatalf("cmdStop() = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -1041,7 +1041,7 @@ func TestCmdStopInvalidConfigManagedRuntimeFailsWhenShutdownFails(t *testing.T) 
 	}
 }
 
-func TestStopCityManagedBeadsProviderIgnoresProviderStateWhenPublishedStateIsMissing(t *testing.T) {
+func TestStopCityManagedBeadsProviderUsesProviderStateWhenPublishedStateIsMissing(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_BEADS_SCOPE_ROOT", "")
 
@@ -1049,21 +1049,21 @@ func TestStopCityManagedBeadsProviderIgnoresProviderStateWhenPublishedStateIsMis
 	_ = writeReachableProviderManagedDoltState(t, cityDir)
 
 	var shutdowns int
-	overrideShutdownBeadsProviderForStop(t, func(_ context.Context, path string) error {
+	overrideShutdownBeadsProviderForStop(t, func(path string) error {
 		shutdowns++
 		assertSameTestPath(t, path, cityDir)
 		return nil
 	})
 
-	stopped, err := stopCityManagedBeadsProvider(context.Background(), cityDir)
+	stopped, err := stopCityManagedBeadsProvider(cityDir)
 	if err != nil {
 		t.Fatalf("stopCityManagedBeadsProvider() error = %v", err)
 	}
-	if stopped {
-		t.Fatal("stopCityManagedBeadsProvider() stopped = true, want false")
+	if !stopped {
+		t.Fatal("stopCityManagedBeadsProvider() stopped = false, want true")
 	}
-	if shutdowns != 0 {
-		t.Fatalf("shutdown calls = %d, want 0 without published state", shutdowns)
+	if shutdowns != 1 {
+		t.Fatalf("shutdown calls = %d, want 1", shutdowns)
 	}
 	if _, err := os.Stat(managedDoltStatePath(cityDir)); !os.IsNotExist(err) {
 		t.Fatalf("stop detection should not publish runtime state, stat err = %v", err)
@@ -1108,7 +1108,7 @@ func setupInvalidConfigManagedRuntime(t *testing.T) string {
 	return cityDir
 }
 
-func overrideShutdownBeadsProviderForStop(t *testing.T, fn func(context.Context, string) error) {
+func overrideShutdownBeadsProviderForStop(t *testing.T, fn func(string) error) {
 	t.Helper()
 	old := shutdownBeadsProviderForStop
 	shutdownBeadsProviderForStop = fn
@@ -1244,7 +1244,7 @@ func TestStopCityManagedBeadsProviderAfterSuccessfulStopStopsDefaultBD(t *testin
 	}
 
 	var stderr lockedBuffer
-	if !stopCityManagedBeadsProviderAfterSuccessfulStop(context.Background(), cityDir, &stderr) {
+	if !stopCityManagedBeadsProviderAfterSuccessfulStop(cityDir, &stderr) {
 		t.Fatalf("stopCityManagedBeadsProviderAfterSuccessfulStop returned false; stderr=%q", stderr.String())
 	}
 	if stderr.String() != "" {
@@ -1341,7 +1341,7 @@ func TestCmdStopUsesTargetCitySessionProviderOutsideCityDir(t *testing.T) {
 	t.Cleanup(func() { sessionProviderForStopCity = oldFactory })
 
 	var gotPath, gotName, gotProvider string
-	sessionProviderForStopCity = func(_ context.Context, cfg *config.City, cityPath string) (runtime.Provider, error) {
+	sessionProviderForStopCity = func(cfg *config.City, cityPath string) (runtime.Provider, error) {
 		gotPath = cityPath
 		if cfg != nil {
 			gotName = cfg.Workspace.Name
@@ -1351,7 +1351,7 @@ func TestCmdStopUsesTargetCitySessionProviderOutsideCityDir(t *testing.T) {
 	}
 
 	var stdout, stderr lockedBuffer
-	code := cmdStop(context.Background(), []string{cityDir}, &stdout, &stderr, 0, false)
+	code := cmdStop([]string{cityDir}, &stdout, &stderr, 0, false)
 	if code != 0 {
 		t.Fatalf("cmdStop() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -1392,7 +1392,7 @@ func TestCmdStopMarginExhaustion(t *testing.T) {
 	}
 
 	sp := newGatedStopProvider()
-	buildFn := func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(_ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}
 
@@ -1431,7 +1431,7 @@ func TestCmdStopMarginExhaustion(t *testing.T) {
 	var stdout, stderr lockedBuffer
 	stopDone := make(chan int, 1)
 	go func() {
-		stopDone <- cmdStop(context.Background(), []string{dir}, &stdout, &stderr, 0, false)
+		stopDone <- cmdStop([]string{dir}, &stdout, &stderr, 0, false)
 	}()
 
 	stopped := sp.waitForStops(t, 1)

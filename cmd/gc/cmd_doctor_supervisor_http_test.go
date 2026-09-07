@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +20,7 @@ func TestBuildDoctorChecks_SupervisorHTTPRegisteredAfterController(t *testing.T)
 	t.Setenv("GC_DOLT", "skip")
 	cfg := &config.City{Workspace: config.Workspace{Name: "demo"}}
 
-	checks := buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
+	checks := buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    false,
 		SupervisorRunning:    false,
 		SkipCityDoltCheck:    true,

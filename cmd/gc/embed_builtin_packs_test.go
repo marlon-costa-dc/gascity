@@ -340,7 +340,7 @@ func TestBundledPiHookUsesCurrentExtensionAPI(t *testing.T) {
 		"GC_PROVIDER_SESSION_ID",
 		"GC_PROVIDER_SESSION_ID_REQUIRED",
 		`stdio: ["ignore", "pipe", "inherit"]`,
-		`runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`,
+		"gc handoff --auto",
 		"mirrorTempCounter",
 		"fs.rmSync(tmp",
 		"gc-hooks run:",
@@ -367,7 +367,7 @@ func TestBundledOmpHookPublishesProviderSessionID(t *testing.T) {
 	data := readBundledPackFileForTest(t, "core", "overlay/per-provider/omp/.omp/hooks/gc-hook.ts")
 	for _, want := range []string{
 		`import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent"`,
-		`const GC_OMP_HOOK_VERSION = 3`,
+		`const GC_OMP_HOOK_VERSION = 2`,
 		`export default function gascityOmpExtension(pi: ExtensionAPI)`,
 		`pi.on("session_start"`,
 		`pi.on("session_compact"`,
@@ -377,7 +377,6 @@ func TestBundledOmpHookPublishesProviderSessionID(t *testing.T) {
 		`stdio: ["ignore", "pipe", "inherit"]`,
 		`getSessionId`,
 		`logRunFailure`,
-		`runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`,
 	} {
 		if !strings.Contains(data, want) {
 			t.Errorf("bundled OMP hook missing provider-session marker %q:\n%s", want, data)

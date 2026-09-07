@@ -137,7 +137,7 @@ func configureSupervisorHooksForTests() {
 	registerCityWithSupervisorTestHook = func(cityPath, commandName string, stdout, stderr io.Writer) (bool, int) {
 		switch commandName {
 		case "gc start":
-			return true, doStartStandalone(context.Background(), []string{cityPath}, false, stdout, stderr)
+			return true, doStartStandalone([]string{cityPath}, false, stdout, stderr)
 		case "gc init", "gc register":
 			return true, 0
 		default:
@@ -1013,7 +1013,7 @@ func TestDoRigAddCreatesDirIfMissing(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigAdd = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -1033,7 +1033,7 @@ func TestDoRigAddMkdirRigPathFails(t *testing.T) {
 	f.Errors["/projects/myapp"] = fmt.Errorf("permission denied")
 
 	var stderr bytes.Buffer
-	code := doRigAdd(context.Background(), f, "/city", "/projects/myapp", nil, "", "", "", false, false, &bytes.Buffer{}, &stderr)
+	code := doRigAdd(f, "/city", "/projects/myapp", nil, "", "", "", false, false, &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("doRigAdd = %d, want 1", code)
 	}
@@ -1047,7 +1047,7 @@ func TestDoRigAddNotADirectory(t *testing.T) {
 	f.Files["/projects/myapp"] = []byte("not a dir") // file, not directory
 
 	var stderr bytes.Buffer
-	code := doRigAdd(context.Background(), f, "/city", "/projects/myapp", nil, "", "", "", false, false, &bytes.Buffer{}, &stderr)
+	code := doRigAdd(f, "/city", "/projects/myapp", nil, "", "", "", false, false, &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("doRigAdd = %d, want 1", code)
 	}
@@ -1077,7 +1077,7 @@ func TestDoRigAddWithGit(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigAdd = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -1107,7 +1107,7 @@ func TestDoRigAddWithoutGit(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigAdd = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -1127,7 +1127,7 @@ func TestDoRigListConfigLoadFails(t *testing.T) {
 	f.Errors[filepath.Join("/city", "city.toml")] = fmt.Errorf("no such file")
 
 	var stderr bytes.Buffer
-	code := doRigList(context.Background(), f, "/city", false, &bytes.Buffer{}, &stderr)
+	code := doRigList(f, "/city", false, &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("doRigList = %d, want 1", code)
 	}
@@ -1142,7 +1142,7 @@ func TestDoRigListSuccess(t *testing.T) {
 	f.Files["/city/.gc/site.toml"] = []byte("[[rig]]\nname = \"alpha\"\npath = \"/projects/alpha\"\n\n[[rig]]\nname = \"beta\"\npath = \"/projects/beta\"\n")
 
 	var stdout, stderr bytes.Buffer
-	code := doRigList(context.Background(), f, "/city", false, &stdout, &stderr)
+	code := doRigList(f, "/city", false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigList = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -1161,7 +1161,7 @@ func TestDoRigListJSON(t *testing.T) {
 	f.Files["/city/.gc/site.toml"] = []byte("[[rig]]\nname = \"alpha\"\npath = \"/projects/alpha\"\n")
 
 	var stdout, stderr bytes.Buffer
-	code := doRigList(context.Background(), f, "/city", true, &stdout, &stderr)
+	code := doRigList(f, "/city", true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigList --json = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -1314,7 +1314,6 @@ func TestResolveTemplateSessionBeadIDUsesTargetedLookup(t *testing.T) {
 		t.Fatal(err)
 	}
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "phase0-city",
 		cityPath:   t.TempDir(),
 		workspace:  &config.Workspace{Provider: "test-agent"},
@@ -1456,7 +1455,7 @@ func TestDiscoverSessionBeads_IncludesBeadCreatedSessions(t *testing.T) {
 		},
 	}
 	sp := runtime.NewFake()
-	bp := newAgentBuildParams(context.Background(), "test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
+	bp := newAgentBuildParams("test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
 
 	desired := make(map[string]TemplateParams)
 	discoverSessionBeads(bp, cfg, desired, io.Discard)
@@ -1489,7 +1488,7 @@ func TestDiscoverSessionBeads_SkipsAlreadyDesired(t *testing.T) {
 		},
 	}
 	sp := runtime.NewFake()
-	bp := newAgentBuildParams(context.Background(), "test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
+	bp := newAgentBuildParams("test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
 
 	// Pre-populate desired state — bead should be skipped.
 	desired := map[string]TemplateParams{
@@ -1522,7 +1521,7 @@ func TestDiscoverSessionBeads_SkipsNoTemplate(t *testing.T) {
 
 	cfg := &config.City{}
 	sp := runtime.NewFake()
-	bp := newAgentBuildParams(context.Background(), "test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
+	bp := newAgentBuildParams("test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
 
 	desired := make(map[string]TemplateParams)
 	discoverSessionBeads(bp, cfg, desired, io.Discard)
@@ -1561,7 +1560,7 @@ func TestDiscoverSessionBeads_SkipsPoolAgentWithZeroDesired(t *testing.T) {
 		},
 	}
 	sp := runtime.NewFake()
-	bp := newAgentBuildParams(context.Background(), "test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
+	bp := newAgentBuildParams("test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
 
 	// Empty desired = pool eval returned 0 (no work).
 	desired := make(map[string]TemplateParams)
@@ -1604,7 +1603,7 @@ func TestDiscoverSessionBeads_IncludesPoolAgentWithDesired(t *testing.T) {
 		},
 	}
 	sp := runtime.NewFake()
-	bp := newAgentBuildParams(context.Background(), "test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
+	bp := newAgentBuildParams("test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
 
 	// Simulate pool eval returning 1 — slot 1 is in desired.
 	desired := map[string]TemplateParams{
@@ -2628,7 +2627,7 @@ func TestDiscoverSessionBeads_RigQualifiedTemplate(t *testing.T) {
 		},
 	}
 	sp := runtime.NewFake()
-	bp := newAgentBuildParams(context.Background(), "test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
+	bp := newAgentBuildParams("test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
 
 	desired := make(map[string]TemplateParams)
 	discoverSessionBeads(bp, cfg, desired, io.Discard)
@@ -2679,7 +2678,7 @@ func TestDiscoverSessionBeads_ForkGetsOwnSessionNameInEnv(t *testing.T) {
 		},
 	}
 	sp := runtime.NewFake()
-	bp := newAgentBuildParams(context.Background(), "test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
+	bp := newAgentBuildParams("test", t.TempDir(), cfg, sp, time.Now(), store, io.Discard)
 
 	// Phase 1: the primary should be selected by resolveSessionName.
 	desired := make(map[string]TemplateParams)
@@ -3973,7 +3972,7 @@ scale_check = "echo 3"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFile(context.Background(), fsys.OSFS{}, src, cityPath, &stdout, &stderr)
+	code := cmdInitFromTOMLFile(fsys.OSFS{}, src, cityPath, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdInitFromTOMLFile = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4081,7 +4080,7 @@ path = "./frontend"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, false)
+	code := cmdInitFromTOMLFileWithOptions(fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("cmdInitFromTOMLFileWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4112,7 +4111,7 @@ path = "./frontend"
 func TestCmdInitFromTOMLFileNotFound(t *testing.T) {
 	f := fsys.NewFake()
 	var stderr bytes.Buffer
-	code := cmdInitFromTOMLFile(context.Background(), f, "/nonexistent.toml", "/city", &bytes.Buffer{}, &stderr)
+	code := cmdInitFromTOMLFile(f, "/nonexistent.toml", "/city", &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("code = %d, want 1", code)
 	}
@@ -4130,7 +4129,7 @@ func TestCmdInitFromTOMLFileInvalidTOML(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	code := cmdInitFromTOMLFile(context.Background(), f, src, "/city", &bytes.Buffer{}, &stderr)
+	code := cmdInitFromTOMLFile(f, src, "/city", &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("code = %d, want 1", code)
 	}
@@ -4150,7 +4149,7 @@ func TestCmdInitFromTOMLFileAlreadyInitialized(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	code := cmdInitFromTOMLFile(context.Background(), f, src, "/city", &bytes.Buffer{}, &stderr)
+	code := cmdInitFromTOMLFile(f, src, "/city", &bytes.Buffer{}, &stderr)
 	if code != initExitAlreadyInitialized {
 		t.Errorf("code = %d, want %d", code, initExitAlreadyInitialized)
 	}
@@ -4170,7 +4169,7 @@ func TestCmdInitFromTOMLFileAlreadyInitializedByCityToml(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	code := cmdInitFromTOMLFile(context.Background(), f, src, "/city", &bytes.Buffer{}, &stderr)
+	code := cmdInitFromTOMLFile(f, src, "/city", &bytes.Buffer{}, &stderr)
 	if code != initExitAlreadyInitialized {
 		t.Errorf("code = %d, want %d", code, initExitAlreadyInitialized)
 	}
@@ -4212,7 +4211,7 @@ func TestCmdInitFromTOMLFilePreservesExistingFiles(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, true)
+	code := cmdInitFromTOMLFileWithOptions(fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, true)
 	if code != 0 {
 		t.Fatalf("cmdInitFromTOMLFileWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4290,7 +4289,7 @@ path = "/template/frontend"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, true)
+	code := cmdInitFromTOMLFileWithOptions(fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, true)
 	if code != 0 {
 		t.Fatalf("cmdInitFromTOMLFileWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4331,7 +4330,7 @@ func TestCmdInitFromTOMLFilePreserveExistingBlockedByScaffold(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), f, src, cityPath, "", &stdout, &stderr, true, true)
+	code := cmdInitFromTOMLFileWithOptions(f, src, cityPath, "", &stdout, &stderr, true, true)
 	if code != initExitAlreadyInitialized {
 		t.Errorf("code = %d, want %d", code, initExitAlreadyInitialized)
 	}
@@ -4429,7 +4428,7 @@ func TestCmdInitFromFileWithOptionsUsesCWDWhenArgsEmpty(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromFileWithOptions(context.Background(), src, nil, "", &stdout, &stderr, true, false)
+	code := cmdInitFromFileWithOptions(src, nil, "", &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("cmdInitFromFileWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4507,7 +4506,7 @@ func TestDoInitFromDirSuccess(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDir(context.Background(), srcDir, cityPath, &stdout, &stderr)
+	code := doInitFromDir(srcDir, cityPath, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doInitFromDir = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4609,7 +4608,7 @@ func TestDoInitFromDirMaterializesPackOverlayClaudeSettings(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doInitFromDir(context.Background(), srcDir, cityPath, &stdout, &stderr); code != 0 {
+	if code := doInitFromDir(srcDir, cityPath, &stdout, &stderr); code != 0 {
 		t.Fatalf("doInitFromDir = %d; stderr: %s", code, stderr.String())
 	}
 
@@ -4697,7 +4696,7 @@ func TestInitNameFlagWithFrom(t *testing.T) {
 	cityPath := filepath.Join(dir, "target-dir")
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptions(context.Background(), srcDir, cityPath, "my-custom-name", &stdout, &stderr, true)
+	code := doInitFromDirWithOptions(srcDir, cityPath, "my-custom-name", &stdout, &stderr, true)
 	if code != 0 {
 		t.Fatalf("doInitFromDirWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4745,7 +4744,7 @@ func TestInitNameFlagWithFile(t *testing.T) {
 	cityPath := filepath.Join(dir, "target-dir")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromFileWithOptions(context.Background(), tomlFile, []string{cityPath}, "my-file-name", &stdout, &stderr, true, false)
+	code := cmdInitFromFileWithOptions(tomlFile, []string{cityPath}, "my-file-name", &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("cmdInitFromFileWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4827,7 +4826,7 @@ func TestInitFromDefaultsToTargetDirBasename(t *testing.T) {
 	cityPath := filepath.Join(dir, "my-new-city")
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptions(context.Background(), srcDir, cityPath, "", &stdout, &stderr, true)
+	code := doInitFromDirWithOptions(srcDir, cityPath, "", &stdout, &stderr, true)
 	if code != 0 {
 		t.Fatalf("doInitFromDirWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4893,7 +4892,7 @@ schema = 2
 
 	cityPath := filepath.Join(dir, "bright-lights")
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptions(context.Background(), srcDir, cityPath, "", &stdout, &stderr, true)
+	code := doInitFromDirWithOptions(srcDir, cityPath, "", &stdout, &stderr, true)
 	if code != 0 {
 		t.Fatalf("doInitFromDirWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -4945,7 +4944,7 @@ source = "./packs/alpha"
 
 	cityPath := filepath.Join(dir, "bright-lights")
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, false)
+	code := cmdInitFromTOMLFileWithOptions(fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("cmdInitFromTOMLFileWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -5009,7 +5008,7 @@ command = "false"
 
 	cityPath := filepath.Join(dir, "bright-lights")
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, false)
+	code := cmdInitFromTOMLFileWithOptions(fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("cmdInitFromTOMLFileWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -5056,7 +5055,7 @@ dir = "legacy-formulas"
 
 	cityPath := filepath.Join(dir, "bright-lights")
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, false)
+	code := cmdInitFromTOMLFileWithOptions(fsys.OSFS{}, src, cityPath, "", &stdout, &stderr, true, false)
 	if code == 0 {
 		t.Fatalf("cmdInitFromTOMLFileWithOptions succeeded, want formulas.dir rejection; stdout: %s", stdout.String())
 	}
@@ -5096,7 +5095,7 @@ schema = 2
 
 	cityPath := filepath.Join(dir, "bright-lights")
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptions(context.Background(), srcDir, cityPath, "", &stdout, &stderr, true)
+	code := doInitFromDirWithOptions(srcDir, cityPath, "", &stdout, &stderr, true)
 	if code != 0 {
 		t.Fatalf("doInitFromDirWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -5136,7 +5135,7 @@ func TestInitFromWithoutPackTomlPreservesLegacyWorkspaceIdentity(t *testing.T) {
 
 	cityPath := filepath.Join(dir, "bright-lights")
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptions(context.Background(), srcDir, cityPath, "", &stdout, &stderr, true)
+	code := doInitFromDirWithOptions(srcDir, cityPath, "", &stdout, &stderr, true)
 	if code != 0 {
 		t.Fatalf("doInitFromDirWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -5246,7 +5245,7 @@ func TestDoInitFromDirSkipsGCDir(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDir(context.Background(), srcDir, cityPath, &stdout, &stderr)
+	code := doInitFromDir(srcDir, cityPath, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doInitFromDir = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -5291,7 +5290,7 @@ func TestDoInitFromDirSkipsTestFiles(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDir(context.Background(), srcDir, cityPath, &stdout, &stderr)
+	code := doInitFromDir(srcDir, cityPath, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doInitFromDir = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -5310,7 +5309,7 @@ func TestDoInitFromDirNoCityToml(t *testing.T) {
 	srcDir := t.TempDir() // no city.toml
 
 	var stderr bytes.Buffer
-	code := doInitFromDir(context.Background(), srcDir, filepath.Join(t.TempDir(), "dst"), &bytes.Buffer{}, &stderr)
+	code := doInitFromDir(srcDir, filepath.Join(t.TempDir(), "dst"), &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("code = %d, want 1", code)
 	}
@@ -5346,7 +5345,7 @@ func TestDoInitFromDirAlreadyInitialized(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	code := doInitFromDir(context.Background(), srcDir, cityPath, &bytes.Buffer{}, &stderr)
+	code := doInitFromDir(srcDir, cityPath, &bytes.Buffer{}, &stderr)
 	if code != initExitAlreadyInitialized {
 		t.Errorf("code = %d, want %d", code, initExitAlreadyInitialized)
 	}
@@ -5377,7 +5376,7 @@ func TestDoInitFromDirAlreadyInitializedByCityToml(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	code := doInitFromDir(context.Background(), srcDir, cityPath, &bytes.Buffer{}, &stderr)
+	code := doInitFromDir(srcDir, cityPath, &bytes.Buffer{}, &stderr)
 	if code != initExitAlreadyInitialized {
 		t.Errorf("code = %d, want %d", code, initExitAlreadyInitialized)
 	}
@@ -5412,7 +5411,7 @@ func TestDoInitFromDirPreservesPermissionsForLegacyTopLevelScripts(t *testing.T)
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDir(context.Background(), srcDir, cityPath, &stdout, &stderr)
+	code := doInitFromDir(srcDir, cityPath, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doInitFromDir = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -5456,7 +5455,7 @@ func TestDoInitFromDirPreservesRealTopLevelScriptsForPackV2Template(t *testing.T
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDir(context.Background(), srcDir, cityPath, &stdout, &stderr)
+	code := doInitFromDir(srcDir, cityPath, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doInitFromDir = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -5506,7 +5505,7 @@ func TestDoInitFromDirSkipsLegacyShimScriptsForPackV2Template(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDir(context.Background(), srcDir, cityPath, &stdout, &stderr)
+	code := doInitFromDir(srcDir, cityPath, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doInitFromDir = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -6278,7 +6277,7 @@ prompt_template = "prompts/mayor.md"
 	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"nonexistent"}, &stdout, &stderr, false, true)
+	code := doPrimeWithMode([]string{"nonexistent"}, &stdout, &stderr, false, true)
 	if code == 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, unknown agent) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -6325,7 +6324,7 @@ prompt_template = "prompts/mayor.md"
 	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"mayor"}, &stdout, &stderr, false, true)
+	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, known agent) = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -6345,7 +6344,7 @@ func TestDoPrimeStrictNoCity(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"anyname"}, &stdout, &stderr, false, true)
+	code := doPrimeWithMode([]string{"anyname"}, &stdout, &stderr, false, true)
 	if code == 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, no city) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -6387,7 +6386,7 @@ prompt_template = "prompts/mayor.md"
 	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, false, true)
+	code := doPrimeWithMode(nil, &stdout, &stderr, false, true)
 	if code == 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, no name) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -6434,7 +6433,7 @@ max_active_sessions = 1
 	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"mayor"}, &stdout, &stderr, false, true)
+	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, agent without prompt_template) = %d, want 0 (supported config); stderr: %s", code, stderr.String())
 	}
@@ -6476,7 +6475,7 @@ prompt_template = "prompts/does-not-exist.md"
 	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"mayor"}, &stdout, &stderr, false, true)
+	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
 	if code == 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, missing template file) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -6521,7 +6520,7 @@ prompt_template = %q
 	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"mayor"}, &stdout, &stderr, false, true)
+	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, absolute template path) = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -6583,7 +6582,7 @@ prompt_template = "prompts/mayor.md"
 	t.Setenv("GC_ALIAS", "")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"mayor"}, &stdout, &stderr, false, true)
+	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, legitimately-empty template) = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -6622,7 +6621,7 @@ name = "mayor"
 	t.Setenv("GC_PROVIDER_SESSION_ID", "provider-session-123")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"nonexistent"}, &stdout, &stderr, true, true)
+	code := doPrimeWithMode([]string{"nonexistent"}, &stdout, &stderr, true, true)
 	if code == 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, hook=true, unknown agent) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -6657,7 +6656,7 @@ prompt_template = "prompts/does-not-exist.md"
 	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	store, err := openCityStoreAt(context.Background(), dir)
+	store, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -6690,7 +6689,7 @@ prompt_template = "prompts/does-not-exist.md"
 	t.Setenv("GC_PROVIDER_SESSION_ID", "provider-session-missing-template")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"mayor"}, &stdout, &stderr, true, true)
+	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, true, true)
 	if code == 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, hook=true, missing template) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -6746,7 +6745,7 @@ prompt_template = "prompts/mayor.md"
 	t.Setenv("GC_SESSION_ID", "test-session-456")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"mayor"}, &stdout, &stderr, true, true)
+	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, true, true)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, hook=true, known agent) = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -6805,7 +6804,7 @@ prompt_template = "prompts/mayor.md"
 	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"mayor"}, &stdout, &stderr, false, true)
+	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
 	if code == 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, unreadable template) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -6850,7 +6849,7 @@ suspended = true
 	t.Setenv("GC_SESSION_ID", "test-session-suspended")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), []string{"mayor"}, &stdout, &stderr, true, true)
+	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, true, true)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode(strict=true, hook=true, suspended agent) = %d, want 0 (suspended is a quiet success); stderr: %s", code, stderr.String())
 	}
@@ -7103,7 +7102,7 @@ prompt_template = "prompts/mayor.md"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -7151,7 +7150,7 @@ prompt_template = "prompts/probe.md"
 	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	store, err := openCityStoreAt(context.Background(), dir)
+	store, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7185,12 +7184,12 @@ prompt_template = "prompts/probe.md"
 	t.Setenv("GEMINI_SESSION_ID", "gemini-provider-session")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
 	}
 
-	updatedStore, err := openCityStoreAt(context.Background(), dir)
+	updatedStore, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7231,7 +7230,7 @@ prompt_template = "prompts/probe.md"
 	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	store, err := openCityStoreAt(context.Background(), dir)
+	store, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7265,12 +7264,12 @@ prompt_template = "prompts/probe.md"
 	t.Setenv("GC_PROVIDER_SESSION_ID", "omp-provider-session")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
 	}
 
-	updatedStore, err := openCityStoreAt(context.Background(), dir)
+	updatedStore, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7294,12 +7293,12 @@ base = "builtin:codex"`)
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
 	}
 
-	updatedStore, err := openCityStoreAt(context.Background(), dir)
+	updatedStore, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7322,12 +7321,12 @@ base = "builtin:claude"`)
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
 	}
 
-	updatedStore, err := openCityStoreAt(context.Background(), dir)
+	updatedStore, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7350,12 +7349,12 @@ base = "builtin:gemini"`)
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
 	}
 
-	updatedStore, err := openCityStoreAt(context.Background(), dir)
+	updatedStore, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7374,7 +7373,7 @@ base = "builtin:kimi"`)
 	t.Setenv("GC_PROVIDER_SESSION_ID_REQUIRED", "kimi")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -7387,7 +7386,7 @@ base = "builtin:kimi"`)
 		t.Fatalf("stderr = %q, want missing provider session id diagnostic", got)
 	}
 
-	updatedStore, err := openCityStoreAt(context.Background(), dir)
+	updatedStore, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7433,7 +7432,7 @@ prompt_template = "prompts/probe.md"
 	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	store, err := openCityStoreAt(context.Background(), dir)
+	store, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7525,7 +7524,7 @@ prompt_template = "prompts/probe.md"
 	t.Setenv("GC_TEMPLATE", "probe")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -7562,7 +7561,7 @@ prompt_template = "prompts/probe.md"
 	if err := os.WriteFile(filepath.Join(dir, "city.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	store, err := openCityStoreAt(context.Background(), dir)
+	store, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7592,7 +7591,7 @@ prompt_template = "prompts/probe.md"
 	t.Setenv("GC_TEMPLATE", "")
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(context.Background(), nil, &stdout, &stderr, true, false)
+	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
 	}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -37,7 +36,6 @@ func TestResolveTemplateUsesWorkDirWithoutChangingRigIdentity(t *testing.T) {
 	}
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -89,7 +87,6 @@ func TestResolveTemplateUsesWorkDirForCityScopedAgents(t *testing.T) {
 	writeTemplateResolveCityConfig(t, cityPath, "file")
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -143,7 +140,6 @@ func TestResolveTemplateDefaultsRigScopedAgentsToRigRootWithoutWorkDir(t *testin
 	}
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -191,7 +187,6 @@ func TestResolveTemplateUsesRigScopeBeadsProviderForBdBackedRig(t *testing.T) {
 	}
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -236,7 +231,6 @@ func TestResolveTemplatePreStartResolvesRigRootForCityLevelRigScopedAgent(t *tes
 	}
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -280,7 +274,6 @@ func TestResolveTemplateRigScopedEnvCarriesRigRoots(t *testing.T) {
 	}
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -313,16 +306,6 @@ func TestResolveTemplateRigScopedEnvCarriesRigRoots(t *testing.T) {
 func TestResolveTemplateUsesCityManagedDoltPort(t *testing.T) {
 	cityPath := t.TempDir()
 	writeTemplateResolveCityConfig(t, cityPath, "")
-	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(cityPath, ".beads", "config.yaml"), []byte(`issue_prefix: city
-gc.endpoint_origin: managed_city
-gc.endpoint_status: verified
-dolt.auto-start: false
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	stateDir := filepath.Join(cityPath, ".gc", "runtime", "packs", "dolt")
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -353,7 +336,6 @@ dolt.auto-start: false
 	t.Setenv("GC_DOLT_PORT", "9999")
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -405,7 +387,6 @@ func TestResolveTemplatePreservesLogicalAgentNameWhenSessionBeadExists(t *testin
 	}
 
 	params := &agentBuildParams{
-		ctx:          context.Background(),
 		cityName:     "city",
 		cityPath:     cityPath,
 		workspace:    &config.Workspace{Provider: "test"},
@@ -469,7 +450,6 @@ dolt.auto-start: false
 	t.Setenv("GC_DOLT_PORT", "9999")
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -521,7 +501,6 @@ func TestRediscoveredNamedBeadWorkDirUsesAliasNotTemplate(t *testing.T) {
 	}
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},

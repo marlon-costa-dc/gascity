@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -101,9 +100,10 @@ func TestBuildDesiredState_NamedSessionResumesClassRelocatedClaim(t *testing.T) 
 	seedNamedSessionClaim(t, binding)
 
 	cityStore := beads.NewMemStore()
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"riga": beads.NewMemStore(), "rigb": beads.NewMemStore()}, nil, nil, io.Discard)
+		cityStore, map[string]beads.Store{"riga": beads.NewMemStore(), "rigb": beads.NewMemStore()}, nil, nil, io.Discard,
+	)
 
 	if !dsResult.NamedSessionDemand[namedSessionClassBindingIdentity] {
 		t.Fatalf("named session %q holds an in_progress claim resident under the relocated class binding "+
@@ -129,9 +129,10 @@ func TestBuildDesiredState_NamedSessionDropsForeignRigClaimOnASplitCity(t *testi
 	seedNamedSessionClaim(t, rigbStore) // riga's named session, claim resident in RIGB's store
 
 	cityStore := beads.NewMemStore()
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"riga": beads.NewMemStore(), "rigb": rigbStore}, nil, nil, io.Discard)
+		cityStore, map[string]beads.Store{"riga": beads.NewMemStore(), "rigb": rigbStore}, nil, nil, io.Discard,
+	)
 
 	if dsResult.NamedSessionDemand[namedSessionClassBindingIdentity] {
 		t.Fatalf("a claim resident in rigb's store woke the riga-scoped named session %q "+
@@ -154,9 +155,10 @@ func TestBuildDesiredState_NamedSessionDropsCityWorkOnASingleStoreCity(t *testin
 	cityStore := beads.NewMemStore()
 	seedNamedSessionClaim(t, cityStore) // resident in the city work store, ref ""
 
-	dsResult := buildDesiredStateWithSessionBeads(context.Background(),
+	dsResult := buildDesiredStateWithSessionBeads(
 		"test-city", cityPath, time.Now().UTC(), cfg, runtime.NewFake(),
-		cityStore, map[string]beads.Store{"riga": beads.NewMemStore(), "rigb": beads.NewMemStore()}, nil, nil, io.Discard)
+		cityStore, map[string]beads.Store{"riga": beads.NewMemStore(), "rigb": beads.NewMemStore()}, nil, nil, io.Discard,
+	)
 
 	if dsResult.NamedSessionDemand[namedSessionClassBindingIdentity] {
 		t.Fatalf("city-store work woke the rig-scoped named session %q on a single-store city "+

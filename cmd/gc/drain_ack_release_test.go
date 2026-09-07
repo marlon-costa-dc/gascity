@@ -257,7 +257,7 @@ func TestDrainAckReleasesBeforeAcknowledging(t *testing.T) {
 	dops := newFakeDrainOps()
 	releaseRan := false
 	ackedWhenReleaseRan := true
-	drainAckReleaseHeldClaims = func(context.Context, string, string, io.Writer) {
+	drainAckReleaseHeldClaims = func(string, string, io.Writer) {
 		releaseRan = true
 		acked, err := dops.isDrainAcked("worker-1")
 		if err != nil {
@@ -267,7 +267,7 @@ func TestDrainAckReleasesBeforeAcknowledging(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doRuntimeDrainAck(context.Background(), dops, t.TempDir(), "worker-1", "worker-1", false, &stdout, &stderr); code != 0 {
+	if code := doRuntimeDrainAck(dops, t.TempDir(), "worker-1", "worker-1", false, &stdout, &stderr); code != 0 {
 		t.Fatalf("doRuntimeDrainAck = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if !releaseRan {
@@ -289,7 +289,7 @@ func TestRequestRestartReleasesNothing(t *testing.T) {
 	originalRelease := drainAckReleaseHeldClaims
 	t.Cleanup(func() { drainAckReleaseHeldClaims = originalRelease })
 	released := false
-	drainAckReleaseHeldClaims = func(context.Context, string, string, io.Writer) { released = true }
+	drainAckReleaseHeldClaims = func(string, string, io.Writer) { released = true }
 
 	var stdout, stderr bytes.Buffer
 	doRuntimeRequestRestart(context.Background(), newFakeDrainOps(), runtime.NewFake(), nil, false,

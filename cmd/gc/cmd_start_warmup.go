@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"strings"
 
@@ -22,7 +21,7 @@ import (
 // bypass leaves it on the work store byte-identically, and refuse fails the
 // Send — which warm-up already tolerates, because RunWarmupChecks records
 // MailSendError and continues.
-func defaultMailProvider(ctx context.Context, cityPath string) mail.Provider {
+func defaultMailProvider(cityPath string) mail.Provider {
 	name := os.Getenv("GC_MAIL")
 	if name == "" {
 		name = mailProviderNameForCity(cityPath)
@@ -30,7 +29,7 @@ func defaultMailProvider(ctx context.Context, cityPath string) mail.Provider {
 	if strings.HasPrefix(name, "exec:") || name == "fake" || name == "fail" {
 		return newCommandMailProviderNamed(name, nil)
 	}
-	store, err := openCityStoreAt(ctx, cityPath)
+	store, err := openCityStoreAt(cityPath)
 	if err != nil {
 		return nil
 	}

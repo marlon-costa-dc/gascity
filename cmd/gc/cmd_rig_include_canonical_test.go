@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,7 +40,7 @@ func TestRigAddIncludeCanonicalizesBuiltinPackSource(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	// Exactly the form documented in `gc rig add --help`.
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, []string{"packs/gastown"}, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, []string{"packs/gastown"}, "", "", "", false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigAdd returned %d, stderr: %s", code, stderr.String())
 	}
@@ -122,7 +121,7 @@ func TestRigAddIncludeFailsLoudlyForUnresolvableName(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	// The exact reported invocation: one bundled name that resolves, two that
 	// do not. The resolvable one must not mask the others.
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, []string{"gastown", "koolkats", "oversight-rig"}, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, []string{"gastown", "koolkats", "oversight-rig"}, "", "", "", false, false, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("gc rig add reported success with unresolvable --include names; stdout:\n%s", stdout.String())
 	}
@@ -185,7 +184,7 @@ func TestRigAddDefaultRigImportsPersistPinnedBundledVersion(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	// No --include: the rig inherits the default-rig imports.
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigAdd returned %d, stderr: %s", code, stderr.String())
 	}
@@ -365,7 +364,7 @@ func TestRigAddIncludePrefersConfiguredPackOverBuiltin(t *testing.T) {
 	t.Setenv("GC_BEADS", "bd")
 
 	var stdout, stderr bytes.Buffer
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, []string{"gastown"}, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, []string{"gastown"}, "", "", "", false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigAdd returned %d, stderr: %s", code, stderr.String())
 	}

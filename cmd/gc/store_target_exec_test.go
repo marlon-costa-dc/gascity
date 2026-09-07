@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -173,7 +172,7 @@ func TestProviderUsesBdStoreContract(t *testing.T) {
 func TestGcExecLifecycleInitProcessEnvDoesNotProjectCanonicalFilesOwnedFlagForGcBeadsBd(t *testing.T) {
 	cityDir := t.TempDir()
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "gc"}
-	env, err := gcExecLifecycleInitProcessEnv(context.Background(), cityDir, target, "exec:/tmp/gc-beads-bd")
+	env, err := gcExecLifecycleInitProcessEnv(cityDir, target, "exec:/tmp/gc-beads-bd")
 	if err != nil {
 		t.Fatalf("gcExecLifecycleInitProcessEnv(gc-beads-bd): %v", err)
 	}
@@ -208,7 +207,7 @@ func TestGcExecLifecycleInitProcessEnvDoesNotLeakAmbientBEADS_DIRForGcBeadsK8s(t
 		Prefix:    "fe",
 		RigName:   "frontend",
 	}
-	env, err := gcExecLifecycleInitProcessEnv(context.Background(), cityDir, target, "exec:/tmp/gc-beads-k8s")
+	env, err := gcExecLifecycleInitProcessEnv(cityDir, target, "exec:/tmp/gc-beads-k8s")
 	if err != nil {
 		t.Fatalf("gcExecLifecycleInitProcessEnv(gc-beads-k8s): %v", err)
 	}
@@ -400,7 +399,7 @@ func TestOpenStoreAtForCityExecProjectsConfiguredTargets(t *testing.T) {
 	t.Setenv("GC_DOLT_HOST", "ambient-dolt")
 	t.Setenv("GC_STORE_ROOT", "/tmp/ambient-store")
 
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
@@ -408,7 +407,7 @@ func TestOpenStoreAtForCityExecProjectsConfiguredTargets(t *testing.T) {
 		t.Fatalf("city Create: %v", err)
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -519,7 +518,7 @@ func TestOpenStoreAtForCityExecBeadsBdProjectsScopedExternalDoltEnv(t *testing.T
 	t.Setenv("BD_DOLT_SYNC_CLI_REMOTES", "true")
 	t.Setenv("BEADS_DOLT_SYNC_CLI_REMOTES", "true")
 
-	result, err := openStoreResultAtForCity(context.Background(), rigDir, cityDir)
+	result, err := openStoreResultAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -552,10 +551,16 @@ func TestOpenStoreAtForCityExecBeadsBdProjectsScopedExternalDoltEnv(t *testing.T
 	}
 }
 
-// TestBdRuntimeEnvForRigPropagatesMissingManagedRuntimeState proves a rig that
-// inherits a managed city endpoint fails on the first missing runtime-state
-// error instead of recovering from stale ambient process env.
-func TestBdRuntimeEnvForRigPropagatesMissingManagedRuntimeState(t *testing.T) {
+// TestCopyExecProjectedBackendEnvWithholdsEveryKeyForABoundRig proves the
+// exec-provider copy path carries the withholding, not just the projection.
+//
+// A rig bound to a backend gc does not implement has no connection values to
+// copy — the point is that every key gc would otherwise project arrives
+// present-and-empty, so an exec provider's child process cannot inherit a
+// stale endpoint from the controller's own environment. An ambient
+// GC_DOLT_HOST is set here precisely because that is the value a leak would
+// smuggle through.
+func TestCopyExecProjectedBackendEnvWithholdsEveryKeyForABoundRig(t *testing.T) {
 	cityDir := t.TempDir()
 	rigDir := filepath.Join(cityDir, "rigs", "frontend")
 	if err := os.MkdirAll(filepath.Join(cityDir, ".beads"), 0o755); err != nil {
@@ -583,20 +588,24 @@ dolt.auto-start: false
 	}})
 	t.Setenv("GC_DOLT_HOST", "ambient-dolt")
 
-	projected, err := bdRuntimeEnvForRigWithError(context.Background(), cityDir, &config.City{Rigs: []config.Rig{{
+	env := gcExecStoreEnv(cityDir, execStoreTarget{
+		ScopeRoot: rigDir,
+		ScopeKind: "rig",
+		Prefix:    "fe",
+		RigName:   "frontend",
+	}, "exec:/tmp/gc-beads-bd")
+	projected, err := bdRuntimeEnvForRigWithError(cityDir, &config.City{Rigs: []config.Rig{{
 		Name:   "frontend",
 		Path:   "rigs/frontend",
 		Prefix: "fe",
 	}}}, rigDir)
+	if err != nil {
+		t.Fatalf("bdRuntimeEnvForRigWithError: %v", err)
+	}
+	copyExecProjectedBackendEnv(env, projected)
 
-	if err == nil {
-		t.Fatal("bdRuntimeEnvForRigWithError: nil error, want missing managed runtime-state error")
-	}
-	if !strings.Contains(err.Error(), "dolt runtime state unavailable") {
-		t.Fatalf("bdRuntimeEnvForRigWithError: %v, want dolt runtime state unavailable", err)
-	}
-	if got := projected["GC_RIG"]; got != "frontend" {
-		t.Fatalf("projected GC_RIG = %q, want frontend", got)
+	if got := env["GC_RIG"]; got != "frontend" {
+		t.Fatalf("GC_RIG = %q, want frontend", got)
 	}
 	for _, key := range execProjectedBackendEnvKeys() {
 		switch key {
@@ -607,13 +616,13 @@ dolt.auto-start: false
 			// values it withholds.
 			continue
 		}
-		value, ok := projected[key]
+		value, ok := env[key]
 		if !ok {
-			t.Errorf("projected[%q] absent; a failed projection must still return explicit empty keys", key)
+			t.Errorf("env[%q] absent; a withheld key must be present and empty so the child cannot inherit one", key)
 			continue
 		}
 		if value != "" {
-			t.Errorf("projected[%q] = %q, want empty after first failure", key, value)
+			t.Errorf("env[%q] = %q, want empty for a rig gc does not serve", key, value)
 		}
 	}
 }
@@ -629,7 +638,7 @@ func TestControllerStateOpenRigStoreExecProjectsRigTarget(t *testing.T) {
 	t.Setenv("GC_DOLT_HOST", "ambient-dolt")
 
 	cs := &controllerState{cityPath: cityDir}
-	store := cs.openRigStore(context.Background(), provider, "frontend", rigDir, "fe", nil)
+	store := cs.openRigStore(provider, "frontend", rigDir, "fe", nil)
 	if _, err := store.Create(beads.Bead{Title: "rig"}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -682,7 +691,7 @@ func TestControllerStateOpenRigStoreExecBdProjectsRigDoltEnv(t *testing.T) {
 	t.Setenv("GC_DOLT_PORT", "9911")
 
 	cs := &controllerState{cityPath: cityDir, cfg: cfg}
-	store := cs.openRigStore(context.Background(), provider, "frontend", rigDir, "fe", cfg)
+	store := cs.openRigStore(provider, "frontend", rigDir, "fe", cfg)
 	if _, err := store.Create(beads.Bead{Title: "rig"}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -729,7 +738,7 @@ dolt.auto-start: false
 	}}}
 
 	cs := &controllerState{cityPath: cityDir, cfg: cfg}
-	store := cs.openRigStore(context.Background(), provider, "frontend", rigDir, "fe", cfg)
+	store := cs.openRigStore(provider, "frontend", rigDir, "fe", cfg)
 	_, err := store.Create(beads.Bead{Title: "rig"})
 
 	assertRefusesUnregisteredBackend(t, err)
@@ -756,7 +765,7 @@ func TestOpenStoreAtForCityExecUsesUniversalStoreTargetEnv(t *testing.T) {
 	t.Setenv("BEADS_DIR", "/tmp/ambient-beads")
 	t.Setenv("GC_DOLT_HOST", "ambient-dolt")
 
-	store, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	store, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}

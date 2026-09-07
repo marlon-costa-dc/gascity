@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,13 +69,14 @@ func TestManagedDoltRuntimePreflightSkipsCompleteStorageBinding(t *testing.T) {
 	healthCalls := 0
 	portCalls := 0
 
-	ensureManagedDoltPublishedForRuntime(context.Background(),
+	ensureManagedDoltPublishedForRuntime(
 		cityPath,
 		&stderr,
 		"gc test",
-		func(context.Context, string) error { healthCalls++; return nil },
+		func(string) error { healthCalls++; return nil },
 		managedDoltLifecycleOwned,
-		func(string) string { portCalls++; return "" })
+		func(string) string { portCalls++; return "" },
+	)
 
 	if stderr.Len() != 0 {
 		t.Fatalf("runtime preflight stderr = %q, want empty", stderr.String())
@@ -101,7 +101,7 @@ func TestShutdownBeadsProviderSkipsCompleteStorageBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := shutdownBeadsProvider(context.Background(), cityPath); err != nil {
+	if err := shutdownBeadsProvider(cityPath); err != nil {
 		t.Fatalf("shutdownBeadsProvider: %v", err)
 	}
 	gotRuntime, err := os.ReadFile(runtimePath)

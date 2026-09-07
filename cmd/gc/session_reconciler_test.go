@@ -5099,7 +5099,7 @@ func reconcileExistingAsleepNamedSessionWithRoutedWork(t *testing.T, cfg *config
 	}
 
 	var stdout, stderr bytes.Buffer
-	dsResult := buildDesiredState(context.Background(), cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, &stderr)
+	dsResult := buildDesiredState(cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, &stderr)
 	cfgNames := configuredSessionNames(cfg, cfg.EffectiveCityName(), store)
 	syncSessionBeads(cityPath, store, dsResult.State, sp, cfgNames, cfg, clk, &stderr, true)
 	sessions, err := loadSessionBeads(store)
@@ -6895,7 +6895,7 @@ func TestResolvePreservedConfiguredNamedSessionTemplate_StoreOnlyClosedDuplicate
 	closedTwin.ID = "closed-twin"
 	closedTwin.Closed = true
 
-	preservedTP, _, err := resolvePreservedConfiguredNamedSessionTemplate(context.Background(), ".", env.cfg.Workspace.Name, env.cfg, env.sp, env.store, []sessionpkg.Info{closedTwin, sessionInfo}, sessionInfo, env.clk, io.Discard)
+	preservedTP, _, err := resolvePreservedConfiguredNamedSessionTemplate(".", env.cfg.Workspace.Name, env.cfg, env.sp, env.store, []sessionpkg.Info{closedTwin, sessionInfo}, sessionInfo, env.clk, io.Discard)
 	if err != nil {
 		t.Fatalf("resolve preserved named session: %v", err)
 	}
@@ -6938,7 +6938,7 @@ func TestResolvePreservedConfiguredNamedSessionTemplate_ClearsStaleTriggerStamp(
 	})
 	sessionInfo := env.sessionInfo(session.ID)
 
-	preservedTP, preservedInfo, err := resolvePreservedConfiguredNamedSessionTemplate(context.Background(), ".", env.cfg.Workspace.Name, env.cfg, env.sp, env.store, []sessionpkg.Info{sessionInfo}, sessionInfo, env.clk, io.Discard)
+	preservedTP, preservedInfo, err := resolvePreservedConfiguredNamedSessionTemplate(".", env.cfg.Workspace.Name, env.cfg, env.sp, env.store, []sessionpkg.Info{sessionInfo}, sessionInfo, env.clk, io.Discard)
 	if err != nil {
 		t.Fatalf("resolve preserved named session: %v", err)
 	}
@@ -6974,7 +6974,7 @@ func TestReconcileSessionBeads_PreservedRunningNamedSessionStillIdleDrains(t *te
 		namedSessionModeMetadata:     "on_demand",
 	})
 	sessionInfo := env.sessionInfo(session.ID)
-	preservedTP, _, err := resolvePreservedConfiguredNamedSessionTemplate(context.Background(), ".", env.cfg.Workspace.Name, env.cfg, env.sp, env.store, []sessionpkg.Info{sessionInfo}, sessionInfo, env.clk, io.Discard)
+	preservedTP, _, err := resolvePreservedConfiguredNamedSessionTemplate(".", env.cfg.Workspace.Name, env.cfg, env.sp, env.store, []sessionpkg.Info{sessionInfo}, sessionInfo, env.clk, io.Discard)
 	if err != nil {
 		t.Fatalf("resolve preserved named session: %v", err)
 	}
@@ -7302,7 +7302,7 @@ func TestReconcileSessionBeads_OnDemandNamedSessionDoesNotRecoverClosedCanonical
 		t.Fatalf("close historical bead: %v", err)
 	}
 
-	dsResult := buildDesiredState(context.Background(), cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, io.Discard)
+	dsResult := buildDesiredState(cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, io.Discard)
 	if _, ok := dsResult.State[sessionName]; ok {
 		t.Fatalf("desired state recovered named session %q from controller-side work_query; keys=%v", sessionName, mapKeys(dsResult.State))
 	}
@@ -10735,7 +10735,7 @@ func TestSessionHasAwakeAssignedWorkUsesCachedInProgressWispProbe(t *testing.T) 
 		t.Fatalf("mark active wisp in progress: %v", err)
 	}
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -11558,7 +11558,7 @@ func TestReconcileSessionBeads_FileStoreAlwaysNamedRecoversWithLeakedDuplicateOp
 	}
 
 	var stdout, stderr bytes.Buffer
-	dsResult := buildDesiredState(context.Background(), cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, &stderr)
+	dsResult := buildDesiredState(cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, &stderr)
 
 	mayorTP, ok := dsResult.State[sessionName]
 	if !ok {
@@ -11709,7 +11709,7 @@ func reconcileConfiguredSessionsOnce(
 ) (DesiredStateResult, []beads.Bead, int) {
 	t.Helper()
 
-	dsResult := buildDesiredState(context.Background(), cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, stderr)
+	dsResult := buildDesiredState(cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, stderr)
 	cfgNames := configuredSessionNames(cfg, cfg.EffectiveCityName(), store)
 	syncSessionBeads(cityPath, store, dsResult.State, sp, cfgNames, cfg, clk, stderr, true)
 
@@ -11871,7 +11871,7 @@ func TestReconcileSessionBeads_PoolRecoveryAfterClosedBead(t *testing.T) {
 		t.Fatalf("load latest snapshot: %v", err)
 	}
 	result := DesiredStateResult{State: ds, BaseState: ds, BeaconTime: clk.Now().UTC()}
-	refreshed := refreshDesiredStateWithSessionBeads(context.Background(), result, "test-city", cityPath, cfg, sp, store, latestSnapshot, &stderr)
+	refreshed := refreshDesiredStateWithSessionBeads(result, "test-city", cityPath, cfg, sp, store, latestSnapshot, &stderr)
 	ds = refreshed.State
 	newSessionName := newBead.Metadata["session_name"]
 	if newSessionName == "" {
@@ -12222,7 +12222,7 @@ func TestReconcileSessionBeads_FailedCreatePoolSlotIsReplacedUnderTheSameRuntime
 			runtimeName := failedBead.Metadata["session_name"]
 
 			var stdout, stderr bytes.Buffer
-			firstTick := buildDesiredState(context.Background(), cfg.EffectiveCityName(), t.TempDir(), clk.Now().UTC(), cfg, sp, store, &stderr)
+			firstTick := buildDesiredState(cfg.EffectiveCityName(), t.TempDir(), clk.Now().UTC(), cfg, sp, store, &stderr)
 			if len(firstTick.State) != 0 {
 				t.Fatalf("open failed-create lease must hold its identity, but the first tick planned %#v; stderr:\n%s", firstTick.State, stderr.String())
 			}
@@ -12260,7 +12260,7 @@ func TestReconcileSessionBeads_FailedCreatePoolSlotIsReplacedUnderTheSameRuntime
 			}
 
 			var secondTickStderr bytes.Buffer
-			secondTick := buildDesiredState(context.Background(), cfg.EffectiveCityName(), t.TempDir(), clk.Now().UTC(), cfg, sp, store, &secondTickStderr)
+			secondTick := buildDesiredState(cfg.EffectiveCityName(), t.TempDir(), clk.Now().UTC(), cfg, sp, store, &secondTickStderr)
 			tp, planned := secondTick.State[runtimeName]
 			if gotFailed.Status == "open" {
 				if planned {
@@ -12330,7 +12330,7 @@ func TestReconcileSessionBeads_SyncReplacesFailedCreateNamedSession(t *testing.T
 	}
 
 	var stdout, stderr bytes.Buffer
-	dsResult := buildDesiredState(context.Background(), cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, &stderr)
+	dsResult := buildDesiredState(cfg.EffectiveCityName(), cityPath, clk.Now().UTC(), cfg, sp, store, &stderr)
 	if _, ok := dsResult.State[sessionName]; !ok {
 		t.Fatalf("desired state missing configured named session %q; state=%#v stderr:\n%s", sessionName, dsResult.State, stderr.String())
 	}

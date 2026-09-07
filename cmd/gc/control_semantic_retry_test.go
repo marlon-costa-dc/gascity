@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -116,7 +115,7 @@ func (f deadlockedFinalizeFixture) dispatchOnce(t *testing.T, store beads.Store,
 
 	var stderr bytes.Buffer
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	err := runControlDispatcherWithStoreAndConfig(context.Background(), f.cityPath, f.cityPath, store, f.controlID, cfg, io.Discard, &stderr)
+	err := runControlDispatcherWithStoreAndConfig(f.cityPath, f.cityPath, store, f.controlID, cfg, io.Discard, &stderr)
 	return stderr.String(), err
 }
 

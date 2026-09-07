@@ -58,7 +58,7 @@ STUB_ENV = "present"
 	if err != nil {
 		t.Fatalf("loadCityConfig: %v", err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestResolvedWorkerRuntimeWithConfigSeedsCityRuntimeEnv(t *testing.T) {
 	}
 }
 
-func TestResolvedWorkerRuntimeWithConfigOmitsAmbientProviderCredentials(t *testing.T) {
+func TestResolvedWorkerRuntimeWithConfigIncludesProviderAuthPassthrough(t *testing.T) {
 	cityDir := t.TempDir()
 	gcDir := filepath.Join(cityDir, ".gc")
 	if err := os.MkdirAll(gcDir, 0o755); err != nil {
@@ -309,26 +309,17 @@ func TestResolvedWorkerRuntimeWithConfigOmitsAmbientProviderCredentials(t *testi
 		t.Fatal("resolvedWorkerRuntimeWithConfig() = nil")
 	}
 	for key, want := range map[string]string{
-		"CLAUDE_CODE_SUBAGENT_MODEL": "kimi-k2.5",
+		"ANTHROPIC_AUTH_TOKEN":           "test-anthropic-auth-token",
+		"ANTHROPIC_BASE_URL":             "https://ollama.example.test",
+		"ANTHROPIC_DEFAULT_SONNET_MODEL": "kimi-k2.5",
+		"CLAUDE_CODE_SUBAGENT_MODEL":     "kimi-k2.5",
+		"OLLAMA_API_KEY":                 "test-ollama-token",
 	} {
 		if got := resolved.SessionEnv[key]; got != want {
 			t.Errorf("SessionEnv[%s] = %q, want %q", key, got, want)
 		}
 		if got := resolved.Hints.Env[key]; got != want {
 			t.Errorf("Hints.Env[%s] = %q, want %q", key, got, want)
-		}
-	}
-	for _, key := range []string{
-		"ANTHROPIC_AUTH_TOKEN",
-		"ANTHROPIC_BASE_URL",
-		"ANTHROPIC_DEFAULT_SONNET_MODEL",
-		"OLLAMA_API_KEY",
-	} {
-		if got, ok := resolved.SessionEnv[key]; ok {
-			t.Errorf("SessionEnv[%s] = %q present, want absent ambient provider credential/config", key, got)
-		}
-		if got, ok := resolved.Hints.Env[key]; ok {
-			t.Errorf("Hints.Env[%s] = %q present, want absent ambient provider credential/config", key, got)
 		}
 	}
 	for _, key := range []string{"GC_RIG", "GC_SESSION_NAME"} {
@@ -533,7 +524,7 @@ func TestResolvedWorkerSessionConfigWithConfigSeedsCityAnchorsOnCreatePath(t *te
 	}
 }
 
-func TestResolvedWorkerSessionConfigWithConfigOmitsAmbientProviderCredentials(t *testing.T) {
+func TestResolvedWorkerSessionConfigWithConfigIncludesProviderAuthPassthrough(t *testing.T) {
 	cityDir := t.TempDir()
 	gcDir := filepath.Join(cityDir, ".gc")
 	if err := os.MkdirAll(gcDir, 0o755); err != nil {
@@ -567,26 +558,17 @@ func TestResolvedWorkerSessionConfigWithConfigOmitsAmbientProviderCredentials(t 
 	env := cfg.Runtime.SessionEnv
 	hintsEnv := cfg.Runtime.Hints.Env
 	for key, want := range map[string]string{
-		"CLAUDE_CODE_SUBAGENT_MODEL": "kimi-k2.5",
+		"ANTHROPIC_AUTH_TOKEN":           "test-anthropic-auth-token",
+		"ANTHROPIC_BASE_URL":             "https://ollama.example.test",
+		"ANTHROPIC_DEFAULT_SONNET_MODEL": "kimi-k2.5",
+		"CLAUDE_CODE_SUBAGENT_MODEL":     "kimi-k2.5",
+		"OLLAMA_API_KEY":                 "test-ollama-token",
 	} {
 		if got := env[key]; got != want {
 			t.Errorf("Runtime.SessionEnv[%s] = %q, want %q", key, got, want)
 		}
 		if got := hintsEnv[key]; got != want {
 			t.Errorf("Runtime.Hints.Env[%s] = %q, want %q", key, got, want)
-		}
-	}
-	for _, key := range []string{
-		"ANTHROPIC_AUTH_TOKEN",
-		"ANTHROPIC_BASE_URL",
-		"ANTHROPIC_DEFAULT_SONNET_MODEL",
-		"OLLAMA_API_KEY",
-	} {
-		if got, ok := env[key]; ok {
-			t.Errorf("Runtime.SessionEnv[%s] = %q present, want absent ambient provider credential/config", key, got)
-		}
-		if got, ok := hintsEnv[key]; ok {
-			t.Errorf("Runtime.Hints.Env[%s] = %q present, want absent ambient provider credential/config", key, got)
 		}
 	}
 	for _, key := range []string{"GC_RIG", "GC_SESSION_NAME"} {
@@ -1301,7 +1283,7 @@ session_id_flag = "--session-id"
 	if err != nil {
 		t.Fatalf("loadCityConfig: %v", err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1367,7 +1349,7 @@ session_id_flag = "--session-id"
 	if err != nil {
 		t.Fatalf("loadCityConfig: %v", err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1420,7 +1402,7 @@ command = "/bin/echo"
 	if err != nil {
 		t.Fatalf("loadCityConfig: %v", err)
 	}
-	backing, err := openCityStoreAt(context.Background(), cityDir)
+	backing, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1464,7 +1446,7 @@ func TestWorkerObserveSessionTargetWithConfigFallsBackToRunningRuntimeHandle(t *
 		},
 	}
 
-	target := cliSessionName(context.Background(), "/home/user/city", cfg.Workspace.Name, "mayor", cfg.Workspace.SessionTemplate)
+	target := cliSessionName("/home/user/city", cfg.Workspace.Name, "mayor", cfg.Workspace.SessionTemplate)
 	obs, err := workerObserveSessionTargetWithConfig("/home/user/city", nil, sp, cfg, target)
 	if err != nil {
 		t.Fatalf("workerObserveSessionTargetWithConfig: %v", err)
@@ -1487,7 +1469,7 @@ func TestWorkerObserveSessionTargetWithConfigIgnoresStoreLookupFailuresForRuntim
 		},
 	}
 
-	target := cliSessionName(context.Background(), "/home/user/city", cfg.Workspace.Name, "mayor", cfg.Workspace.SessionTemplate)
+	target := cliSessionName("/home/user/city", cfg.Workspace.Name, "mayor", cfg.Workspace.SessionTemplate)
 	store := &failingSessionLookupStore{err: fmt.Errorf("store lookup failed")}
 	obs, err := workerObserveSessionTargetWithConfig("/home/user/city", store, sp, cfg, target)
 	if err != nil {
@@ -1518,7 +1500,7 @@ command = "/bin/echo"
 	if err != nil {
 		t.Fatalf("loadCityConfig: %v", err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -2568,7 +2550,7 @@ func TestResolvedWorkerSessionConfigStagesProviderOverlayForRigBasePiProvider(t 
 }
 
 // The CLI create and resume resolvers build session env from
-// providerProcessPassthroughEnvForResolvedProvider(nil) directly — neither routes through
+// providerProcessPassthroughEnv() directly — neither routes through
 // passthroughEnv() or convergence.ScrubTokenEnv, so cmd_start.go's GC_-sweep
 // guard and template_resolve.go's re-pin do not cover them. The controller
 // token must still arrive present-and-empty: the session inherits an

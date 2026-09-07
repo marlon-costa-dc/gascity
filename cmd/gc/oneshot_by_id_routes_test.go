@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -54,7 +53,7 @@ func cookCityWithSplitGraphAt(t *testing.T) (work, graph beads.Store, cityDir st
 	cityDir = oneShotCookCity(t)
 	graph = splittest.NewClassStore(t, config.BeadClassGraph)
 	seedCLIStorageRoutes(t, cityDir, messagingSplitRoutes(graph))
-	work, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	work, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open work store: %v", err)
 	}
@@ -234,7 +233,7 @@ func TestFormulaCookGraphV2AttachOnAClassResidentBeadIsRefused(t *testing.T) {
 func TestFormulaCookAttachEmitsTheWorkAssociation(t *testing.T) {
 	cityPath := oneShotCookCity(t)
 	seedCLIStorageRoutes(t, cityPath, nil)
-	work, err := openStoreAtForCity(context.Background(), cityPath, cityPath)
+	work, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
 		t.Fatalf("open work store: %v", err)
 	}
@@ -318,7 +317,7 @@ func TestFormulaCookAttachStaysOnTheOneStoreOnASingleStoreCity(t *testing.T) {
 	cityDir := oneShotCookCity(t)
 	resetCLIStorageRoutes(t)
 	seedCLIStorageRoutes(t, cityDir, nil)
-	work, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	work, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open work store: %v", err)
 	}

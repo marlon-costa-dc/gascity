@@ -36,7 +36,7 @@ func TestCmdSessionReset_ClearsCircuitBreaker(t *testing.T) {
 		t.Fatalf("MkdirAll(.gc): %v", err)
 	}
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestCmdSessionReset_ClearsCircuitBreaker(t *testing.T) {
 	defer os.Remove(controllerSocketPath(cityDir)) //nolint:errcheck
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionReset(context.Background(), []string{identity}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionReset([]string{identity}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionReset = %d, want 0; stderr=%s", code, stderr.String())
 	}
 
@@ -125,7 +125,7 @@ func TestCmdSessionReset_ProviderConstructionFailureReturnsError(t *testing.T) {
 	writeGenericNamedSessionCityTOML(t, cityDir)
 	writeBuiltinImportsFixture(t, cityDir, "core")
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestCmdSessionReset_ProviderConstructionFailureReturnsError(t *testing.T) {
 	t.Cleanup(func() { buildSessionProviderByName = oldBuild })
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionReset(context.Background(), []string{"sky"}, &stdout, &stderr); code != 1 {
+	if code := cmdSessionReset([]string{"sky"}, &stdout, &stderr); code != 1 {
 		t.Fatalf("cmdSessionReset = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	if got := stdout.String(); got != "" {
@@ -196,7 +196,7 @@ func TestCmdSessionKill_ClearsCircuitBreaker(t *testing.T) {
 	}
 	t.Cleanup(func() { buildSessionProviderByName = oldBuild })
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestCmdSessionKill_ClearsCircuitBreaker(t *testing.T) {
 	defer os.Remove(controllerSocketPath(cityDir)) //nolint:errcheck
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionKill(context.Background(), []string{identity}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionKill([]string{identity}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionKill = %d, want 0; stderr=%s", code, stderr.String())
 	}
 
@@ -308,7 +308,7 @@ func TestCmdSessionKill_SyncsBeadToAsleep(t *testing.T) {
 	}
 	t.Cleanup(func() { buildSessionProviderByName = oldBuild })
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestCmdSessionKill_SyncsBeadToAsleep(t *testing.T) {
 	defer os.Remove(controllerSocketPath(cityDir)) //nolint:errcheck
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionKill(context.Background(), []string{identity}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionKill([]string{identity}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionKill = %d, want 0; stderr=%s", code, stderr.String())
 	}
 
@@ -382,7 +382,7 @@ func TestCmdSessionKill_ClearsCircuitBreakerForAsleepNamedSession(t *testing.T) 
 		t.Fatalf("MkdirAll(.gc): %v", err)
 	}
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestCmdSessionKill_ClearsCircuitBreakerForAsleepNamedSession(t *testing.T) 
 	defer os.Remove(controllerSocketPath(cityDir)) //nolint:errcheck
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionKill(context.Background(), []string{identity}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionKill([]string{identity}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionKill = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
@@ -478,7 +478,7 @@ func TestCmdSessionKill_RecordsStoppedWhenCircuitBreakerResetFails(t *testing.T)
 	}
 	t.Cleanup(func() { buildSessionProviderByName = oldBuild })
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -514,7 +514,7 @@ func TestCmdSessionKill_RecordsStoppedWhenCircuitBreakerResetFails(t *testing.T)
 	defer os.Remove(controllerSocketPath(cityDir)) //nolint:errcheck
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionKill(context.Background(), []string{identity}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionKill([]string{identity}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionKill = %d, want 0; stderr=%s", code, stderr.String())
 	}
 
@@ -599,7 +599,7 @@ func TestCmdSessionReset_RequestsFreshRestartWithController(t *testing.T) {
 		t.Fatalf("MkdirAll(.gc): %v", err)
 	}
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -662,7 +662,7 @@ func TestCmdSessionReset_RequestsFreshRestartWithController(t *testing.T) {
 	}()
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionReset(context.Background(), []string{"sky"}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionReset([]string{"sky"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionReset(controller) = %d, want 0; stderr=%s", code, stderr.String())
 	}
 
@@ -693,7 +693,7 @@ func TestCmdSessionReset_RequestsFreshRestartWithController(t *testing.T) {
 		}
 	}
 
-	reloaded, err := openCityStoreAt(context.Background(), cityDir)
+	reloaded, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(reload): %v", err)
 	}
@@ -726,7 +726,7 @@ func TestCmdSessionReset_ControllerClearFailureDoesNotQueueRestart(t *testing.T)
 		t.Fatalf("MkdirAll(.gc): %v", err)
 	}
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -792,7 +792,7 @@ func TestCmdSessionReset_ControllerClearFailureDoesNotQueueRestart(t *testing.T)
 	}()
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionReset(context.Background(), []string{"session-a"}, &stdout, &stderr); code != 1 {
+	if code := cmdSessionReset([]string{"session-a"}, &stdout, &stderr); code != 1 {
 		t.Fatalf("cmdSessionReset = %d, want 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stderr.String(), `clearing session circuit breaker for "session-a": clear failed`) {
@@ -820,7 +820,7 @@ func TestCmdSessionReset_ControllerClearFailureDoesNotQueueRestart(t *testing.T)
 		t.Fatalf("controller commands = %v, want ping, poke, reset", gotCommands)
 	}
 
-	reloaded, err := openCityStoreAt(context.Background(), cityDir)
+	reloaded, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(reload): %v", err)
 	}

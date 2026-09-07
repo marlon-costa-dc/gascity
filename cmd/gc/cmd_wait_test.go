@@ -171,7 +171,7 @@ func TestWaitListJSON(t *testing.T) {
 	wait := createTestWaitBead(t, store)
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWaitList(context.Background(), "", "", true, &stdout, &stderr); code != 0 {
+	if code := cmdWaitList("", "", true, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWaitList(--json) = %d, stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
 	if stderr.Len() != 0 {
@@ -212,7 +212,7 @@ func TestWaitInspectJSON(t *testing.T) {
 	wait := createTestWaitBead(t, store)
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWaitInspect(context.Background(), wait.ID, true, &stdout, &stderr); code != 0 {
+	if code := cmdWaitInspect(wait.ID, true, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWaitInspect(--json) = %d, stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
 	if stderr.Len() != 0 {
@@ -250,7 +250,7 @@ func TestWaitListJSONFiltersState(t *testing.T) {
 	ready := createTestWaitBeadForSession(t, store, "session-2", waitStateReady)
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWaitList(context.Background(), waitStatePending, "", true, &stdout, &stderr); code != 0 {
+	if code := cmdWaitList(waitStatePending, "", true, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWaitList(--json --state pending) = %d, stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
 
@@ -266,7 +266,7 @@ func TestWaitListJSONSessionFilterWiresFileStore(t *testing.T) {
 	otherWait := createTestWaitBeadForSession(t, store, "other-session", waitStatePending)
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWaitList(context.Background(), "", "target-session", true, &stdout, &stderr); code != 0 {
+	if code := cmdWaitList("", "target-session", true, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWaitList(--json --session target-session) = %d, stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
 
@@ -283,7 +283,7 @@ func TestWaitListJSONEmptyListUsesArray(t *testing.T) {
 	_, _ = setupWaitJSONTestCity(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWaitList(context.Background(), "", "", true, &stdout, &stderr); code != 0 {
+	if code := cmdWaitList("", "", true, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWaitList(--json empty) = %d, stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
 
@@ -474,7 +474,7 @@ func setupWaitJSONTestCity(t *testing.T) (string, beads.Store) {
 	t.Setenv("GC_CITY", cityDir)
 	writeCityToml(t, cityDir, "[workspace]\nname = \"wait-json\"\n")
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1040,7 +1040,7 @@ func TestPrepareWaitWakeState_MarksDepsReady(t *testing.T) {
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1102,7 +1102,7 @@ func TestPrepareWaitWakeState_CancelsWaitForClosedSession(t *testing.T) {
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1158,7 +1158,7 @@ func TestPrepareWaitWakeState_FailsMissingDependencyWait(t *testing.T) {
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1246,7 +1246,7 @@ func TestPrepareWaitWakeState_FinalizesFromNudge(t *testing.T) {
 		t.Fatalf("close nudge bead: %v", err)
 	}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1298,7 +1298,7 @@ func TestPrepareWaitWakeState_UsesTargetedLookupForMissingSessionEpoch(t *testin
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1341,7 +1341,7 @@ func TestPrepareWaitWakeState_SkipsMissingOpenSessionWithoutEpochLookup(t *testi
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1387,7 +1387,7 @@ func TestPrepareWaitWakeState_CancelsStaleEpochWaitForClosedSession(t *testing.T
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1449,7 +1449,7 @@ func TestPrepareWaitWakeState_ProcessesOpenSessionWaitsWithoutGlobalWaitList(t *
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1506,7 +1506,7 @@ func TestPrepareWaitWakeState_ContinuesWhenGlobalListCaps(t *testing.T) {
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1592,7 +1592,7 @@ func TestPrepareWaitWakeState_ContinuesWhenOneSessionLookupCaps(t *testing.T) {
 	}
 	store := waitOneSessionListLimitStore{Store: base, sessionID: cappedSession.ID}
 
-	readyWaitSet, err := prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	readyWaitSet, err := prepareWaitWakeState(store, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("prepareWaitWakeState: %v", err)
 	}
@@ -1655,7 +1655,7 @@ func TestPrepareWaitWakeState_PropagatesGlobalListError(t *testing.T) {
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	_, err = prepareWaitWakeState(context.Background(), store, time.Now().UTC())
+	_, err = prepareWaitWakeState(store, time.Now().UTC())
 	if err == nil || !strings.Contains(err.Error(), "global wait list failed") {
 		t.Fatalf("prepareWaitWakeState error = %v, want global wait list failed", err)
 	}
@@ -1725,7 +1725,7 @@ func TestNextWaitDeliveryAttempt_IncrementsAfterTerminalNudge(t *testing.T) {
 func TestDispatchReadyWaitNudges_EnqueuesDeterministicNudge(t *testing.T) {
 	setWaitTestFileBeads(t)
 	dir := t.TempDir()
-	store, err := openCityStoreAt(context.Background(), dir)
+	store, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1764,10 +1764,10 @@ func TestDispatchReadyWaitNudges_EnqueuesDeterministicNudge(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	if err := dispatchReadyWaitNudges(context.Background(), dir, store, sp, time.Now().UTC()); err != nil {
+	if err := dispatchReadyWaitNudges(dir, store, sp, time.Now().UTC()); err != nil {
 		t.Fatalf("dispatchReadyWaitNudges: %v", err)
 	}
-	pending, inFlight, dead, err := listQueuedNudges(context.Background(), dir, "worker", time.Now().UTC())
+	pending, inFlight, dead, err := listQueuedNudges(dir, "worker", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("listQueuedNudges: %v", err)
 	}
@@ -1787,7 +1787,7 @@ func TestDispatchReadyWaitNudges_EnqueuesDeterministicNudge(t *testing.T) {
 	if pending[0].BeadID == "" {
 		t.Fatal("queued nudge bead_id is empty")
 	}
-	refreshedStore, err := openCityStoreAt(context.Background(), dir)
+	refreshedStore, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(refresh): %v", err)
 	}
@@ -1834,7 +1834,7 @@ func TestDispatchReadyWaitNudges_UsesOpenSessionSnapshotInsteadOfWorkerRunningCh
 	}
 	sp := runtime.NewFake()
 
-	if err := dispatchReadyWaitNudges(context.Background(), dir, store, sp, time.Now().UTC()); err != nil {
+	if err := dispatchReadyWaitNudges(dir, store, sp, time.Now().UTC()); err != nil {
 		t.Fatalf("dispatchReadyWaitNudges: %v", err)
 	}
 	for _, id := range store.getIDs {
@@ -1886,10 +1886,10 @@ func TestDispatchReadyWaitNudges_ProcessesOpenSessionWaitsWithoutGlobalWaitList(
 	}
 	sp := runtime.NewFake()
 
-	if err := dispatchReadyWaitNudges(context.Background(), dir, store, sp, time.Now().UTC()); err != nil {
+	if err := dispatchReadyWaitNudges(dir, store, sp, time.Now().UTC()); err != nil {
 		t.Fatalf("dispatchReadyWaitNudges: %v", err)
 	}
-	pending, _, _, err := listQueuedNudges(context.Background(), dir, "worker", time.Now().UTC())
+	pending, _, _, err := listQueuedNudges(dir, "worker", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("listQueuedNudges: %v", err)
 	}
@@ -1946,7 +1946,7 @@ func TestDispatchReadyWaitNudges_ContinuesWhenOneSessionLookupCaps(t *testing.T)
 	}
 	store := waitOneSessionListLimitStore{Store: base, sessionID: cappedSession.ID}
 
-	if err := dispatchReadyWaitNudges(context.Background(), dir, store, runtime.NewFake(), time.Now().UTC()); err != nil {
+	if err := dispatchReadyWaitNudges(dir, store, runtime.NewFake(), time.Now().UTC()); err != nil {
 		t.Fatalf("dispatchReadyWaitNudges: %v", err)
 	}
 	updated, err := base.Get(waitBead.ID)
@@ -1996,7 +1996,7 @@ func TestDispatchReadyWaitNudges_SkipsClosedSessionWithoutBackingGet(t *testing.
 	}
 	sp := runtime.NewFake()
 
-	if err := dispatchReadyWaitNudges(context.Background(), dir, store, sp, time.Now().UTC()); err != nil {
+	if err := dispatchReadyWaitNudges(dir, store, sp, time.Now().UTC()); err != nil {
 		t.Fatalf("dispatchReadyWaitNudges: %v", err)
 	}
 	for _, id := range store.getIDs {
@@ -2057,7 +2057,7 @@ func TestDispatchReadyWaitNudges_StartsCodexPoller(t *testing.T) {
 	}
 	t.Cleanup(func() { startNudgePoller = prev })
 
-	if err := dispatchReadyWaitNudges(context.Background(), dir, store, sp, time.Now().UTC()); err != nil {
+	if err := dispatchReadyWaitNudges(dir, store, sp, time.Now().UTC()); err != nil {
 		t.Fatalf("dispatchReadyWaitNudges: %v", err)
 	}
 	if !called {
@@ -2113,7 +2113,7 @@ func TestDispatchReadyWaitNudges_StartsPiPoller(t *testing.T) {
 	}
 	t.Cleanup(func() { startNudgePoller = prev })
 
-	if err := dispatchReadyWaitNudges(context.Background(), dir, store, sp, time.Now().UTC()); err != nil {
+	if err := dispatchReadyWaitNudges(dir, store, sp, time.Now().UTC()); err != nil {
 		t.Fatalf("dispatchReadyWaitNudges: %v", err)
 	}
 	if !called {
@@ -2158,7 +2158,7 @@ func TestDispatchReadyWaitNudges_PropagatesNudgeIDMetadataFailure(t *testing.T) 
 		t.Fatalf("Start: %v", err)
 	}
 
-	err = dispatchReadyWaitNudges(context.Background(), dir, store, sp, time.Now().UTC())
+	err = dispatchReadyWaitNudges(dir, store, sp, time.Now().UTC())
 	if err == nil || !strings.Contains(err.Error(), "setting wait nudge_id") {
 		t.Fatalf("dispatchReadyWaitNudges error = %v, want nudge_id failure", err)
 	}
@@ -2207,7 +2207,7 @@ func TestDispatchReadyWaitNudges_PropagatesPollerFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { startNudgePoller = prev })
 
-	err = dispatchReadyWaitNudges(context.Background(), dir, store, sp, time.Now().UTC())
+	err = dispatchReadyWaitNudges(dir, store, sp, time.Now().UTC())
 	if err == nil || !strings.Contains(err.Error(), "starting wait nudge poller") {
 		t.Fatalf("dispatchReadyWaitNudges error = %v, want poller failure", err)
 	}
@@ -2220,15 +2220,15 @@ func TestWithdrawQueuedWaitNudges_RemovesQueuedNudge(t *testing.T) {
 		ID:        "wait-gc-1-1-1",
 		Reference: &nudgeReference{Kind: "bead", ID: "gc-1"},
 	})
-	if err := enqueueQueuedNudge(context.Background(), dir, item); err != nil {
+	if err := enqueueQueuedNudge(dir, item); err != nil {
 		t.Fatalf("enqueueQueuedNudge: %v", err)
 	}
 
-	if err := withdrawQueuedWaitNudges(context.Background(), dir, []string{item.ID}); err != nil {
+	if err := withdrawQueuedWaitNudges(dir, []string{item.ID}); err != nil {
 		t.Fatalf("withdrawQueuedWaitNudges: %v", err)
 	}
 
-	pending, inFlight, dead, err := listQueuedNudges(context.Background(), dir, "worker", time.Now())
+	pending, inFlight, dead, err := listQueuedNudges(dir, "worker", time.Now())
 	if err != nil {
 		t.Fatalf("listQueuedNudges: %v", err)
 	}
@@ -2236,7 +2236,7 @@ func TestWithdrawQueuedWaitNudges_RemovesQueuedNudge(t *testing.T) {
 		t.Fatalf("pending=%d inFlight=%d dead=%d, want all zero", len(pending), len(inFlight), len(dead))
 	}
 
-	store, err := openCityStoreAt(context.Background(), dir)
+	store, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -2276,7 +2276,7 @@ func TestCancelWaitsForSession(t *testing.T) {
 		t.Fatalf("create wait bead: %v", err)
 	}
 
-	if err := cancelWaitsForSession(context.Background(), sessionFrontDoor(store), sessionBead.ID); err != nil {
+	if err := cancelWaitsForSession(sessionFrontDoor(store), sessionBead.ID); err != nil {
 		t.Fatalf("cancelWaitsForSession: %v", err)
 	}
 	updated, err := store.Get(waitBead.ID)
@@ -2316,7 +2316,7 @@ func TestCancelWaitsForSessionReturnsNilAfterCappedConvergence(t *testing.T) {
 		waitIDs = append(waitIDs, waitBead.ID)
 	}
 
-	if err := cancelWaitsForSession(context.Background(), sessionFrontDoor(store), sessionBead.ID); err != nil {
+	if err := cancelWaitsForSession(sessionFrontDoor(store), sessionBead.ID); err != nil {
 		t.Fatalf("cancelWaitsForSession: %v", err)
 	}
 	for _, id := range waitIDs {
@@ -2461,7 +2461,7 @@ start_command = "true"
 	}
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openCityStoreAt(context.Background(), cityPath)
+	store, err := openCityStoreAt(cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -2474,7 +2474,7 @@ start_command = "true"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSessionWait(context.Background(), []string{"worker"}, []string{dep.ID}, false, "block", false, &stdout, &stderr)
+	code := cmdSessionWait([]string{"worker"}, []string{dep.ID}, false, "block", false, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("cmdSessionWait() = 0, want failure; stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
@@ -2613,11 +2613,11 @@ prefix = "fe"
 	dep := beads.Bead{ID: "fe-1", Title: "rig dep", Status: "closed", Type: "task"}
 	writeTestFileStoreBeads(t, rigPath, []beads.Bead{dep})
 
-	cityStore, err := openCityStoreAt(context.Background(), cityPath)
+	cityStore, err := openCityStoreAt(cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigPath, cityPath)
+	rigStore, err := openStoreAtForCity(rigPath, cityPath)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2642,11 +2642,11 @@ prefix = "fe"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSessionWait(context.Background(), []string{sessionBead.ID}, []string{dep.ID}, false, "block", false, &stdout, &stderr)
+	code := cmdSessionWait([]string{sessionBead.ID}, []string{dep.ID}, false, "block", false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSessionWait() = %d, want success; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	cityStore, err = openCityStoreAt(context.Background(), cityPath)
+	cityStore, err = openCityStoreAt(cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(reload): %v", err)
 	}
@@ -2829,13 +2829,13 @@ func setupFreshManagedBdWaitTestCity(t *testing.T) string {
 	t.Setenv("GC_CITY", cityPath)
 	t.Setenv("GC_CITY_PATH", cityPath)
 	materializeBuiltinPacksForTest(t, cityPath)
-	if err := ensureBeadsProvider(context.Background(), cityPath); err != nil {
+	if err := ensureBeadsProvider(cityPath); err != nil {
 		t.Fatalf("ensureBeadsProvider: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = shutdownBeadsProvider(context.Background(), cityPath)
+		_ = shutdownBeadsProvider(cityPath)
 	})
-	if err := initAndHookDir(context.Background(), cityPath, cityPath, "gc"); err != nil {
+	if err := initAndHookDir(cityPath, cityPath, "gc"); err != nil {
 		t.Fatalf("initAndHookDir(city): %v", err)
 	}
 	if err := publishManagedDoltRuntimeState(cityPath); err != nil {
@@ -3139,7 +3139,7 @@ func TestRouteWaitList_SixRowMatrix(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := routeWaitList(context.Background(), cityPath, c, tc.nilReason, "", "", false, &stdout, &stderr)
+			code := routeWaitList(cityPath, c, tc.nilReason, "", "", false, &stdout, &stderr)
 
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
@@ -3200,7 +3200,7 @@ func TestRouteWaitInspect_SixRowMatrix(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := routeWaitInspect(context.Background(), cityPath, c, tc.nilReason, "ga-missing", false, &stdout, &stderr)
+			code := routeWaitInspect(cityPath, c, tc.nilReason, "ga-missing", false, &stdout, &stderr)
 
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
@@ -3251,7 +3251,7 @@ func TestRouteWaitList_PassesWaitBeadLabelConstant(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeWaitList(context.Background(), cityPath, c, "", "", "", false, &stdout, &stderr); code != 0 {
+	if code := routeWaitList(cityPath, c, "", "", "", false, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	if gotQuery != sessionpkg.WaitBeadLabel {
@@ -3277,7 +3277,7 @@ func TestRouteWaitList_StaleBannerOver30s(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeWaitList(context.Background(), cityPath, c, "", "", "", false, &stdout, &stderr); code != 0 {
+	if code := routeWaitList(cityPath, c, "", "", "", false, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "cache age: 45s") {
@@ -3314,7 +3314,7 @@ func TestRouteWaitList_ThreeRungByteIdentical(t *testing.T) {
 
 	// Read the persisted waits back the way the local rung will (reopened store),
 	// so the mock wire values match the local rung's CreatedAt exactly.
-	reopened, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reopened, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -3389,7 +3389,7 @@ func TestRouteWaitList_ThreeRungByteIdentical(t *testing.T) {
 
 	run := func(c *api.Client, nilReason string) string {
 		var stdout, stderr bytes.Buffer
-		if code := routeWaitList(context.Background(), cityDir, c, nilReason, "", "", true, &stdout, &stderr); code != 0 {
+		if code := routeWaitList(cityDir, c, nilReason, "", "", true, &stdout, &stderr); code != 0 {
 			t.Fatalf("routeWaitList exit=%d stderr=%q", code, stderr.String())
 		}
 		return stdout.String()
@@ -3532,13 +3532,13 @@ func TestLoadWaitDependencyBeadReadsTheBindingOnAMigratedCity(t *testing.T) {
 		t.Fatalf("closing the binding handle: %v", err)
 	}
 
-	cityStore, err := openCityStoreAt(context.Background(), cityPath)
+	cityStore, err := openCityStoreAt(cityPath)
 	if err != nil {
 		t.Fatalf("opening the work store: %v", err)
 	}
 	t.Cleanup(func() { _ = closeBeadStoreHandle(cityStore) })
 
-	got, err := loadWaitDependencyBead(context.Background(), cityPath, cityStore, dep.ID)
+	got, err := loadWaitDependencyBead(cityPath, cityStore, dep.ID)
 	if err != nil {
 		t.Fatalf("loadWaitDependencyBead(%s): %v; a dependency the reader cannot see is consumed as a deleted one, which fails the wait", dep.ID, err)
 	}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -545,7 +544,7 @@ func TestBuildDoctorChecksSkipsImportStateCheckWhenCityConfigInvalid(t *testing.
 		t.Fatal(err)
 	}
 
-	names := doctorCheckNames(buildDoctorChecks(context.Background(), cityDir, nil, os.ErrInvalid, buildDoctorChecksOpts{
+	names := doctorCheckNames(buildDoctorChecks(cityDir, nil, os.ErrInvalid, buildDoctorChecksOpts{
 		ControllerRunning:    false,
 		SupervisorRunning:    false,
 		SkipCityDoltCheck:    true,

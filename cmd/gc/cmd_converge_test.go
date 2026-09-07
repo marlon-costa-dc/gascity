@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -53,11 +52,11 @@ func TestConvergeListAllRigsAggregatesCityAndRigStores(t *testing.T) {
 	if err := ensurePersistedScopeLocalFileStore(rigDir); err != nil {
 		t.Fatalf("ensuring rig file store: %v", err)
 	}
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open city store: %v", err)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("open rig store: %v", err)
 	}
@@ -135,11 +134,11 @@ func TestConvergeListAllRigsContinuesAfterRigStoreError(t *testing.T) {
 	if err := ensurePersistedScopeLocalFileStore(frontendRigPath); err != nil {
 		t.Fatalf("ensuring frontend rig file store: %v", err)
 	}
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open city store: %v", err)
 	}
-	frontendStore, err := openStoreAtForCity(context.Background(), frontendRigPath, cityDir)
+	frontendStore, err := openStoreAtForCity(frontendRigPath, cityDir)
 	if err != nil {
 		t.Fatalf("open frontend store: %v", err)
 	}
@@ -210,11 +209,11 @@ func TestConvergeListAllRigsAppliesStateFilterAcrossScopes(t *testing.T) {
 	if err := ensurePersistedScopeLocalFileStore(rigDir); err != nil {
 		t.Fatalf("ensuring rig file store: %v", err)
 	}
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open city store: %v", err)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("open rig store: %v", err)
 	}
@@ -341,7 +340,7 @@ func TestConvergeTestGateUsesRigStorePath(t *testing.T) {
 	if err := ensurePersistedScopeLocalFileStore(rigDir); err != nil {
 		t.Fatalf("ensuring rig file store: %v", err)
 	}
-	store, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	store, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}

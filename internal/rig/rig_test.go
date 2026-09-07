@@ -1,7 +1,6 @@
 package rig
 
 import (
-	"context"
 	"path/filepath"
 	"testing"
 
@@ -13,15 +12,14 @@ import (
 // no-op stubs, so validation passes and Provision reaches its core.
 func stubDeps(cityPath string) Deps {
 	return Deps{
-		Ctx:      context.Background(),
 		FS:       fsys.OSFS{},
 		CityPath: cityPath,
 		Cfg:      &config.City{},
 		ComposePacks: func(string, []config.BoundImport) ([]config.BoundImport, func() error, error) {
 			return nil, nil, nil
 		},
-		InitStore:   func(context.Context, string, string, string) (bool, error) { return false, nil },
-		InitAndHook: func(context.Context, string, string, string) error { return nil },
+		InitStore:   func(string, string, string) (bool, error) { return false, nil },
+		InitAndHook: func(string, string, string) error { return nil },
 		WriteRoutes: func(string, *config.City) error { return nil },
 	}
 }

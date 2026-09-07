@@ -45,12 +45,12 @@ import (
 func convergedSplitCookCity(t *testing.T) (cityDir string, cfg *config.City, work beads.Store, target infraBindingTarget) {
 	t.Helper()
 	cityDir = oneShotCookCity(t)
-	work, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	work, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open work store: %v", err)
 	}
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) { return work, nil }
+	openInfraMigrationSource = func(string) (beads.Store, error) { return work, nil }
 	t.Cleanup(func() { openInfraMigrationSource = prev })
 
 	// One infrastructure bead so the proven-copy manifest is non-empty: an
@@ -74,7 +74,7 @@ func storageStatusExit(t *testing.T, cityPath string, cfg *config.City) (int, st
 	t.Helper()
 	stubInfraControllerPing(t, 0)
 	var stdout, stderr bytes.Buffer
-	code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr)
+	code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr)
 	return code, stdout.String() + stderr.String()
 }
 
@@ -243,10 +243,10 @@ func rigScopedSplitCookCity(t *testing.T) (rig, cityWork, graph beads.Store) {
 	rigFlag = ""
 	t.Setenv("GC_RIG", "wf")
 
-	if rig, err = openStoreAtForCity(context.Background(), rigDir, cityDir); err != nil {
+	if rig, err = openStoreAtForCity(rigDir, cityDir); err != nil {
 		t.Fatalf("open rig store: %v", err)
 	}
-	if cityWork, err = openStoreAtForCity(context.Background(), cityDir, cityDir); err != nil {
+	if cityWork, err = openStoreAtForCity(cityDir, cityDir); err != nil {
 		t.Fatalf("open city work store: %v", err)
 	}
 	if got := beadIDs(allBeads(t, cityWork)); len(got) != 0 {

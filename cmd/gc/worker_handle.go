@@ -362,7 +362,7 @@ func resolvedWorkerSessionConfigWithConfig(
 	// template_resolve.go: resolved.Env is config-authored, so a provider spec
 	// naming one of those keys would otherwise overwrite the empty value the
 	// passthrough pinned. This resolver never routes through ScrubTokenEnv.
-	sessionEnv := mergeEnv(providerProcessPassthroughEnvForResolvedProvider(resolved), resolved.Env, processenv.ControllerOnlyEnvOverlay())
+	sessionEnv := mergeEnv(providerProcessPassthroughEnv(), resolved.Env, processenv.ControllerOnlyEnvOverlay())
 	if strings.TrimSpace(cityPath) != "" {
 		sessionEnv = mergeEnv(sessionEnv, cityIdentityAnchorsForCity(cityPath))
 	}

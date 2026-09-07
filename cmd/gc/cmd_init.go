@@ -376,12 +376,12 @@ committed workspace — e.g. from a bootstrap.sh shipped in the repo).`,
 			}, os.Getenv)
 			if fromFlag != "" {
 				mode = "from"
-				code := cmdInitFromDirWithOptionsInternal(runCmd.Context(), fromFlag, args, nameFlag, out, stderr, skipProviderReadiness, noStart, hostedEndpoint)
+				code := cmdInitFromDirWithOptionsInternal(fromFlag, args, nameFlag, out, stderr, skipProviderReadiness, noStart, hostedEndpoint)
 				return writeInitJSONOrExit(code, jsonOut, args, nameFlag, "", "", nil, bootstrapProfileFlag, mode, stdout)
 			}
 			if fileFlag != "" {
 				mode = "file"
-				code := cmdInitFromFileWithOptionsInternal(runCmd.Context(), fileFlag, args, nameFlag, out, stderr, skipProviderReadiness, preserveExisting, noStart)
+				code := cmdInitFromFileWithOptionsInternal(fileFlag, args, nameFlag, out, stderr, skipProviderReadiness, preserveExisting, noStart)
 				return writeInitJSONOrExit(code, jsonOut, args, nameFlag, "", "", nil, bootstrapProfileFlag, mode, stdout)
 			}
 			wiz, flagMode, err := initWizardConfigFromFlags(runCmd, providerFlag, defaultProviderFlag, providersFlag, templateFlag, bootstrapProfileFlag, hostedEndpoint, skipProviderReadiness)
@@ -392,7 +392,7 @@ committed workspace — e.g. from a bootstrap.sh shipped in the repo).`,
 			if flagMode != "" {
 				mode = flagMode
 			}
-			code := cmdInitWithPreparedWizardInternal(runCmd.Context(), args, wiz, flagMode != "", nameFlag, out, stderr, skipProviderReadiness, preserveExisting, jsonOut, noStart)
+			code := cmdInitWithPreparedWizardInternal(args, wiz, flagMode != "", nameFlag, out, stderr, skipProviderReadiness, preserveExisting, jsonOut, noStart)
 			return writeInitJSONOrExit(code, jsonOut, args, nameFlag, wiz.configName, wizardDefaultProvider(wiz), wizardProviders(wiz), bootstrapProfileFlag, mode, stdout)
 		},
 	}
@@ -484,15 +484,15 @@ func initTargetPath(args []string) (string, error) {
 // Runs the interactive wizard to choose a config template and provider.
 // Creates the runtime scaffold and city.toml. If the bead provider is "bd", also
 // runs bd init.
-func cmdInit(ctx context.Context, args []string, providerFlag, bootstrapProfileFlag string, stdout, stderr io.Writer) int {
-	return cmdInitWithOptions(ctx, args, providerFlag, bootstrapProfileFlag, stdout, stderr, false)
+func cmdInit(args []string, providerFlag, bootstrapProfileFlag string, stdout, stderr io.Writer) int {
+	return cmdInitWithOptions(args, providerFlag, bootstrapProfileFlag, stdout, stderr, false)
 }
 
-func cmdInitWithOptions(ctx context.Context, args []string, providerFlag, bootstrapProfileFlag string, stdout, stderr io.Writer, skipProviderReadiness bool) int {
-	return cmdInitWithOptionsInternal(ctx, args, providerFlag, bootstrapProfileFlag, "", stdout, stderr, skipProviderReadiness, false, false)
+func cmdInitWithOptions(args []string, providerFlag, bootstrapProfileFlag string, stdout, stderr io.Writer, skipProviderReadiness bool) int {
+	return cmdInitWithOptionsInternal(args, providerFlag, bootstrapProfileFlag, "", stdout, stderr, skipProviderReadiness, false, false)
 }
 
-func cmdInitWithOptionsInternal(ctx context.Context, args []string, providerFlag, bootstrapProfileFlag, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, forceDefaultWizard bool) int {
+func cmdInitWithOptionsInternal(args []string, providerFlag, bootstrapProfileFlag, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, forceDefaultWizard bool) int {
 	var prepared wizardConfig
 	preparedSet := false
 	if providerFlag != "" || bootstrapProfileFlag != "" {
@@ -504,14 +504,14 @@ func cmdInitWithOptionsInternal(ctx context.Context, args []string, providerFlag
 		}
 		preparedSet = true
 	}
-	return cmdInitWithPreparedWizard(ctx, args, prepared, preparedSet, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, forceDefaultWizard)
+	return cmdInitWithPreparedWizard(args, prepared, preparedSet, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, forceDefaultWizard)
 }
 
-func cmdInitWithPreparedWizard(ctx context.Context, args []string, prepared wizardConfig, preparedSet bool, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, forceDefaultWizard bool) int {
-	return cmdInitWithPreparedWizardInternal(ctx, args, prepared, preparedSet, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, forceDefaultWizard, false)
+func cmdInitWithPreparedWizard(args []string, prepared wizardConfig, preparedSet bool, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, forceDefaultWizard bool) int {
+	return cmdInitWithPreparedWizardInternal(args, prepared, preparedSet, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, forceDefaultWizard, false)
 }
 
-func cmdInitWithPreparedWizardInternal(ctx context.Context, args []string, prepared wizardConfig, preparedSet bool, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, forceDefaultWizard bool, noStart bool) int {
+func cmdInitWithPreparedWizardInternal(args []string, prepared wizardConfig, preparedSet bool, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, forceDefaultWizard bool, noStart bool) int {
 	var cityPath string
 	if len(args) > 0 {
 		var err error
@@ -528,7 +528,7 @@ func cmdInitWithPreparedWizardInternal(ctx context.Context, args []string, prepa
 			return 1
 		}
 	}
-	if handled, code := resumeExistingInitIfPossibleInternal(ctx, fsys.OSFS{}, cityPath, stdout, stderr, "gc init", true, skipProviderReadiness, noStart); handled {
+	if handled, code := resumeExistingInitIfPossibleInternal(fsys.OSFS{}, cityPath, stdout, stderr, "gc init", true, skipProviderReadiness, noStart); handled {
 		return code
 	}
 	var wiz wizardConfig
@@ -554,7 +554,7 @@ func cmdInitWithPreparedWizardInternal(ctx context.Context, args []string, prepa
 	if code := doInit(fsys.OSFS{}, cityPath, wiz, nameOverride, stdout, stderr, preserveExisting); code != 0 {
 		return code
 	}
-	return finalizeInit(ctx, cityPath, stdout, stderr, initFinalizeOptions{
+	return finalizeInit(cityPath, stdout, stderr, initFinalizeOptions{
 		skipProviderReadiness: skipProviderReadiness,
 		showProgress:          true,
 		commandName:           "gc init",
@@ -562,14 +562,14 @@ func cmdInitWithPreparedWizardInternal(ctx context.Context, args []string, prepa
 	})
 }
 
-func resumeExistingInitIfPossibleInternal(ctx context.Context, fs fsys.FS, cityPath string, stdout, stderr io.Writer, commandName string, showProgress bool, skipProviderReadiness bool, noStart bool) (bool, int) {
+func resumeExistingInitIfPossibleInternal(fs fsys.FS, cityPath string, stdout, stderr io.Writer, commandName string, showProgress bool, skipProviderReadiness bool, noStart bool) (bool, int) {
 	if !cityCanResumeInitFS(fs, cityPath) {
 		return false, 0
 	}
 	if stdout != nil {
 		fmt.Fprintf(stdout, "City %q already exists; reusing existing configuration and resuming startup checks.\n", filepath.Base(cityPath)) //nolint:errcheck // best-effort stdout
 	}
-	return true, finalizeInit(ctx, cityPath, stdout, stderr, initFinalizeOptions{
+	return true, finalizeInit(cityPath, stdout, stderr, initFinalizeOptions{
 		skipProviderReadiness: skipProviderReadiness,
 		showProgress:          showProgress,
 		commandName:           commandName,
@@ -1093,11 +1093,11 @@ func appendUniqueStrings(dst []string, items ...string) []string {
 	return dst
 }
 
-func cmdInitFromFileWithOptions(ctx context.Context, fileArg string, args []string, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool) int {
-	return cmdInitFromFileWithOptionsInternal(ctx, fileArg, args, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, false)
+func cmdInitFromFileWithOptions(fileArg string, args []string, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool) int {
+	return cmdInitFromFileWithOptionsInternal(fileArg, args, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, false)
 }
 
-func cmdInitFromFileWithOptionsInternal(ctx context.Context, fileArg string, args []string, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, noStart bool) int {
+func cmdInitFromFileWithOptionsInternal(fileArg string, args []string, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, noStart bool) int {
 	var cityPath string
 	if len(args) > 0 {
 		var err error
@@ -1115,20 +1115,20 @@ func cmdInitFromFileWithOptionsInternal(ctx context.Context, fileArg string, arg
 		}
 	}
 
-	return cmdInitFromTOMLFileWithOptionsInternal(ctx, fsys.OSFS{}, fileArg, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, noStart)
+	return cmdInitFromTOMLFileWithOptionsInternal(fsys.OSFS{}, fileArg, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, noStart)
 }
 
 // cmdInitFromTOMLFile initializes a city by copying a user-provided TOML
 // file as city.toml. Creates the runtime scaffold, visible roots, and runs bead init.
-func cmdInitFromTOMLFile(ctx context.Context, fs fsys.FS, tomlSrc, cityPath string, stdout, stderr io.Writer) int {
-	return cmdInitFromTOMLFileWithOptions(ctx, fs, tomlSrc, cityPath, "", stdout, stderr, false, false)
+func cmdInitFromTOMLFile(fs fsys.FS, tomlSrc, cityPath string, stdout, stderr io.Writer) int {
+	return cmdInitFromTOMLFileWithOptions(fs, tomlSrc, cityPath, "", stdout, stderr, false, false)
 }
 
-func cmdInitFromTOMLFileWithOptions(ctx context.Context, fs fsys.FS, tomlSrc, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool) int {
-	return cmdInitFromTOMLFileWithOptionsInternal(ctx, fs, tomlSrc, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, false)
+func cmdInitFromTOMLFileWithOptions(fs fsys.FS, tomlSrc, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool) int {
+	return cmdInitFromTOMLFileWithOptionsInternal(fs, tomlSrc, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, preserveExisting, false)
 }
 
-func cmdInitFromTOMLFileWithOptionsInternal(ctx context.Context, fs fsys.FS, tomlSrc, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, noStart bool) int {
+func cmdInitFromTOMLFileWithOptionsInternal(fs fsys.FS, tomlSrc, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness, preserveExisting bool, noStart bool) int {
 	// Validate the source file parses as a valid city config.
 	data, err := os.ReadFile(tomlSrc)
 	if err != nil {
@@ -1277,7 +1277,7 @@ func cmdInitFromTOMLFileWithOptionsInternal(ctx context.Context, fs fsys.FS, tom
 
 	fmt.Fprintf(stdout, "Welcome to Gas City!\n")                                           //nolint:errcheck // best-effort stdout
 	fmt.Fprintf(stdout, "Initialized city %q from %s.\n", cityName, filepath.Base(tomlSrc)) //nolint:errcheck // best-effort stdout
-	return finalizeInit(ctx, cityPath, stdout, stderr, initFinalizeOptions{
+	return finalizeInit(cityPath, stdout, stderr, initFinalizeOptions{
 		skipProviderReadiness: skipProviderReadiness,
 		commandName:           "gc init",
 		noStart:               noStart,
@@ -1729,7 +1729,7 @@ func resolveCityName(nameOverride, sourceName, cityPath string) string {
 	return cityinit.ResolveCityName(nameOverride, sourceName, cityPath)
 }
 
-func cmdInitFromDirWithOptionsInternal(ctx context.Context, fromDir string, args []string, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool, noStart bool, hosted hostedDoltInitOptions) int {
+func cmdInitFromDirWithOptionsInternal(fromDir string, args []string, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool, noStart bool, hosted hostedDoltInitOptions) int {
 	var cityPath string
 	if len(args) > 0 {
 		var err error
@@ -1753,24 +1753,24 @@ func cmdInitFromDirWithOptionsInternal(ctx context.Context, fromDir string, args
 		return 1
 	}
 
-	return doInitFromDirWithOptionsInternal(ctx, srcDir, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, noStart, hosted)
+	return doInitFromDirWithOptionsInternal(srcDir, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, noStart, hosted)
 }
 
 // doInitFromDir copies an example city directory to a new city path,
 // writes machine-local workspace identity to .gc/site.toml, and
 // installs the standard runtime scaffold.
-func doInitFromDir(ctx context.Context, srcDir, cityPath string, stdout, stderr io.Writer) int {
-	return doInitFromDirWithOptions(ctx, srcDir, cityPath, "", stdout, stderr, false)
+func doInitFromDir(srcDir, cityPath string, stdout, stderr io.Writer) int {
+	return doInitFromDirWithOptions(srcDir, cityPath, "", stdout, stderr, false)
 }
 
-func doInitFromDirWithOptionsFS(ctx context.Context, fs fsys.FS, srcDir, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool) int {
-	return doInitFromDirWithOptionsFSInternal(ctx, fs, srcDir, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, false, hostedDoltInitOptions{})
+func doInitFromDirWithOptionsFS(fs fsys.FS, srcDir, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool) int {
+	return doInitFromDirWithOptionsFSInternal(fs, srcDir, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, false, hostedDoltInitOptions{})
 }
 
-func doInitFromDirWithOptionsFSInternal(ctx context.Context, fs fsys.FS, srcDir, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool, noStart bool, hosted hostedDoltInitOptions) int {
+func doInitFromDirWithOptionsFSInternal(fs fsys.FS, srcDir, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool, noStart bool, hosted hostedDoltInitOptions) int {
 	// Validate the supplied endpoint before touching the filesystem: a rejected
 	// endpoint must not leave a partially-copied destination behind, which would
-	// make the corrected invocation fail with "already initialized".
+	// make the corrected retry fail with "already initialized".
 	if err := hosted.validate(); err != nil {
 		fmt.Fprintf(stderr, "gc init: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -1880,19 +1880,19 @@ func doInitFromDirWithOptionsFSInternal(ctx context.Context, fs fsys.FS, srcDir,
 
 	fmt.Fprintln(stdout, "Welcome to Gas City!")                                           //nolint:errcheck // best-effort stdout
 	fmt.Fprintf(stdout, "Initialized city %q from %s.\n", cityName, filepath.Base(srcDir)) //nolint:errcheck // best-effort stdout
-	return finalizeInit(ctx, cityPath, stdout, stderr, initFinalizeOptions{
+	return finalizeInit(cityPath, stdout, stderr, initFinalizeOptions{
 		skipProviderReadiness: skipProviderReadiness,
 		commandName:           "gc init",
 		noStart:               noStart,
 	})
 }
 
-func doInitFromDirWithOptions(ctx context.Context, srcDir, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool) int {
-	return doInitFromDirWithOptionsFS(ctx, fsys.OSFS{}, srcDir, cityPath, nameOverride, stdout, stderr, skipProviderReadiness)
+func doInitFromDirWithOptions(srcDir, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool) int {
+	return doInitFromDirWithOptionsFS(fsys.OSFS{}, srcDir, cityPath, nameOverride, stdout, stderr, skipProviderReadiness)
 }
 
-func doInitFromDirWithOptionsInternal(ctx context.Context, srcDir, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool, noStart bool, hosted hostedDoltInitOptions) int {
-	return doInitFromDirWithOptionsFSInternal(ctx, fsys.OSFS{}, srcDir, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, noStart, hosted)
+func doInitFromDirWithOptionsInternal(srcDir, cityPath, nameOverride string, stdout, stderr io.Writer, skipProviderReadiness bool, noStart bool, hosted hostedDoltInitOptions) int {
+	return doInitFromDirWithOptionsFSInternal(fsys.OSFS{}, srcDir, cityPath, nameOverride, stdout, stderr, skipProviderReadiness, noStart, hosted)
 }
 
 // rewriteCopiedInitFromIdentity rewrites the copied city.toml with the resolved

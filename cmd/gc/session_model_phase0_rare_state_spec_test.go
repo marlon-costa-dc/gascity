@@ -1123,7 +1123,7 @@ func phase0StatusTextForConfig(t *testing.T, cfg *config.City) string {
 	dops := newDrainOps(sp)
 
 	var stdout strings.Builder
-	if code := doCityStatus(context.Background(), sp, dops, cfg, t.TempDir(), &stdout, &strings.Builder{}); code != 0 {
+	if code := doCityStatus(sp, dops, cfg, t.TempDir(), &stdout, &strings.Builder{}); code != 0 {
 		t.Fatalf("doCityStatus() = %d, want 0", code)
 	}
 	return strings.ToLower(stdout.String())

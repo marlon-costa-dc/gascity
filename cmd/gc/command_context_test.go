@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -177,7 +176,7 @@ func TestRigAnywhere_CmdStopFromRigDir(t *testing.T) {
 			setCwd(t, fx.workDir)
 
 			var stdout, stderr bytes.Buffer
-			code := cmdStop(context.Background(), nil, &stdout, &stderr, 0, false)
+			code := cmdStop(nil, &stdout, &stderr, 0, false)
 			if code != 0 {
 				t.Fatalf("cmdStop() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 			}
@@ -239,7 +238,7 @@ func TestRigAnywhere_CmdRigStatusFromRigDir(t *testing.T) {
 			setCwd(t, fx.workDir)
 
 			var stdout, stderr bytes.Buffer
-			code := cmdRigStatus(context.Background(), nil, false, &stdout, &stderr)
+			code := cmdRigStatus(nil, false, &stdout, &stderr)
 			if code != 0 {
 				t.Fatalf("cmdRigStatus() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 			}
@@ -261,7 +260,7 @@ func TestRigAnywhere_CmdRigRestartFromRigDir(t *testing.T) {
 			setCwd(t, fx.workDir)
 
 			var stdout, stderr bytes.Buffer
-			code := cmdRigRestart(context.Background(), nil, &stdout, &stderr)
+			code := cmdRigRestart(nil, &stdout, &stderr)
 			if code != 0 {
 				t.Fatalf("cmdRigRestart() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 			}

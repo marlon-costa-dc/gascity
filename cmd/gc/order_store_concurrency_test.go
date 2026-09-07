@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"sync"
 	"testing"
@@ -23,7 +22,7 @@ func TestCachedOrderHistoryStoresResolverIsConcurrencySafe(t *testing.T) {
 		t.Fatalf("loadCityConfig: %v", err)
 	}
 
-	resolve := cachedOrderHistoryStoresResolver(context.Background(), cityPath, cfg, io.Discard)
+	resolve := cachedOrderHistoryStoresResolver(cityPath, cfg, io.Discard)
 
 	// Distinct orders so the resolver races on inserting cache entries, not
 	// just on reading one already-populated key.

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -222,7 +221,7 @@ url = "https://example.com/{{.AgentName}}"
 Authorization = "Bearer top-secret"
 `)
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}

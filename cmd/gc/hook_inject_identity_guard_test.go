@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,7 +55,7 @@ func TestMailCheckInjectSilentWithoutManagedIdentity(t *testing.T) {
 	unmanagedInjectEnv(t)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdMailCheckWithFormat(context.Background(), nil, true, "", &stdout, &stderr)
+	code := cmdMailCheckWithFormat(nil, true, "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdMailCheckWithFormat = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -70,7 +69,7 @@ func TestNudgeDrainInjectSilentWithoutManagedIdentity(t *testing.T) {
 	unmanagedInjectEnv(t)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdNudgeDrainWithFormat(context.Background(), nil, true, "", &stdout, &stderr)
+	code := cmdNudgeDrainWithFormat(nil, true, "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdNudgeDrainWithFormat = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -86,7 +85,7 @@ func TestMailCheckInjectHonorsAnExplicitTarget(t *testing.T) {
 	unmanagedInjectEnv(t)
 
 	var stdout, stderr bytes.Buffer
-	_ = cmdMailCheckWithFormat(context.Background(), []string{"mayor"}, true, "", &stdout, &stderr)
+	_ = cmdMailCheckWithFormat([]string{"mayor"}, true, "", &stdout, &stderr)
 	if stdout.String() == "" && stderr.String() == "" {
 		t.Fatal("an explicitly named target must not be silenced by the identity guard")
 	}
@@ -98,7 +97,7 @@ func TestMailCheckWithoutInjectUnaffectedByGuard(t *testing.T) {
 	unmanagedInjectEnv(t)
 
 	var stdout, stderr bytes.Buffer
-	_ = cmdMailCheckWithFormat(context.Background(), nil, false, "", &stdout, &stderr)
+	_ = cmdMailCheckWithFormat(nil, false, "", &stdout, &stderr)
 	if stdout.String() == "" && stderr.String() == "" {
 		t.Fatal("plain `gc mail check` must not be silenced by the identity guard")
 	}
@@ -111,7 +110,7 @@ func TestInjectGuardLetsManagedSessionsThrough(t *testing.T) {
 	t.Setenv("GC_AGENT", "worker")
 
 	var stdout, stderr bytes.Buffer
-	_ = cmdNudgeDrainWithFormat(context.Background(), nil, true, "", &stdout, &stderr)
+	_ = cmdNudgeDrainWithFormat(nil, true, "", &stdout, &stderr)
 	if stdout.String() == "" && stderr.String() == "" {
 		t.Fatal("a managed session must still get hook context; the guard over-suppressed")
 	}

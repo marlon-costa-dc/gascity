@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"path/filepath"
 	"strings"
@@ -18,7 +17,6 @@ import (
 
 func TestPhase0RuntimeEnv_TemplateResolutionSetsOriginAndPublicHandle(t *testing.T) {
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "phase0-city",
 		cityPath:   t.TempDir(),
 		workspace:  &config.Workspace{Provider: "test-agent"},
@@ -54,7 +52,6 @@ func TestPhase0RuntimeEnv_TemplateResolutionDoesNotPublishLifecycleBeadsWrapper(
 	t.Setenv("GC_BEADS", "bd")
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "phase0-city",
 		cityPath:   t.TempDir(),
 		workspace:  &config.Workspace{Provider: "test-agent"},

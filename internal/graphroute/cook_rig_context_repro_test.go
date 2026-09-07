@@ -1,7 +1,6 @@
 package graphroute
 
 import (
-	"context"
 	"testing"
 
 	"github.com/gastownhall/gascity/internal/agentutil"
@@ -88,7 +87,7 @@ func TestCookRigContext_StoreRefFallbackResolvesBareTarget(t *testing.T) {
 	// COOK decorate path with the pre-change argument shape: routedTo="" and
 	// sessionName="", so no rig context reaches decorate via the default route.
 	recipe := cookReproRecipe()
-	err := DecorateGraphWorkflowRecipe(context.Background(),
+	err := DecorateGraphWorkflowRecipe(
 		recipe, GraphWorkflowRouteVars(recipe, nil),
 		"",             // sourceBeadID
 		"formula-cook", // scopeKind
@@ -122,7 +121,7 @@ func TestCookRigContext_ExplicitDefaultBindingResolvesBareTarget(t *testing.T) {
 	deps := Deps{Resolver: rigAwareResolver{}}
 
 	recipe := cookReproRecipe()
-	err := DecorateGraphWorkflowRecipeWithDefaultBinding(context.Background(),
+	err := DecorateGraphWorkflowRecipeWithDefaultBinding(
 		recipe, GraphWorkflowRouteVars(recipe, nil),
 		"", "formula-cook", "", "rig:dip",
 		GraphRouteBinding{RigContext: "dip", MetadataOnly: true}, // rig context, no route

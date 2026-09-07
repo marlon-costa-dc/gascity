@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -127,7 +126,7 @@ func hasRolloutCheck(checks []doctor.Check, name string) bool {
 func TestBuildDoctorChecksRegistersRolloutGates(t *testing.T) {
 	cfg := &config.City{Beads: config.BeadsConfig{ConditionalWrites: "require"}}
 	flags := rollout.ForTest(rollout.WithBeadsConditionalWrites(rollout.Require))
-	checks := buildDoctorChecks(context.Background(), t.TempDir(), cfg, nil, buildDoctorChecksOpts{RolloutFlags: flags})
+	checks := buildDoctorChecks(t.TempDir(), cfg, nil, buildDoctorChecksOpts{RolloutFlags: flags})
 	if !hasRolloutCheck(checks, "rollout:beads.conditional_writes") {
 		t.Error("buildDoctorChecks did not register the beads rollout gate")
 	}
@@ -136,7 +135,7 @@ func TestBuildDoctorChecksRegistersRolloutGates(t *testing.T) {
 // TestBuildDoctorChecksRegistersRolloutResolveError proves a boot resolve error
 // surfaces as its single advisory check through the composition seam.
 func TestBuildDoctorChecksRegistersRolloutResolveError(t *testing.T) {
-	checks := buildDoctorChecks(context.Background(), t.TempDir(), &config.City{}, nil, buildDoctorChecksOpts{RolloutResolveErr: errors.New("boom")})
+	checks := buildDoctorChecks(t.TempDir(), &config.City{}, nil, buildDoctorChecksOpts{RolloutResolveErr: errors.New("boom")})
 	if !hasRolloutCheck(checks, "rollout:resolve") {
 		t.Error("buildDoctorChecks did not register the rollout resolve-error check")
 	}
@@ -149,7 +148,7 @@ func TestBuildDoctorChecksRegistersRolloutResolveError(t *testing.T) {
 // failure omits the rollout section entirely, so the parse error is not masked
 // by a confusing gate line.
 func TestBuildDoctorChecksSkipsRolloutGatesWhenConfigFailed(t *testing.T) {
-	checks := buildDoctorChecks(context.Background(), t.TempDir(), nil, errors.New("parse error"), buildDoctorChecksOpts{RolloutFlags: rollout.ForTest()})
+	checks := buildDoctorChecks(t.TempDir(), nil, errors.New("parse error"), buildDoctorChecksOpts{RolloutFlags: rollout.ForTest()})
 	for _, c := range checks {
 		if strings.HasPrefix(c.Name(), "rollout:") {
 			t.Errorf("rollout gate %q registered despite config load failure", c.Name())

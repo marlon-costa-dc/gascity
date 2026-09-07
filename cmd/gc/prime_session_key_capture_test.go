@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"strings"
 	"testing"
 
@@ -24,7 +23,7 @@ func primeCaptureTestStore(t *testing.T) (cityDir string, store beads.Store) {
 		t.Fatalf("ensurePersistedScopeLocalFileStore: %v", err)
 	}
 	t.Setenv("GC_CITY", cityDir)
-	s, err := openCityStoreAt(context.Background(), cityDir)
+	s, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -71,7 +70,7 @@ func TestPersistPrimeHookProviderSessionKey_ClaudeHookStdinCaptured(t *testing.T
 
 	const claudeSessionID = "8273e9ca-ff09-4260-a03a-1f8534cc1ba5"
 	var stderr bytes.Buffer
-	persistPrimeHookProviderSessionKey(context.Background(), claudeSessionID, &stderr)
+	persistPrimeHookProviderSessionKey(claudeSessionID, &stderr)
 
 	got := reloadSessionKey(t, cityDir, id)
 	if got != claudeSessionID {
@@ -92,7 +91,7 @@ func TestPersistPrimeHookProviderSessionKey_CodexHookStdinStillCaptured(t *testi
 
 	const codexSessionID = "codex-abc-123"
 	var stderr bytes.Buffer
-	persistPrimeHookProviderSessionKey(context.Background(), codexSessionID, &stderr)
+	persistPrimeHookProviderSessionKey(codexSessionID, &stderr)
 
 	if got := reloadSessionKey(t, cityDir, id); got != codexSessionID {
 		t.Fatalf("codex session_key = %q, want %q", got, codexSessionID)
@@ -146,7 +145,7 @@ func TestPersistPrimeHookProviderSessionKey_ClaudeDoesNotOverwrite(t *testing.T)
 	isolateProviderSessionEnv(t)
 
 	var stderr bytes.Buffer
-	persistPrimeHookProviderSessionKey(context.Background(), "different-uuid", &stderr)
+	persistPrimeHookProviderSessionKey("different-uuid", &stderr)
 
 	if got := reloadSessionKey(t, cityDir, b.ID); got != "original-uuid" {
 		t.Fatalf("session_key = %q, want unchanged %q", got, "original-uuid")
@@ -185,7 +184,7 @@ func TestPersistPrimeHookProviderSessionKey_UnsupportedFamilyHookStdinRejected(t
 	isolateProviderSessionEnv(t)
 
 	var stderr bytes.Buffer
-	persistPrimeHookProviderSessionKey(context.Background(), "11111111-2222-3333-4444-555555555555", &stderr)
+	persistPrimeHookProviderSessionKey("11111111-2222-3333-4444-555555555555", &stderr)
 
 	if got := reloadSessionKey(t, cityDir, id); got != "" {
 		t.Fatalf("gemini session_key = %q, want empty (hook stdin id must not be captured for non-allowlisted families)", got)
@@ -206,7 +205,7 @@ func TestPersistPrimeHookProviderSessionKey_ClaudeEnvSessionIDCaptured(t *testin
 	t.Setenv("GC_PROVIDER_SESSION_ID", envSessionID)
 
 	var stderr bytes.Buffer
-	persistPrimeHookProviderSessionKey(context.Background(), "", &stderr)
+	persistPrimeHookProviderSessionKey("", &stderr)
 
 	if got := reloadSessionKey(t, cityDir, id); got != envSessionID {
 		t.Fatalf("claude env session_key = %q, want %q (env path must be unaffected by the stdin gate)", got, envSessionID)
@@ -223,7 +222,7 @@ func TestPersistPrimeHookProviderSessionKey_RejectsIDEqualToGCSessionID(t *testi
 	isolateProviderSessionEnv(t)
 
 	var stderr bytes.Buffer
-	persistPrimeHookProviderSessionKey(context.Background(), id, &stderr) // hook id == gc session id
+	persistPrimeHookProviderSessionKey(id, &stderr) // hook id == gc session id
 
 	if got := reloadSessionKey(t, cityDir, id); got != "" {
 		t.Fatalf("session_key = %q, want empty (provider id equal to GC_SESSION_ID must be rejected)", got)
@@ -232,7 +231,7 @@ func TestPersistPrimeHookProviderSessionKey_RejectsIDEqualToGCSessionID(t *testi
 
 func reloadSessionKey(t *testing.T, cityDir, id string) string {
 	t.Helper()
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("reopen store: %v", err)
 	}

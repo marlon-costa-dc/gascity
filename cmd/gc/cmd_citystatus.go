@@ -141,7 +141,7 @@ func newStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 all agents with running status, rigs, and a summary count.`,
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: completeCityNames,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			format := strings.ToLower(strings.TrimSpace(formatFlag))
 			switch format {
 			case "", "text", "json":
@@ -149,7 +149,7 @@ all agents with running status, rigs, and a summary count.`,
 				fmt.Fprintf(stderr, "gc status: unsupported format %q\n", formatFlag) //nolint:errcheck // best-effort stderr
 				return errExit
 			}
-			if cmdCityStatus(cmd.Context(), args, jsonFlag || format == "json", stdout, stderr) != 0 {
+			if cmdCityStatus(args, jsonFlag || format == "json", stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -163,7 +163,7 @@ all agents with running status, rigs, and a summary count.`,
 // cmdCityStatus is the CLI entry point for the city status overview.
 // Routes through the supervisor API when a controller is up and falls
 // back to the local snapshot builder otherwise.
-func cmdCityStatus(ctx context.Context, args []string, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdCityStatus(args []string, jsonOutput bool, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCommandCity(args)
 	if err != nil {
 		if jsonOutput {
@@ -190,7 +190,7 @@ func cmdCityStatus(ctx context.Context, args []string, jsonOutput bool, stdout, 
 	if jsonOutput {
 		storeStderr = io.Discard
 	}
-	store, _, code := openCityStatusStore(ctx, cityPath, storeStderr)
+	store, _, code := openCityStatusStore(cityPath, storeStderr)
 	if code != 0 {
 		if jsonOutput {
 			return writeJSONError(stdout, stderr, "store_open_failed", "gc status: opening bead store failed", code)
@@ -198,7 +198,7 @@ func cmdCityStatus(ctx context.Context, args []string, jsonOutput bool, stdout, 
 		return code
 	}
 	statusSnapshot := loadStatusSessionSnapshot(cityPath, cfg, cliSessionStore(store, cfg, cityPath), stderr)
-	sp, err := newStatusSessionProviderForCityWithSnapshot(ctx, cfg, cityPath, statusSnapshot)
+	sp, err := newStatusSessionProviderForCityWithSnapshot(cfg, cityPath, statusSnapshot)
 	if err != nil {
 		message := fmt.Sprintf("gc status: %v", err)
 		if jsonOutput {
@@ -209,7 +209,7 @@ func cmdCityStatus(ctx context.Context, args []string, jsonOutput bool, stdout, 
 	}
 	dops := newDrainOps(sp)
 	c, reason := cityStatusAPIClient(cityPath)
-	return routeCityStatus(ctx, cityPath, cfg, sp, dops, c, reason, jsonOutput, stdout, stderr)
+	return routeCityStatus(cityPath, cfg, sp, dops, c, reason, jsonOutput, stdout, stderr)
 }
 
 // cityStatusAPIClient returns (client, "") when the API path is available,
@@ -232,7 +232,6 @@ var cityStatusAPIClient = supervisorFallthroughAPIClient
 // controller is up; otherwise falls back to the local snapshot builder.
 // Emits exactly one route=... log line per exit path (gated on GC_DEBUG).
 func routeCityStatus(
-	ctx context.Context,
 	cityPath string,
 	cfg *config.City,
 	sp runtime.Provider,
@@ -251,7 +250,7 @@ func routeCityStatus(
 		},
 		func() int { return renderCityStatusFromAPI(cityPath, cr, dops, jsonOutput, stdout) },
 		func() int {
-			store, diagnostic, code := openCityStatusStore(ctx, cityPath, stderr)
+			store, diagnostic, code := openCityStatusStore(cityPath, stderr)
 			if code != 0 {
 				return code
 			}
@@ -537,14 +536,13 @@ func namedSessionBlockedBySuspension(cfg *config.City, agentCfg *config.Agent, s
 // doCityStatus prints the city-wide status overview. Accepts injected
 // runtime.Provider for testability.
 func doCityStatus(
-	ctx context.Context,
 	sp runtime.Provider,
 	dops drainOps,
 	cfg *config.City,
 	cityPath string,
 	stdout, stderr io.Writer,
 ) int {
-	store, _, code := openCityStatusStore(ctx, cityPath, stderr)
+	store, _, code := openCityStatusStore(cityPath, stderr)
 	if code != 0 {
 		return code
 	}
@@ -589,13 +587,12 @@ func doCityStatusWithStoreAndSnapshot(
 // doCityStatusJSON outputs city status as JSON. Accepts injected providers
 // for testability.
 func doCityStatusJSON(
-	ctx context.Context,
 	sp runtime.Provider,
 	cfg *config.City,
 	cityPath string,
 	stdout, stderr io.Writer,
 ) int {
-	store, diagnostic, code := openCityStatusStore(ctx, cityPath, stderr)
+	store, diagnostic, code := openCityStatusStore(cityPath, stderr)
 	if code != 0 {
 		return code
 	}

@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -25,7 +24,7 @@ func TestManagedBdRigProviderStoreRecoversAfterHardKillPortRebind(t *testing.T) 
 	}
 
 	rawID := parseCreatedBeadID(t, runRawBDFromDir(t, bdPath, rawDir, "create", "--json", "provider rebind bead", "-t", "task"))
-	providerResult, err := openStoreResultAtForCity(context.Background(), rigPath, cityPath)
+	providerResult, err := openStoreResultAtForCity(rigPath, cityPath)
 	if err != nil {
 		t.Fatalf("openStoreResultAtForCity(rig): %v", err)
 	}

@@ -187,7 +187,7 @@ func TestCollectSourceWorkflowMatchesSkipsNonSourceListFailure(t *testing.T) {
 		{path: filepath.Join(cityPath, "rigs/healthy"), store: healthyStore},
 	}
 
-	matches, skips, err := collectSourceWorkflowMatchesFromStores(context.Background(), cfg, cityPath, "mc-source", "city:test", stores, nil)
+	matches, skips, err := collectSourceWorkflowMatchesFromStores(cfg, cityPath, "mc-source", "city:test", stores, nil)
 	if err != nil {
 		t.Fatalf("collectSourceWorkflowMatchesFromStores: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestCollectSourceWorkflowMatchesSurfacesDescendantScanFailure(t *testing.T)
 		{path: filepath.Join(cityPath, "rigs/stale"), store: sourceWorkflowDescendantScanFailStore{Store: staleBacking, err: descendantErr}},
 	}
 
-	matches, skips, err := collectSourceWorkflowMatchesFromStores(context.Background(), cfg, cityPath, "mc-source", "city:test", stores, nil)
+	matches, skips, err := collectSourceWorkflowMatchesFromStores(cfg, cityPath, "mc-source", "city:test", stores, nil)
 	if err != nil {
 		t.Fatalf("collectSourceWorkflowMatchesFromStores: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestCollectSourceWorkflowMatchesKeepsSelectedStoreListFailureStrict(t *test
 		{path: filepath.Join(cityPath, "rigs/healthy"), store: beads.NewMemStore()},
 	}
 
-	_, skips, err := collectSourceWorkflowMatchesFromStores(context.Background(), cfg, cityPath, "mc-source", "city:test", stores, nil)
+	_, skips, err := collectSourceWorkflowMatchesFromStores(cfg, cityPath, "mc-source", "city:test", stores, nil)
 	if !errors.Is(err, selectedErr) {
 		t.Fatalf("collectSourceWorkflowMatchesFromStores error = %v, want selected store error %v", err, selectedErr)
 	}
@@ -271,7 +271,7 @@ func TestCollectSourceWorkflowMatchesFailsWhenSelectedStoreIsMissing(t *testing.
 	selectedErr := errors.New("selected store reopen failed")
 	skips := []sourceWorkflowStoreSkip{{path: cityPath, err: selectedErr}}
 
-	_, _, err := collectSourceWorkflowMatchesFromStores(context.Background(), cfg, cityPath, "mc-source", "city:test", stores, skips)
+	_, _, err := collectSourceWorkflowMatchesFromStores(cfg, cityPath, "mc-source", "city:test", stores, skips)
 	if err == nil || !strings.Contains(err.Error(), "city:test") {
 		t.Fatalf("collectSourceWorkflowMatchesFromStores error = %v, want missing selected-store failure", err)
 	}
@@ -315,7 +315,7 @@ func TestCollectSourceWorkflowMatchesFailsWhenNoStoreCanBeScanned(t *testing.T) 
 		{path: filepath.Join(cityPath, "rigs/stale-b"), store: sourceWorkflowScanFailStore{Store: beads.NewMemStore(), err: errors.New("second store failed")}},
 	}
 
-	_, skips, err := collectSourceWorkflowMatchesFromStores(context.Background(), cfg, cityPath, "mc-source", "", stores, nil)
+	_, skips, err := collectSourceWorkflowMatchesFromStores(cfg, cityPath, "mc-source", "", stores, nil)
 	if !errors.Is(err, firstErr) {
 		t.Fatalf("collectSourceWorkflowMatchesFromStores error = %v, want first scan error %v", err, firstErr)
 	}
@@ -325,14 +325,14 @@ func TestCollectSourceWorkflowMatchesFailsWhenNoStoreCanBeScanned(t *testing.T) 
 }
 
 func TestCollectSourceWorkflowMatchesFailsWhenNoStoreIsAvailable(t *testing.T) {
-	_, _, err := collectSourceWorkflowMatchesFromStores(context.Background(),
+	_, _, err := collectSourceWorkflowMatchesFromStores(
 		&config.City{Workspace: config.Workspace{Name: "test"}},
 		"/city",
 		"mc-source",
 		"",
 		[]convoyStoreView{{path: "/city/rigs/nil"}},
-		nil)
-
+		nil,
+	)
 	if err == nil || !strings.Contains(err.Error(), "no source workflow stores") {
 		t.Fatalf("collectSourceWorkflowMatchesFromStores error = %v, want no-usable-store failure", err)
 	}
@@ -582,7 +582,7 @@ func TestDecorateDynamicFragmentRecipeSupportsExplicitPerStepAgents(t *testing.T
 		},
 	}
 
-	if err := decorateDynamicFragmentRecipe(context.Background(), fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
+	if err := decorateDynamicFragmentRecipe(fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
 		t.Fatalf("decorateDynamicFragmentRecipe: %v", err)
 	}
 
@@ -719,7 +719,7 @@ func TestDecorateDrainItemRecipeUsesDirectExecutionRoute(t *testing.T) {
 		},
 	}
 
-	if err := decorateDrainItemRecipe(context.Background(), recipe, source, store, "city:test", "test", t.TempDir(), cfg); err != nil {
+	if err := decorateDrainItemRecipe(recipe, source, store, "city:test", "test", t.TempDir(), cfg); err != nil {
 		t.Fatalf("decorateDrainItemRecipe: %v", err)
 	}
 	work := recipe.StepByID("item.work")
@@ -792,7 +792,7 @@ func TestDecorateDrainItemRecipeDoesNotFallbackToControllerAssignee(t *testing.T
 		},
 	}
 
-	if err := decorateDrainItemRecipe(context.Background(), recipe, source, store, "city:test", "test", t.TempDir(), cfg); err != nil {
+	if err := decorateDrainItemRecipe(recipe, source, store, "city:test", "test", t.TempDir(), cfg); err != nil {
 		t.Fatalf("decorateDrainItemRecipe: %v", err)
 	}
 	work := recipe.StepByID("item.work")
@@ -1011,7 +1011,7 @@ func TestCmdWorkflowDeleteSourceClosesMatchedRootsAndClearsWorkflowID(t *testing
 	cityFlag = ""
 	t.Cleanup(func() { cityFlag = prevCityFlag })
 
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -1048,13 +1048,13 @@ func TestCmdWorkflowDeleteSourceClosesMatchedRootsAndClearsWorkflowID(t *testing
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWorkflowDeleteSource(context.Background(), source.ID, sourceWorkflowStoreSelector{}, true, false, &stdout, &stderr); code != 0 {
+	if code := cmdWorkflowDeleteSource(source.ID, sourceWorkflowStoreSelector{}, true, false, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWorkflowDeleteSource returned %d; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "result=cleaned") {
 		t.Fatalf("stdout = %q, want cleaned result", stdout.String())
 	}
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(reload): %v", err)
 	}
@@ -1120,11 +1120,11 @@ prefix = "BL"
 		t.Fatalf("ensurePersistedScopeLocalFileStore(rig): %v", err)
 	}
 
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -1174,7 +1174,7 @@ prefix = "BL"
 
 	var stdout, stderr bytes.Buffer
 	selector := sourceWorkflowStoreSelector{storeRef: "city:test-city"}
-	if code := cmdWorkflowDeleteSource(context.Background(), citySource.ID, selector, true, false, &stdout, &stderr); code != 0 {
+	if code := cmdWorkflowDeleteSource(citySource.ID, selector, true, false, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWorkflowDeleteSource returned %d; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "result=cleaned") {
@@ -1183,7 +1183,7 @@ prefix = "BL"
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
-	reloadedRig, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	reloadedRig, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig reload): %v", err)
 	}
@@ -1201,7 +1201,7 @@ prefix = "BL"
 	if updatedChild.Status != "closed" {
 		t.Fatalf("child status = %q, want closed", updatedChild.Status)
 	}
-	reloadedCity, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloadedCity, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city reload): %v", err)
 	}
@@ -1233,7 +1233,7 @@ func TestCmdWorkflowDeleteSourceClosesGraphV2OnlyRoot(t *testing.T) {
 	cityFlag = ""
 	t.Cleanup(func() { cityFlag = prevCityFlag })
 
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -1270,14 +1270,14 @@ func TestCmdWorkflowDeleteSourceClosesGraphV2OnlyRoot(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWorkflowDeleteSource(context.Background(), source.ID, sourceWorkflowStoreSelector{}, true, false, &stdout, &stderr); code != 0 {
+	if code := cmdWorkflowDeleteSource(source.ID, sourceWorkflowStoreSelector{}, true, false, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWorkflowDeleteSource = %d; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "result=cleaned") {
 		t.Fatalf("stdout = %q, want cleaned result", stdout.String())
 	}
 
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(reload): %v", err)
 	}
@@ -1329,7 +1329,7 @@ func TestCmdWorkflowReopenSourcePreservesRouteWithoutRunTarget(t *testing.T) {
 	cityFlag = ""
 	t.Cleanup(func() { cityFlag = prevCityFlag })
 
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -1353,14 +1353,14 @@ func TestCmdWorkflowReopenSourcePreservesRouteWithoutRunTarget(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWorkflowReopenSource(context.Background(), source.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 0 {
+	if code := cmdWorkflowReopenSource(source.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWorkflowReopenSource returned %d; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "result=reopened") {
 		t.Fatalf("stdout = %q, want reopened result", stdout.String())
 	}
 
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(reload): %v", err)
 	}
@@ -1404,7 +1404,7 @@ func TestCmdWorkflowReopenSourceLeavesRouteBlankWhenNoRouteAvailable(t *testing.
 	cityFlag = ""
 	t.Cleanup(func() { cityFlag = prevCityFlag })
 
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -1417,11 +1417,11 @@ func TestCmdWorkflowReopenSourceLeavesRouteBlankWhenNoRouteAvailable(t *testing.
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWorkflowReopenSource(context.Background(), source.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 0 {
+	if code := cmdWorkflowReopenSource(source.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWorkflowReopenSource returned %d; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(reload): %v", err)
 	}
@@ -1457,7 +1457,7 @@ func TestCmdWorkflowReopenSourcePreRoutesToRunTarget(t *testing.T) {
 	cityFlag = ""
 	t.Cleanup(func() { cityFlag = prevCityFlag })
 
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -1479,14 +1479,14 @@ func TestCmdWorkflowReopenSourcePreRoutesToRunTarget(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWorkflowReopenSource(context.Background(), source.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 0 {
+	if code := cmdWorkflowReopenSource(source.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWorkflowReopenSource returned %d; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "result=reopened") {
 		t.Fatalf("stdout = %q, want reopened result", stdout.String())
 	}
 
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(reload): %v", err)
 	}
@@ -1521,7 +1521,7 @@ func TestCmdWorkflowReopenSourceConflictsWhenLiveRootExists(t *testing.T) {
 	cityFlag = ""
 	t.Cleanup(func() { cityFlag = prevCityFlag })
 
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -1543,7 +1543,7 @@ func TestCmdWorkflowReopenSourceConflictsWhenLiveRootExists(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWorkflowReopenSource(context.Background(), source.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 3 {
+	if code := cmdWorkflowReopenSource(source.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 3 {
 		t.Fatalf("cmdWorkflowReopenSource returned %d; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "blocking_workflow_ids="+root.ID) {
@@ -1563,7 +1563,7 @@ func TestCmdWorkflowDeleteSourcePreviewDoesNotClearStaleMetadata(t *testing.T) {
 	cityFlag = ""
 	t.Cleanup(func() { cityFlag = prevCityFlag })
 
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -1576,10 +1576,10 @@ func TestCmdWorkflowDeleteSourcePreviewDoesNotClearStaleMetadata(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWorkflowDeleteSource(context.Background(), source.ID, sourceWorkflowStoreSelector{}, false, false, &stdout, &stderr); code != 0 {
+	if code := cmdWorkflowDeleteSource(source.ID, sourceWorkflowStoreSelector{}, false, false, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWorkflowDeleteSource returned %d; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(reload): %v", err)
 	}
@@ -1660,7 +1660,7 @@ func TestRunWorkflowReopenSourceConflictPropagatesExitCode(t *testing.T) {
 	cityFlag = ""
 	t.Cleanup(func() { cityFlag = prevCityFlag })
 
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -1729,7 +1729,7 @@ func TestDecorateDynamicFragmentRecipePreservesPoolFallbackAndScopeMetadata(t *t
 		},
 	}
 
-	if err := decorateDynamicFragmentRecipe(context.Background(), fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
+	if err := decorateDynamicFragmentRecipe(fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
 		t.Fatalf("decorateDynamicFragmentRecipe: %v", err)
 	}
 
@@ -1808,7 +1808,7 @@ func TestDecorateDynamicFragmentRecipeControlRouteUsesOwningStoreScope(t *testin
 		}},
 	}
 
-	if err := decorateDynamicFragmentRecipe(context.Background(), fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
+	if err := decorateDynamicFragmentRecipe(fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
 		t.Fatalf("decorateDynamicFragmentRecipe: %v", err)
 	}
 	check := fragment.Steps[1]
@@ -1955,7 +1955,7 @@ func TestDecorateDynamicFragmentRecipeUsesDirectExecutionRoute(t *testing.T) {
 		},
 	}
 
-	if err := decorateDynamicFragmentRecipe(context.Background(), fragment, source, store, cfg.Workspace.Name, t.TempDir(), cfg); err != nil {
+	if err := decorateDynamicFragmentRecipe(fragment, source, store, cfg.Workspace.Name, t.TempDir(), cfg); err != nil {
 		t.Fatalf("decorateDynamicFragmentRecipe: %v", err)
 	}
 	steps := map[string]formula.RecipeStep{}
@@ -2023,7 +2023,7 @@ func TestDecorateDynamicFragmentRecipeUsesSourceRouteRigContextForBareTargets(t 
 		},
 	}
 
-	if err := decorateDynamicFragmentRecipe(context.Background(), fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
+	if err := decorateDynamicFragmentRecipe(fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
 		t.Fatalf("decorateDynamicFragmentRecipe: %v", err)
 	}
 
@@ -2082,7 +2082,7 @@ func TestDecorateDynamicFragmentRecipeMarksRetryEvalAsScopedControl(t *testing.T
 		},
 	}
 
-	if err := decorateDynamicFragmentRecipe(context.Background(), fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
+	if err := decorateDynamicFragmentRecipe(fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
 		t.Fatalf("decorateDynamicFragmentRecipe: %v", err)
 	}
 
@@ -2113,11 +2113,17 @@ func TestRunWorkflowServeProcessesReadyControlBeadsThenExits(t *testing.T) {
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	cdAgent := config.Agent{Name: config.ControlDispatcherAgentName}
@@ -2131,7 +2137,7 @@ func TestRunWorkflowServeProcessesReadyControlBeadsThenExits(t *testing.T) {
 		{{ID: "gc-ctrl-2", Metadata: map[string]string{"gc.kind": "workflow-finalize"}}},
 	}
 
-	workflowServeList = func(_ context.Context, workQuery, dir string, env map[string]string) ([]hookBead, error) {
+	workflowServeList = func(workQuery, dir string, env map[string]string) ([]hookBead, error) {
 		gotQueries = append(gotQueries, workQuery)
 		gotDirs = append(gotDirs, dir)
 		gotEnv = append(gotEnv, maps.Clone(env))
@@ -2142,12 +2148,12 @@ func TestRunWorkflowServeProcessesReadyControlBeadsThenExits(t *testing.T) {
 		sequence = sequence[1:]
 		return next, nil
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		controlled = append(controlled, beadID)
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -2190,16 +2196,22 @@ func TestRunWorkflowServeDrainsReadyBatchBeforeRequery(t *testing.T) {
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	var controlled []string
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -2211,19 +2223,19 @@ func TestRunWorkflowServeDrainsReadyBatchBeforeRequery(t *testing.T) {
 			return nil, nil
 		}
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		controlled = append(controlled, beadID)
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
 	if !slices.Equal(controlled, []string{"gc-ctrl-1", "gc-ctrl-2"}) {
 		t.Fatalf("controlled beads = %#v, want ready batch drained in order", controlled)
 	}
-	if calls != 1 {
+	if calls != 2 {
 		t.Fatalf("workflowServeList calls = %d, want first ready batch plus idle check", calls)
 	}
 }
@@ -2232,7 +2244,7 @@ func TestRunWorkflowServeFollowRequiresManagedSessionEnv(t *testing.T) {
 	clearGCEnv(t)
 	t.Setenv("GC_TEMPLATE", "")
 
-	err := runWorkflowServe(context.Background(), "control-dispatcher", true, io.Discard, io.Discard)
+	err := runWorkflowServe("control-dispatcher", true, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("runWorkflowServe returned nil error, want missing managed session env")
 	}
@@ -2266,17 +2278,23 @@ func TestRunWorkflowServeReturnsControlErrorWithoutQuarantine(t *testing.T) {
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	calls := 0
 	var controlled []string
 	retryableErr := errors.New("source store temporarily unavailable")
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		if calls == 1 {
 			return []hookBead{
@@ -2286,7 +2304,7 @@ func TestRunWorkflowServeReturnsControlErrorWithoutQuarantine(t *testing.T) {
 		}
 		return nil, nil
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		controlled = append(controlled, beadID)
 		if beadID == "gc-ctrl-bad" {
 			return retryableErr
@@ -2294,7 +2312,7 @@ func TestRunWorkflowServeReturnsControlErrorWithoutQuarantine(t *testing.T) {
 		return nil
 	}
 
-	err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard)
+	err := runWorkflowServe("", false, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("runWorkflowServe err = nil, want retryable control error")
 	}
@@ -2419,7 +2437,7 @@ func TestRunControlDispatcherReturnsTransientControlErrorWithoutQuarantine(t *te
 
 	var stderr bytes.Buffer
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	err = runControlDispatcherWithStoreAndConfig(context.Background(), t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr)
+	err = runControlDispatcherWithStoreAndConfig(t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr)
 	if err == nil {
 		t.Fatal("runControlDispatcherWithStoreAndConfig error = nil, want transient error")
 	}
@@ -2483,7 +2501,7 @@ title = "Review {reviewer}"
 		Workspace:     config.Workspace{Name: "test-city"},
 		FormulaLayers: config.FormulaLayers{City: []string{formulaDir}},
 	}
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, cityPath, store, control.ID, cfg, io.Discard, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(cityPath, cityPath, store, control.ID, cfg, io.Discard, &stderr); err != nil {
 		t.Fatalf("runControlDispatcherWithStoreAndConfig: %v", err)
 	}
 
@@ -2533,7 +2551,7 @@ func TestRunControlDispatcherPreservesSuccessfulControlWhenReprojectionFails(t *
 	_, _, control := createProcessedScopeCheckControl(t, store, false)
 
 	var stderr bytes.Buffer
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, cityPath, store, control.ID, &config.City{Workspace: config.Workspace{Name: "test-city"}}, io.Discard, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(cityPath, cityPath, store, control.ID, &config.City{Workspace: config.Workspace{Name: "test-city"}}, io.Discard, &stderr); err != nil {
 		t.Fatalf("runControlDispatcherWithStoreAndConfig: %v", err)
 	}
 
@@ -2691,7 +2709,7 @@ func TestRunControlDispatcherQuarantineReconcilesScopedControlFailure(t *testing
 
 	var stderr bytes.Buffer
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr); err != nil {
 		t.Fatalf("runControlDispatcherWithStoreAndConfig: %v", err)
 	}
 
@@ -2728,18 +2746,24 @@ func TestRunWorkflowServeRoutesTraceOpenWarningsToCommandStderr(t *testing.T) {
 
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		return nil, nil
 	}
 
 	var stderr bytes.Buffer
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, &stderr); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, &stderr); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -2766,18 +2790,24 @@ func TestRunWorkflowServeWarnsOnLegacyTracePath(t *testing.T) {
 
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		return nil, nil
 	}
 
 	var stderr bytes.Buffer
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, &stderr); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, &stderr); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -2809,18 +2839,24 @@ func TestRunWorkflowServeWarnsWhenLegacyTraceFileStillExists(t *testing.T) {
 
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		return nil, nil
 	}
 
 	var stderr bytes.Buffer
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, &stderr); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, &stderr); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -2861,18 +2897,24 @@ func TestRunWorkflowServeWarnsWhenLegacyRigTraceFileStillExists(t *testing.T) {
 
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		return nil, nil
 	}
 
 	var stderr bytes.Buffer
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, &stderr); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, &stderr); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -2907,18 +2949,24 @@ func TestRunWorkflowServeWarnsWhenLegacyEnvRigTraceFileStillExistsOutsideConfigu
 
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		return nil, nil
 	}
 
 	var stderr bytes.Buffer
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, &stderr); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, &stderr); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -3011,7 +3059,7 @@ func TestRunControlDispatcherWithStoreRoutesRalphTraceWarningToStderr(t *testing
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStore(context.Background(), cityDir, cityDir, store, check1.ID, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStore(cityDir, cityDir, store, check1.ID, &stdout, &stderr); err != nil {
 		t.Fatalf("runControlDispatcherWithStore: %v", err)
 	}
 
@@ -3115,7 +3163,7 @@ func TestRunControlDispatcherWithStoreWarnsOnLegacyTracePath(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStore(context.Background(), cityDir, cityDir, store, check1.ID, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStore(cityDir, cityDir, store, check1.ID, &stdout, &stderr); err != nil {
 		t.Fatalf("runControlDispatcherWithStore: %v", err)
 	}
 
@@ -3146,11 +3194,17 @@ func TestRunWorkflowServeDedupsTraceWarningsAcrossNestedControlDispatch(t *testi
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	store := beads.NewMemStore()
@@ -3231,7 +3285,7 @@ func TestRunWorkflowServeDedupsTraceWarningsAcrossNestedControlDispatch(t *testi
 		{{ID: checkOneID, Metadata: map[string]string{"gc.kind": "check"}}},
 		{{ID: checkTwoID, Metadata: map[string]string{"gc.kind": "check"}}},
 	}
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		if len(sequence) == 0 {
 			return nil, nil
 		}
@@ -3239,12 +3293,12 @@ func TestRunWorkflowServeDedupsTraceWarningsAcrossNestedControlDispatch(t *testi
 		sequence = sequence[1:]
 		return next, nil
 	}
-	controlDispatcherServe = func(_ context.Context, cityPath, storePath, beadID string, stdout, stderr io.Writer) error {
-		return runControlDispatcherWithStore(context.Background(), cityPath, storePath, store, beadID, stdout, stderr)
+	controlDispatcherServe = func(cityPath, storePath, beadID string, stdout, stderr io.Writer) error {
+		return runControlDispatcherWithStore(cityPath, storePath, store, beadID, stdout, stderr)
 	}
 
 	var stderr bytes.Buffer
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, &stderr); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, &stderr); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -3272,11 +3326,17 @@ func TestRunWorkflowServeDedupsLegacyTraceWarningsAcrossNestedControlDispatch(t 
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	store := beads.NewMemStore()
@@ -3357,7 +3417,7 @@ func TestRunWorkflowServeDedupsLegacyTraceWarningsAcrossNestedControlDispatch(t 
 		{{ID: checkOneID, Metadata: map[string]string{"gc.kind": "check"}}},
 		{{ID: checkTwoID, Metadata: map[string]string{"gc.kind": "check"}}},
 	}
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		if len(sequence) == 0 {
 			return nil, nil
 		}
@@ -3365,12 +3425,12 @@ func TestRunWorkflowServeDedupsLegacyTraceWarningsAcrossNestedControlDispatch(t 
 		sequence = sequence[1:]
 		return next, nil
 	}
-	controlDispatcherServe = func(_ context.Context, cityPath, storePath, beadID string, stdout, stderr io.Writer) error {
-		return runControlDispatcherWithStore(context.Background(), cityPath, storePath, store, beadID, stdout, stderr)
+	controlDispatcherServe = func(cityPath, storePath, beadID string, stdout, stderr io.Writer) error {
+		return runControlDispatcherWithStore(cityPath, storePath, store, beadID, stdout, stderr)
 	}
 
 	var stderr bytes.Buffer
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, &stderr); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, &stderr); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -4102,23 +4162,29 @@ func TestRunWorkflowServeOverridesInheritedCityBeadsDir(t *testing.T) {
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	var capturedEnv map[string]string
-	workflowServeList = func(_ context.Context, _, _ string, env map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, env map[string]string) ([]hookBead, error) {
 		capturedEnv = maps.Clone(env)
 		return nil, nil // no work: exits immediately
 	}
-	controlDispatcherServe = func(_ context.Context, _, _, _ string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _, _ string, _ io.Writer, _ io.Writer) error {
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "worker", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("worker", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -4169,16 +4235,22 @@ name = "myrig"
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	calls := 0
 	var queryDir string
-	workflowServeList = func(_ context.Context, _, dir string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, dir string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		queryDir = dir
 		if calls == 1 {
@@ -4188,14 +4260,14 @@ name = "myrig"
 	}
 
 	var gotCityPath, gotStorePath, gotBeadID string
-	controlDispatcherServe = func(_ context.Context, cityPath, storePath, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(cityPath, storePath, beadID string, _ io.Writer, _ io.Writer) error {
 		gotCityPath = cityPath
 		gotStorePath = storePath
 		gotBeadID = beadID
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "myrig/control-dispatcher", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("myrig/control-dispatcher", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 	if canonicalTestPath(queryDir) != canonicalTestPath(rigDir) {
@@ -4232,7 +4304,7 @@ func TestOpenControlStoreDisablesAutoExportWithoutSandboxingWrites(t *testing.T)
 	var calls [][]string
 	var envs []map[string]string
 	prevRunner := beadsExecCommandRunnerWithEnv
-	beadsExecCommandRunnerWithEnv = func(_ context.Context, env map[string]string) beads.CommandRunner {
+	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
 		envs = append(envs, maps.Clone(env))
 		return func(_ string, name string, args ...string) ([]byte, error) {
 			if name != "bd" {
@@ -4245,14 +4317,14 @@ func TestOpenControlStoreDisablesAutoExportWithoutSandboxingWrites(t *testing.T)
 	t.Cleanup(func() { beadsExecCommandRunnerWithEnv = prevRunner })
 
 	status := "closed"
-	cityStore, err := openControlStoreAtForCity(context.Background(), cityDir, cityDir, cfg)
+	cityStore, err := openControlStoreAtForCity(cityDir, cityDir, cfg)
 	if err != nil {
 		t.Fatalf("openControlStoreAtForCity(city): %v", err)
 	}
 	if err := cityStore.Update("ga-city-control", beads.UpdateOpts{Status: &status}); err != nil {
 		t.Fatalf("city control update: %v", err)
 	}
-	rigStore, err := openControlStoreAtForCity(context.Background(), rigDir, cityDir, cfg)
+	rigStore, err := openControlStoreAtForCity(rigDir, cityDir, cfg)
 	if err != nil {
 		t.Fatalf("openControlStoreAtForCity(rig): %v", err)
 	}
@@ -4304,7 +4376,7 @@ func TestOpenControlStoreAtForCityPreservesFileAndExecProviderStores(t *testing.
 	t.Run("file", func(t *testing.T) {
 		t.Setenv("GC_BEADS", "file")
 		t.Setenv("GC_BEADS_SCOPE_ROOT", "")
-		store, err := openControlStoreAtForCity(context.Background(), rigDir, cityDir, cfg)
+		store, err := openControlStoreAtForCity(rigDir, cityDir, cfg)
 		if err != nil {
 			t.Fatalf("openControlStoreAtForCity(file): %v", err)
 		}
@@ -4321,7 +4393,7 @@ func TestOpenControlStoreAtForCityPreservesFileAndExecProviderStores(t *testing.
 		t.Setenv("GC_BEADS", provider)
 		t.Setenv("GC_BEADS_SCOPE_ROOT", "")
 
-		store, err := openControlStoreAtForCity(context.Background(), rigDir, cityDir, cfg)
+		store, err := openControlStoreAtForCity(rigDir, cityDir, cfg)
 		if err != nil {
 			t.Fatalf("openControlStoreAtForCity(exec): %v", err)
 		}
@@ -4358,7 +4430,7 @@ func TestOpenControlStoreAtForCityUsesControlRunnerForStaleBdScope(t *testing.T)
 	var calls [][]string
 	var envs []map[string]string
 	prevRunner := beadsExecCommandRunnerWithEnv
-	beadsExecCommandRunnerWithEnv = func(_ context.Context, env map[string]string) beads.CommandRunner {
+	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
 		envs = append(envs, maps.Clone(env))
 		return func(_ string, name string, args ...string) ([]byte, error) {
 			if name != "bd" {
@@ -4371,7 +4443,7 @@ func TestOpenControlStoreAtForCityUsesControlRunnerForStaleBdScope(t *testing.T)
 	t.Cleanup(func() { beadsExecCommandRunnerWithEnv = prevRunner })
 
 	status := "closed"
-	store, err := openControlStoreAtForCity(context.Background(), staleRigDir, cityDir, cfg)
+	store, err := openControlStoreAtForCity(staleRigDir, cityDir, cfg)
 	if err != nil {
 		t.Fatalf("openControlStoreAtForCity(stale rig): %v", err)
 	}
@@ -4436,26 +4508,32 @@ name = "rigrepo"
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	var gotQuery string
 	var gotDir string
-	workflowServeList = func(_ context.Context, workQuery, dir string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(workQuery, dir string, _ map[string]string) ([]hookBead, error) {
 		gotQuery = workQuery
 		gotDir = dir
 		return nil, nil
 	}
-	controlDispatcherServe = func(_ context.Context, _, _, _ string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _, _ string, _ io.Writer, _ io.Writer) error {
 		t.Fatal("controlDispatcherServe should not run when no control work is returned")
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 	if gotQuery == "" {
@@ -4479,16 +4557,22 @@ func TestRunWorkflowServeRetriesBrieflyAfterProcessingBeforeIdleExit(t *testing.
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 2
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	var controlled []string
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -4501,12 +4585,12 @@ func TestRunWorkflowServeRetriesBrieflyAfterProcessingBeforeIdleExit(t *testing.
 			return nil, nil
 		}
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		controlled = append(controlled, beadID)
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -4528,17 +4612,23 @@ func TestRunWorkflowServeSkipsPendingControlBeadAndProcessesLaterReady(t *testin
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	var attempted []string
 	var processed []string
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -4550,7 +4640,7 @@ func TestRunWorkflowServeSkipsPendingControlBeadAndProcessesLaterReady(t *testin
 			return nil, nil
 		}
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		attempted = append(attempted, beadID)
 		if beadID == "gc-pending" {
 			return dispatch.ErrControlPending
@@ -4559,7 +4649,7 @@ func TestRunWorkflowServeSkipsPendingControlBeadAndProcessesLaterReady(t *testin
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -4631,7 +4721,7 @@ func TestRunControlDispatcherReturnsPendingForOpenScopeSubject(t *testing.T) {
 
 	var stderr bytes.Buffer
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	err = runControlDispatcherWithStoreAndConfig(context.Background(), t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr)
+	err = runControlDispatcherWithStoreAndConfig(t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr)
 	if !errors.Is(err, dispatch.ErrControlPending) {
 		t.Fatalf("runControlDispatcherWithStoreAndConfig error = %v, want ErrControlPending", err)
 	}
@@ -4674,16 +4764,22 @@ func TestRunWorkflowServeDispatchesUnexpectedNonControlBeadAndProcessesLaterRead
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	var controlled []string
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -4695,12 +4791,12 @@ func TestRunWorkflowServeDispatchesUnexpectedNonControlBeadAndProcessesLaterRead
 			return nil, nil
 		}
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		controlled = append(controlled, beadID)
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -4722,16 +4818,22 @@ func TestRunWorkflowServeDispatchesUnexpectedNonControlOnly(t *testing.T) {
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	var controlled []string
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		if calls > 1 {
 			return nil, nil
@@ -4740,12 +4842,12 @@ func TestRunWorkflowServeDispatchesUnexpectedNonControlOnly(t *testing.T) {
 			{ID: "gc-task", Metadata: map[string]string{"gc.routed_to": "workflows.codex-max"}},
 		}, nil
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		controlled = append(controlled, beadID)
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 	if calls != 2 {
@@ -4769,11 +4871,17 @@ func TestRunWorkflowServeQuarantinesUnexpectedNonControlBead(t *testing.T) {
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	store := beads.NewMemStore()
@@ -4789,20 +4897,20 @@ func TestRunWorkflowServeQuarantinesUnexpectedNonControlBead(t *testing.T) {
 	}
 
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		if calls > 1 {
 			return nil, nil
 		}
 		return []hookBead{{ID: nonControl.ID, Metadata: map[string]string{"gc.kind": "workflow"}}}, nil
 	}
-	controlDispatcherServe = func(_ context.Context, cityPath, storePath, beadID string, stdout, stderr io.Writer) error {
+	controlDispatcherServe = func(cityPath, storePath, beadID string, stdout, stderr io.Writer) error {
 		cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-		return runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, storePath, store, beadID, cfg, stdout, stderr)
+		return runControlDispatcherWithStoreAndConfig(cityPath, storePath, store, beadID, cfg, stdout, stderr)
 	}
 
 	var stderr bytes.Buffer
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, &stderr); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, &stderr); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -4837,29 +4945,35 @@ func TestRunWorkflowServeTreatsTransientControllerSpawnPendingAsNonFatal(t *test
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		if calls == 1 {
 			return []hookBead{{ID: "gc-retry-control", Metadata: map[string]string{"gc.kind": "retry"}}}, nil
 		}
 		return nil, nil
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		if beadID != "gc-retry-control" {
 			t.Fatalf("controlDispatcherServe beadID = %q, want gc-retry-control", beadID)
 		}
 		return fmt.Errorf("classified transient controller spawn: %w", dispatch.ErrControlPending)
 	}
 
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 }
@@ -4877,17 +4991,23 @@ func TestRunWorkflowServeTreatsTransientControlErrorAsPending(t *testing.T) {
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	var attempted []string
 	var processed []string
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		if calls == 1 {
 			return []hookBead{
@@ -4897,7 +5017,7 @@ func TestRunWorkflowServeTreatsTransientControlErrorAsPending(t *testing.T) {
 		}
 		return nil, nil
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		attempted = append(attempted, beadID)
 		if beadID == "gc-transient" {
 			return fmt.Errorf("gc-transient: spawning iteration 2: adding dep: failed to check for dependency cycle: invalid connection: i/o timeout")
@@ -4906,7 +5026,7 @@ func TestRunWorkflowServeTreatsTransientControlErrorAsPending(t *testing.T) {
 		return nil
 	}
 
-	if err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard); err != nil {
+	if err := runWorkflowServe("", false, io.Discard, io.Discard); err != nil {
 		t.Fatalf("runWorkflowServe: %v", err)
 	}
 
@@ -4968,7 +5088,7 @@ func TestRunControlDispatcherQuarantinesMalformedControlGraph(t *testing.T) {
 
 	var stderr bytes.Buffer
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr); err != nil {
 		t.Fatalf("runControlDispatcherWithStoreAndConfig: %v", err)
 	}
 
@@ -5034,7 +5154,7 @@ func TestRunControlDispatcherQuarantinesMalformedFanoutScopeBody(t *testing.T) {
 
 	var stderr bytes.Buffer
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), t.TempDir(), t.TempDir(), store, fanout.ID, cfg, io.Discard, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(t.TempDir(), t.TempDir(), store, fanout.ID, cfg, io.Discard, &stderr); err != nil {
 		t.Fatalf("runControlDispatcherWithStoreAndConfig: %v", err)
 	}
 
@@ -5100,7 +5220,7 @@ func TestRunControlDispatcherQuarantinesRalphControlMissingIteration(t *testing.
 
 	var stderr bytes.Buffer
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr); err != nil {
 		t.Fatalf("runControlDispatcherWithStoreAndConfig: %v", err)
 	}
 
@@ -5148,7 +5268,7 @@ func TestRunControlDispatcherQuarantinesGenericControlFailure(t *testing.T) {
 
 	var stderr bytes.Buffer
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(t.TempDir(), t.TempDir(), store, control.ID, cfg, io.Discard, &stderr); err != nil {
 		t.Fatalf("runControlDispatcherWithStoreAndConfig: %v", err)
 	}
 
@@ -5195,22 +5315,28 @@ func TestRunWorkflowServeReturnsLegacyOversizedControlError(t *testing.T) {
 	prevCityFlag := cityFlag
 	prevList := workflowServeList
 	prevControl := controlDispatcherServe
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	cityFlag = ""
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 	t.Cleanup(func() {
 		cityFlag = prevCityFlag
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	var attempted []string
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		return []hookBead{
 			{ID: "gc-legacy", Metadata: map[string]string{"gc.kind": "ralph"}},
 		}, nil
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		attempted = append(attempted, beadID)
 		if beadID == "gc-legacy" {
 			return fmt.Errorf("gc-legacy: recording attempt log: setting metadata on %q: failed to record event: old_value is too large", beadID)
@@ -5218,7 +5344,7 @@ func TestRunWorkflowServeReturnsLegacyOversizedControlError(t *testing.T) {
 		return nil
 	}
 
-	err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard)
+	err := runWorkflowServe("", false, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("runWorkflowServe error = nil, want legacy oversized control error")
 	}
@@ -5252,15 +5378,15 @@ func TestRunWorkflowServeReturnsQueryError(t *testing.T) {
 		controlDispatcherServe = prevControl
 	})
 
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		return nil, os.ErrDeadlineExceeded
 	}
-	controlDispatcherServe = func(_ context.Context, _, _, _ string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _, _ string, _ io.Writer, _ io.Writer) error {
 		t.Fatal("controlDispatcherServe should not be called on query failure")
 		return nil
 	}
 
-	err := runWorkflowServe(context.Background(), "", false, io.Discard, io.Discard)
+	err := runWorkflowServe("", false, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("runWorkflowServe returned nil error, want query failure")
 	}
@@ -5309,15 +5435,15 @@ dir = "backend"
 		controlDispatcherServe = prevControl
 	})
 
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		return nil, errors.New("signal: killed")
 	}
-	controlDispatcherServe = func(_ context.Context, _, _, _ string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _, _ string, _ io.Writer, _ io.Writer) error {
 		t.Fatal("controlDispatcherServe should not be called on query failure")
 		return nil
 	}
 
-	err := runWorkflowServe(context.Background(), "backend/worker", false, io.Discard, io.Discard)
+	err := runWorkflowServe("backend/worker", false, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("runWorkflowServe returned nil error, want query failure")
 	}
@@ -5369,7 +5495,7 @@ name = "frontend"
 	t.Cleanup(func() { workflowServeList = prevList })
 
 	var gotQuery string
-	workflowServeList = func(_ context.Context, workQuery, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(workQuery, _ string, _ map[string]string) ([]hookBead, error) {
 		gotQuery = workQuery
 		return nil, os.ErrDeadlineExceeded
 	}
@@ -5377,7 +5503,7 @@ name = "frontend"
 	t.Setenv("GC_CITY", cityDir)
 	t.Setenv("GC_DIR", rigDir)
 
-	err := runWorkflowServe(context.Background(), "worker", false, io.Discard, io.Discard)
+	err := runWorkflowServe("worker", false, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), os.ErrDeadlineExceeded.Error()) {
 		t.Fatalf("runWorkflowServe error = %v, want wrapped %v", err, os.ErrDeadlineExceeded)
 	}
@@ -5408,7 +5534,7 @@ func TestRunWorkflowServeFollowUsesSweepFallback(t *testing.T) {
 
 	var processed []string
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -5419,20 +5545,20 @@ func TestRunWorkflowServeFollowUsesSweepFallback(t *testing.T) {
 			return nil, nil
 		}
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		processed = append(processed, beadID)
 		return errors.New("synthetic dispatch failure")
 	}
 
 	wfcAgent := config.Agent{Name: "control-dispatcher", MinActiveSessions: intPtr(1), MaxActiveSessions: intPtr(1)}
-	err := runWorkflowServeFollow(context.Background(),
+	err := runWorkflowServeFollow(
 		wfcAgent,
 		t.TempDir(),
 		t.TempDir(),
 		wfcAgent.EffectiveWorkQuery(),
 		nil,
-		io.Discard)
-
+		io.Discard,
+	)
 	if err == nil || !strings.Contains(err.Error(), "synthetic dispatch failure") {
 		t.Fatalf("runWorkflowServeFollow error = %v, want wrapped synthetic dispatch failure", err)
 	}
@@ -5449,16 +5575,22 @@ func TestRunWorkflowServeFollowResetsBackoffForProcessedEventAndPending(t *testi
 	prevControl := controlDispatcherServe
 	prevProvider := workflowServeOpenEventsProvider
 	prevWait := workflowServeWaitForWake
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	t.Cleanup(func() {
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
 		workflowServeOpenEventsProvider = prevProvider
 		workflowServeWaitForWake = prevWait
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	workflowServeOpenEventsProvider = func(io.Writer) (events.Provider, error) {
 		return ep, nil
 	}
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 
 	type waitCall struct {
 		idleSweeps int
@@ -5482,7 +5614,7 @@ func TestRunWorkflowServeFollowResetsBackoffForProcessedEventAndPending(t *testi
 	}
 
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
 		switch calls {
 		case 1, 2, 4, 5, 7:
@@ -5496,7 +5628,7 @@ func TestRunWorkflowServeFollowResetsBackoffForProcessedEventAndPending(t *testi
 			return nil, nil
 		}
 	}
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		if beadID == "gc-pending" {
 			return dispatch.ErrControlPending
 		}
@@ -5504,7 +5636,7 @@ func TestRunWorkflowServeFollowResetsBackoffForProcessedEventAndPending(t *testi
 	}
 
 	agent := config.Agent{Name: "control-dispatcher"}
-	err := runWorkflowServeFollow(context.Background(), agent, t.TempDir(), t.TempDir(), agent.EffectiveWorkQuery(), nil, io.Discard)
+	err := runWorkflowServeFollow(agent, t.TempDir(), t.TempDir(), agent.EffectiveWorkQuery(), nil, io.Discard)
 	if !errors.Is(err, stopErr) {
 		t.Fatalf("runWorkflowServeFollow error = %v, want %v", err, stopErr)
 	}
@@ -5538,14 +5670,20 @@ func TestRunWorkflowServeFollowDrainsObservedWakeBeforeSurfacingWatcherErr(t *te
 	prevControl := controlDispatcherServe
 	prevProvider := workflowServeOpenEventsProvider
 	prevWait := workflowServeWaitForWake
+	prevInterval := workflowServeIdlePollInterval
+	prevAttempts := workflowServeIdlePollAttempts
 	t.Cleanup(func() {
 		workflowServeList = prevList
 		controlDispatcherServe = prevControl
 		workflowServeOpenEventsProvider = prevProvider
 		workflowServeWaitForWake = prevWait
+		workflowServeIdlePollInterval = prevInterval
+		workflowServeIdlePollAttempts = prevAttempts
 	})
 
 	workflowServeOpenEventsProvider = func(io.Writer) (events.Provider, error) { return ep, nil }
+	workflowServeIdlePollInterval = 0
+	workflowServeIdlePollAttempts = 0
 
 	watcherErr := errors.New("event stream closed")
 	waitCalls := 0
@@ -5561,7 +5699,7 @@ func TestRunWorkflowServeFollowDrainsObservedWakeBeforeSurfacingWatcherErr(t *te
 	}
 
 	listCalls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		listCalls++
 		switch listCalls {
 		case 1:
@@ -5580,7 +5718,7 @@ func TestRunWorkflowServeFollowDrainsObservedWakeBeforeSurfacingWatcherErr(t *te
 		}
 	}
 	processedAfterWake := false
-	controlDispatcherServe = func(_ context.Context, _, _ string, beadID string, _ io.Writer, _ io.Writer) error {
+	controlDispatcherServe = func(_, _ string, beadID string, _ io.Writer, _ io.Writer) error {
 		if beadID == "gc-woke" {
 			processedAfterWake = true
 		}
@@ -5588,7 +5726,7 @@ func TestRunWorkflowServeFollowDrainsObservedWakeBeforeSurfacingWatcherErr(t *te
 	}
 
 	agent := config.Agent{Name: "control-dispatcher"}
-	err := runWorkflowServeFollow(context.Background(), agent, t.TempDir(), t.TempDir(), agent.EffectiveWorkQuery(), nil, io.Discard)
+	err := runWorkflowServeFollow(agent, t.TempDir(), t.TempDir(), agent.EffectiveWorkQuery(), nil, io.Discard)
 	if !errors.Is(err, watcherErr) {
 		t.Fatalf("runWorkflowServeFollow error = %v, want %v", err, watcherErr)
 	}
@@ -5600,10 +5738,13 @@ func TestRunWorkflowServeFollowDrainsObservedWakeBeforeSurfacingWatcherErr(t *te
 	}
 }
 
-// TestRunWorkflowServeFollowPropagatesTransientWorkQueryTimeout pins the
-// no-retry contract: the first work-query failure escapes the control
-// dispatcher instead of hiding a saturated bead store behind pacing.
-func TestRunWorkflowServeFollowPropagatesTransientWorkQueryTimeout(t *testing.T) {
+// TestRunWorkflowServeFollowSurvivesTransientWorkQueryTimeout is the
+// regression guard for the bug where a single transient work-query timeout
+// (the bead store briefly saturated) killed the entire control-dispatcher
+// --follow loop, leaving the rig un-dispatched while its session bead still
+// reported "active". The loop must survive transient failures and only exit on
+// genuinely fatal ones.
+func TestRunWorkflowServeFollowSurvivesTransientWorkQueryTimeout(t *testing.T) {
 	eventsDir := t.TempDir()
 	ep := newTestProvider(t, eventsDir)
 
@@ -5621,24 +5762,31 @@ func TestRunWorkflowServeFollowPropagatesTransientWorkQueryTimeout(t *testing.T)
 		return false, nil
 	}
 
+	// Drain 1 hits a transient work-query timeout (wraps DeadlineExceeded) — the
+	// loop must survive it. Drain 2 returns a genuinely fatal error — the loop
+	// must exit on that.
 	transientErr := fmt.Errorf("querying control work: running work query %q: timed out after 30s: %w", "bd ready", context.DeadlineExceeded)
+	fatalErr := errors.New("malformed work query: jq: command not found")
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
-		return nil, transientErr
+		if calls == 1 {
+			return nil, transientErr
+		}
+		return nil, fatalErr
 	}
 
 	agent := config.Agent{Name: "control-dispatcher"}
-	err := runWorkflowServeFollow(context.Background(), agent, t.TempDir(), t.TempDir(), agent.EffectiveWorkQuery(), nil, io.Discard)
-	if !errors.Is(err, transientErr) {
-		t.Fatalf("runWorkflowServeFollow err = %v, want first transient error", err)
+	err := runWorkflowServeFollow(agent, t.TempDir(), t.TempDir(), agent.EffectiveWorkQuery(), nil, io.Discard)
+	if !errors.Is(err, fatalErr) {
+		t.Fatalf("runWorkflowServeFollow err = %v, want fatal error after surviving the transient timeout", err)
 	}
-	if calls != 1 {
-		t.Fatalf("workflowServeList calls = %d, want 1", calls)
+	if calls != 2 {
+		t.Fatalf("workflowServeList calls = %d, want 2 (survive transient, then exit on fatal)", calls)
 	}
 }
 
-func TestRunWorkflowServeFollowPropagatesDoltCircuitBreakerOutage(t *testing.T) {
+func TestRunWorkflowServeFollowSurvivesDoltCircuitBreakerOutage(t *testing.T) {
 	eventsDir := t.TempDir()
 	ep := newTestProvider(t, eventsDir)
 
@@ -5657,19 +5805,28 @@ func TestRunWorkflowServeFollowPropagatesDoltCircuitBreakerOutage(t *testing.T) 
 	}
 
 	trippedErr := fmt.Errorf(`querying control work: running work query %q: exit status 1: begin read tx: dial tcp 127.0.0.1:52022: connect: connection refused (circuit breaker tripped)`, "bd ready")
+	breakerOpenErr := fmt.Errorf(`querying control work: running work query %q: exit status 1: Error: failed to open database: dolt circuit breaker is open: server appears down, failing fast (cooldown 5s)`, "bd ready")
+	fatalErr := errors.New("malformed work query: jq: command not found")
 	calls := 0
-	workflowServeList = func(_ context.Context, _, _ string, _ map[string]string) ([]hookBead, error) {
+	workflowServeList = func(_, _ string, _ map[string]string) ([]hookBead, error) {
 		calls++
-		return nil, trippedErr
+		switch calls {
+		case 1:
+			return nil, trippedErr
+		case 2:
+			return nil, breakerOpenErr
+		default:
+			return nil, fatalErr
+		}
 	}
 
 	agent := config.Agent{Name: config.ControlDispatcherAgentName}
-	err := runWorkflowServeFollow(context.Background(), agent, t.TempDir(), t.TempDir(), agent.EffectiveWorkQuery(), nil, io.Discard)
-	if !errors.Is(err, trippedErr) {
-		t.Fatalf("runWorkflowServeFollow err = %v, want first circuit-breaker error", err)
+	err := runWorkflowServeFollow(agent, t.TempDir(), t.TempDir(), agent.EffectiveWorkQuery(), nil, io.Discard)
+	if !errors.Is(err, fatalErr) {
+		t.Fatalf("runWorkflowServeFollow err = %v, want fatal error after surviving the breaker outage", err)
 	}
-	if calls != 1 {
-		t.Fatalf("workflowServeList calls = %d, want 1", calls)
+	if calls != 3 {
+		t.Fatalf("workflowServeList calls = %d, want 3 (survive tripped and open breaker errors, then exit on fatal)", calls)
 	}
 }
 
@@ -5738,7 +5895,7 @@ func TestDecorateDynamicFragmentRecipeSynthesizesInheritedScopeChecks(t *testing
 		},
 	}
 
-	if err := decorateDynamicFragmentRecipe(context.Background(), fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
+	if err := decorateDynamicFragmentRecipe(fragment, source, store, cfg.Workspace.Name, "", cfg); err != nil {
 		t.Fatalf("decorateDynamicFragmentRecipe: %v", err)
 	}
 
@@ -5824,7 +5981,7 @@ func TestResolveGraphStepBindingWorkflowFinalizeUsesFallback(t *testing.T) {
 		SessionName:   lookupSessionNameOrLegacy(store, cfg.Workspace.Name, "mayor", cfg.Workspace.SessionTemplate),
 	}
 
-	binding, err := resolveGraphStepBinding(context.Background(), "demo.workflow-finalize", stepByID, nil, depsByStep, map[string]graphRouteBinding{}, map[string]bool{}, fallback, "", store, cfg.Workspace.Name, "", cfg)
+	binding, err := resolveGraphStepBinding("demo.workflow-finalize", stepByID, nil, depsByStep, map[string]graphRouteBinding{}, map[string]bool{}, fallback, "", store, cfg.Workspace.Name, "", cfg)
 	if err != nil {
 		t.Fatalf("resolveGraphStepBinding(workflow-finalize): %v", err)
 	}
@@ -5874,7 +6031,7 @@ func TestResolveGraphStepBindingCheckRejectsInconsistentDeps(t *testing.T) {
 		SessionName:   lookupSessionNameOrLegacy(store, cfg.Workspace.Name, "reviewer-a", cfg.Workspace.SessionTemplate),
 	}
 
-	if _, err := resolveGraphStepBinding(context.Background(), "demo.check", stepByID, nil, depsByStep, map[string]graphRouteBinding{}, map[string]bool{}, fallback, "", store, cfg.Workspace.Name, "", cfg); err == nil || !strings.Contains(err.Error(), "inconsistent control routing") {
+	if _, err := resolveGraphStepBinding("demo.check", stepByID, nil, depsByStep, map[string]graphRouteBinding{}, map[string]bool{}, fallback, "", store, cfg.Workspace.Name, "", cfg); err == nil || !strings.Contains(err.Error(), "inconsistent control routing") {
 		t.Fatalf("resolveGraphStepBinding(check) error = %v, want inconsistent control routing", err)
 	}
 }
@@ -5924,7 +6081,7 @@ func TestResolveGraphStepBindingRetryEvalUsesDependencyRoute(t *testing.T) {
 		SessionName:   lookupSessionNameOrLegacy(store, cfg.Workspace.Name, "control-dispatcher", cfg.Workspace.SessionTemplate),
 	}
 
-	binding, err := resolveGraphStepBinding(context.Background(), "demo.review.eval.1", stepByID, nil, depsByStep, map[string]graphRouteBinding{}, map[string]bool{}, fallback, "", store, cfg.Workspace.Name, "", cfg)
+	binding, err := resolveGraphStepBinding("demo.review.eval.1", stepByID, nil, depsByStep, map[string]graphRouteBinding{}, map[string]bool{}, fallback, "", store, cfg.Workspace.Name, "", cfg)
 	if err != nil {
 		t.Fatalf("resolveGraphStepBinding(retry-eval): %v", err)
 	}
@@ -5947,7 +6104,7 @@ provider = "file"
 	writeCatalogFile(t, cityPath, "agents/control-dispatcher/agent.toml", "start_command = \"echo hello\"\n")
 	t.Setenv("GC_CITY", cityPath)
 
-	store, err := openStoreAtForCity(context.Background(), cityPath, cityPath)
+	store, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -6026,11 +6183,11 @@ provider = "file"
 
 	fakeProvider := runtime.NewFake()
 	oldProvider := dispatchControlSessionProvider
-	dispatchControlSessionProvider = func(context.Context) (runtime.Provider, error) { return fakeProvider, nil }
+	dispatchControlSessionProvider = func() (runtime.Provider, error) { return fakeProvider, nil }
 	t.Cleanup(func() { dispatchControlSessionProvider = oldProvider })
 
 	var stdout bytes.Buffer
-	if err := runControlDispatcher(context.Background(), eval1.ID, &stdout, io.Discard); err != nil {
+	if err := runControlDispatcher(eval1.ID, &stdout, io.Discard); err != nil {
 		t.Fatalf("runControlDispatcher(retry-eval): %v", err)
 	}
 
@@ -6044,7 +6201,7 @@ provider = "file"
 		t.Fatalf("Stop(polecat-2) calls = %d, want 1; calls=%+v", stopCalls, fakeProvider.Calls)
 	}
 
-	reloadedStore, err := openStoreAtForCity(context.Background(), cityPath, cityPath)
+	reloadedStore, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(reload): %v", err)
 	}
@@ -6066,7 +6223,7 @@ name = "test-city"
 	}
 	t.Setenv("GC_BEADS", "exec:/definitely/missing/provider")
 
-	_, _, err := findBeadScopeAcrossStores(context.Background(), cityPath, "gc-missing", io.Discard)
+	_, _, err := findBeadScopeAcrossStores(cityPath, "gc-missing", io.Discard)
 	if err == nil {
 		t.Fatal("findBeadScopeAcrossStores() error = nil, want provider failure")
 	}
@@ -6100,7 +6257,7 @@ prefix = "BL"
 	prevCityFlag := cityFlag
 	cityFlag = ""
 	t.Cleanup(func() { cityFlag = prevCityFlag })
-	if _, err := openStoreAtForCity(context.Background(), cityDir, cityDir); err != nil {
+	if _, err := openStoreAtForCity(cityDir, cityDir); err != nil {
 		t.Fatalf("openStoreAtForCity(city init): %v", err)
 	}
 	if err := ensureScopedFileStoreLayout(cityDir); err != nil {
@@ -6109,7 +6266,7 @@ prefix = "BL"
 	if err := ensurePersistedScopeLocalFileStore(cityDir); err != nil {
 		t.Fatalf("ensurePersistedScopeLocalFileStore(city): %v", err)
 	}
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city scoped): %v", err)
 	}
@@ -6119,7 +6276,7 @@ prefix = "BL"
 	if err := ensurePersistedScopeLocalFileStore(rigDir); err != nil {
 		t.Fatalf("ensurePersistedScopeLocalFileStore(rig): %v", err)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -6157,7 +6314,7 @@ prefix = "BL"
 
 	var stdout, stderr bytes.Buffer
 	selector := sourceWorkflowStoreSelector{storeRef: "rig:alpha"}
-	if code := cmdWorkflowDeleteSource(context.Background(), citySource.ID, selector, true, false, &stdout, &stderr); code != 0 {
+	if code := cmdWorkflowDeleteSource(citySource.ID, selector, true, false, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWorkflowDeleteSource returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "result=cleaned") {
@@ -6166,7 +6323,7 @@ prefix = "BL"
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
-	reloadedCity, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloadedCity, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city reload): %v", err)
 	}
@@ -6184,7 +6341,7 @@ prefix = "BL"
 	if got := updatedCitySource.Metadata["workflow_id"]; got != "wf-city-stale" {
 		t.Fatalf("city source workflow_id = %q, want wf-city-stale", got)
 	}
-	reloadedRig, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	reloadedRig, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig reload): %v", err)
 	}
@@ -6232,11 +6389,11 @@ prefix = "BL"
 	if err := ensurePersistedScopeLocalFileStore(rigDir); err != nil {
 		t.Fatalf("ensurePersistedScopeLocalFileStore(rig): %v", err)
 	}
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -6274,7 +6431,7 @@ prefix = "BL"
 
 	var stdout, stderr bytes.Buffer
 	selector := sourceWorkflowStoreSelector{storeRef: "rig:alpha"}
-	if code := cmdWorkflowDeleteSource(context.Background(), citySource.ID, selector, true, false, &stdout, &stderr); code != 0 {
+	if code := cmdWorkflowDeleteSource(citySource.ID, selector, true, false, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdWorkflowDeleteSource returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "result=already_clean") {
@@ -6287,7 +6444,7 @@ prefix = "BL"
 		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
 
-	reloadedCity, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloadedCity, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city reload): %v", err)
 	}
@@ -6306,7 +6463,7 @@ prefix = "BL"
 		t.Fatalf("city source workflow_id = %q, want wf-city-stale", got)
 	}
 
-	reloadedRig, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	reloadedRig, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig reload): %v", err)
 	}
@@ -6354,11 +6511,11 @@ prefix = "BL"
 	if err := ensurePersistedScopeLocalFileStore(rigDir); err != nil {
 		t.Fatalf("ensurePersistedScopeLocalFileStore(rig): %v", err)
 	}
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -6390,7 +6547,7 @@ prefix = "BL"
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdWorkflowReopenSource(context.Background(), rigSource.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 3 {
+	if code := cmdWorkflowReopenSource(rigSource.ID, sourceWorkflowStoreSelector{}, &stdout, &stderr); code != 3 {
 		t.Fatalf("cmdWorkflowReopenSource returned %d, want 3; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if stdout.Len() != 0 {
@@ -6400,7 +6557,7 @@ prefix = "BL"
 		t.Fatalf("stderr = %q, want conflict with %s", stderr.String(), cityRoot.ID)
 	}
 
-	reloadedRig, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	reloadedRig, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig reload): %v", err)
 	}
@@ -6415,7 +6572,7 @@ prefix = "BL"
 		t.Fatalf("rig source workflow_id = %q, want wf-stale", got)
 	}
 
-	reloadedCity, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloadedCity, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city reload): %v", err)
 	}
@@ -7050,7 +7207,7 @@ func TestRunControlDispatcherRejectsCrossScopeDrain(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	err = runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, cityPath, store, control.ID, &config.City{Workspace: config.Workspace{Name: "test-city"}}, io.Discard, &stderr)
+	err = runControlDispatcherWithStoreAndConfig(cityPath, cityPath, store, control.ID, &config.City{Workspace: config.Workspace{Name: "test-city"}}, io.Discard, &stderr)
 	if err == nil {
 		t.Fatal("a drain rooted in rig:elsewhere dispatched from city:test-city was accepted; it would drain the wrong store's convoy and report success")
 	}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -211,7 +210,6 @@ func TestResolveTemplateControlDispatcherSuppressesStartupPrompt(t *testing.T) {
 		t.Fatalf("write prompt template: %v", err)
 	}
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fakeFS,
 		cityName:        "maintainer-city",
 		cityPath:        cityPath,
@@ -266,7 +264,6 @@ func TestResolveTemplateExplicitControlDispatcherKeepsStartupPrompt(t *testing.T
 		t.Fatalf("write prompt template: %v", err)
 	}
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fakeFS,
 		cityName:        "maintainer-city",
 		cityPath:        cityPath,
@@ -487,7 +484,6 @@ func TestTemplateParamsToConfigNilResolvedProvider(t *testing.T) {
 func TestResolveTemplateCarriesOneShotLifecycleToRuntimeConfig(t *testing.T) {
 	cityPath := t.TempDir()
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		fs:         fsys.NewFake(),
 		cityName:   "bright-lights",
 		cityPath:   cityPath,
@@ -518,7 +514,6 @@ func TestResolveTemplateCarriesOneShotLifecycleToRuntimeConfig(t *testing.T) {
 func TestResolveTemplateCarriesMouseModeToRuntimeConfig(t *testing.T) {
 	cityPath := t.TempDir()
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		fs:         fsys.NewFake(),
 		cityName:   "bright-lights",
 		cityPath:   cityPath,
@@ -555,7 +550,6 @@ func TestResolveTemplateCarriesMouseModeToRuntimeConfig(t *testing.T) {
 func TestResolveTemplateHeadlessAgentStaysMouseOff(t *testing.T) {
 	cityPath := t.TempDir()
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		fs:         fsys.NewFake(),
 		cityName:   "bright-lights",
 		cityPath:   cityPath,
@@ -621,7 +615,6 @@ func TestResolveTemplateFlagModeRetainsPromptForStartupDelivery(t *testing.T) {
 	fs.Files[cityPath+"/prompts/pool-worker.md"] = []byte("pool prompt body")
 
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fs,
 		cityName:        "bright-lights",
 		cityPath:        cityPath,
@@ -663,7 +656,6 @@ func TestResolveTemplateExplicitTmuxUsesProviderCommandForOpenCode(t *testing.T)
 	fs.Files[cityPath+"/prompts/pool-worker.md"] = []byte("pool prompt body")
 
 	params := &agentBuildParams{
-		ctx:       context.Background(),
 		fs:        fs,
 		cityName:  "bright-lights",
 		cityPath:  cityPath,
@@ -712,7 +704,6 @@ func TestResolveTemplateRejectsUnknownSessionTransport(t *testing.T) {
 	fs.Files[cityPath+"/prompts/pool-worker.md"] = []byte("pool prompt body")
 
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fs,
 		cityName:        "bright-lights",
 		cityPath:        cityPath,
@@ -743,7 +734,6 @@ func TestResolveTemplateHookEnabledOpencodeOmitsPrimeInstruction(t *testing.T) {
 	fs.Files[cityPath+"/prompts/mayor.md"] = []byte("mayor prompt body")
 
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fs,
 		cityName:        "bright-lights",
 		cityPath:        cityPath,
@@ -866,7 +856,6 @@ func TestResolveTemplateKeepsConcreteProviderForOverlays(t *testing.T) {
 		InstructionsFile: "AGENTS.md",
 	}
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fs,
 		cityName:        "bright-lights",
 		cityPath:        cityPath,
@@ -910,7 +899,6 @@ func TestResolveTemplateExpandsPromptCommandTemplates(t *testing.T) {
 	fs.Files[cityPath+"/prompts/worker.template.md"] = []byte("Work={{ .WorkQuery }}\nAssigned={{ .AssignedReadyQuery }}\nSling={{ .SlingQuery }}")
 
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fs,
 		cityName:        "",
 		cityPath:        cityPath,
@@ -956,7 +944,6 @@ func TestResolveTemplateAssignedReadyQueryUsesBD105Compatibility(t *testing.T) {
 	fs.Files[cityPath+"/prompts/worker.template.md"] = []byte("Assigned={{ .AssignedReadyQuery }}")
 
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		city:            &config.City{Beads: config.BeadsConfig{BDCompatibility: config.BeadsBDCompatibility105}},
 		fs:              fs,
 		cityName:        "",
@@ -1000,7 +987,6 @@ func TestResolveTemplateClaudeProjectsCityDotClaudeSettingsIntoRuntimeFile(t *te
 	}
 
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fsys.OSFS{},
 		cityName:        "bright-lights",
 		cityPath:        cityPath,
@@ -1051,7 +1037,6 @@ func TestResolveTemplateWrappedClaudeProjectsSettings(t *testing.T) {
 	providers := config.BuiltinProviders()
 	providers["claude-max"] = config.ProviderSpec{Base: &base}
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fsys.OSFS{},
 		cityName:        "bright-lights",
 		cityPath:        cityPath,
@@ -1136,7 +1121,6 @@ prompt_template = "agents/mayor/prompt.template.md"
 		t.Fatalf("expected explicit imported mayor agent, got %v", cfg.Agents)
 	}
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fsys.OSFS{},
 		cityName:        "test",
 		cityPath:        cityPath,
@@ -1204,7 +1188,7 @@ func TestResolveTemplateScopesRigPackFragmentsByCurrentRig(t *testing.T) {
 		PromptTemplate: "agents/bravo-worker/prompt.template.md",
 	}
 
-	params := newAgentBuildParams(context.Background(), "test", cityPath, cfg, nil, testBeaconTime, nil, io.Discard)
+	params := newAgentBuildParams("test", cityPath, cfg, nil, testBeaconTime, nil, io.Discard)
 	alpha, err := resolveTemplate(params, &alphaAgent, alphaAgent.QualifiedName(), nil)
 	if err != nil {
 		t.Fatalf("resolveTemplate(alpha): %v", err)
@@ -1272,7 +1256,6 @@ func TestResolveTemplateConventionAgentAppendFragments(t *testing.T) {
 		t.Fatalf("expected explicit imported mayor agent, got %v", cfg.Agents)
 	}
 	params := &agentBuildParams{
-		ctx:             context.Background(),
 		fs:              fsys.OSFS{},
 		cityName:        "test",
 		cityPath:        cityPath,

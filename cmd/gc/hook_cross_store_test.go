@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -61,7 +60,7 @@ func TestAppendOneRigHookStoreSkipsUnknownInput(t *testing.T) {
 		{"nil agent", cfg, nil, "voxist-web"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := appendOneRigHookStore(context.Background(), base, t.TempDir(), tc.cfg, tc.agent, tc.rigName, nil)
+			got := appendOneRigHookStore(base, t.TempDir(), tc.cfg, tc.agent, tc.rigName, nil)
 			if len(got) != len(base) {
 				t.Fatalf("appendOneRigHookStore added a store for %s: len=%d, want %d", tc.name, len(got), len(base))
 			}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,7 +75,7 @@ prefix = "FE"
 	chdirProviderAwareTest(t, cityDir)
 	t.Setenv("GC_CITY_PATH", cityDir)
 
-	store, code := openRigAwareStore(context.Background(), []string{"FE-42"}, &bytes.Buffer{})
+	store, code := openRigAwareStore([]string{"FE-42"}, &bytes.Buffer{})
 	if code != 0 {
 		t.Fatalf("openRigAwareStore code = %d, want 0", code)
 	}
@@ -161,7 +160,7 @@ trigger = "manual"
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdOrderHistory(context.Background(), "digest", "", &stdout, &stderr)
+	code := cmdOrderHistory("digest", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdOrderHistory = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -225,7 +224,7 @@ name = "demo"
 	var stdout, stderr bytes.Buffer
 	doConvoyAutoclose(child.ID, &stdout, &stderr)
 
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +295,7 @@ prefix = "OP"
 	var stdout, stderr bytes.Buffer
 	doConvoyAutoclose(child.ID, &stdout, &stderr)
 
-	reloaded, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	reloaded, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,9 +361,9 @@ prefix = "OP"
 	chdirProviderAwareTest(t, cityDir)
 
 	var stdout, stderr bytes.Buffer
-	doMoleculeAutoclose(context.Background(), step.ID, &stdout, &stderr)
+	doMoleculeAutoclose(step.ID, &stdout, &stderr)
 
-	reloaded, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	reloaded, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +403,7 @@ trigger = "manual"
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdOrderRun(context.Background(), "poll", "", false, nil, &stdout, &stderr)
+	code := cmdOrderRun("poll", "", false, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdOrderRun(exec) = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -451,12 +450,12 @@ pool = "dog"
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdOrderRun(context.Background(), "digest", "", false, nil, &stdout, &stderr)
+	code := cmdOrderRun("digest", "", false, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdOrderRun(formula) = %d, want 0; stderr: %s", code, stderr.String())
 	}
 
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +519,7 @@ name = "demo"
 	var stdout, stderr bytes.Buffer
 	doConvoyAutoclose(child.ID, &stdout, &stderr)
 
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,9 +637,9 @@ name = "demo"
 	t.Setenv("BEADS_DIR", filepath.Join(cityDir, ".beads"))
 
 	var stdout, stderr bytes.Buffer
-	doWispAutoclose(context.Background(), parent.ID, &stdout, &stderr)
+	doWispAutoclose(parent.ID, &stdout, &stderr)
 
-	reloaded, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	reloaded, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatal(err)
 	}

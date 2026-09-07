@@ -32,7 +32,7 @@ func newKillPokeSession(t *testing.T, identity, sessionName string) (beads.Store
 	}
 	t.Cleanup(func() { buildSessionProviderByName = oldBuild })
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestCmdSessionKill_PokesControllerAfterSleep(t *testing.T) {
 	t.Cleanup(func() { sessionKillPokeController = old })
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionKill(context.Background(), []string{identity}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionKill([]string{identity}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionKill = %d, want 0; stderr=%s", code, stderr.String())
 	}
 
@@ -116,7 +116,7 @@ func TestCmdSessionKill_PokeFailureIsNonFatal(t *testing.T) {
 	t.Cleanup(func() { sessionKillPokeController = old })
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionKill(context.Background(), []string{identity}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionKill([]string{identity}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionKill = %d, want 0 (poke failure is best-effort); stderr=%s", code, stderr.String())
 	}
 }

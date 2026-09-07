@@ -227,7 +227,7 @@ func TestOrderExecEnvWithErrorOverlaysVars(t *testing.T) {
 	target := execStoreTarget{ScopeRoot: cityDir, ScopeKind: "city", Prefix: "ct"}
 	a := orders.Order{Name: "hooked", Trigger: "manual", Exec: "true"}
 
-	envSlice, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, a, map[string]string{
+	envSlice, err := orderExecEnvWithError(cityDir, nil, target, a, map[string]string{
 		"repo": "octo/demo",
 		"pr":   "42",
 	})
@@ -251,7 +251,7 @@ func TestOrderExecEnvWithErrorOverlaysVars(t *testing.T) {
 	// The static [order.env] reserved-key guard must still reject an order that
 	// tries to override controller-owned env via [order.env].
 	reserved := orders.Order{Name: "hooked", Trigger: "manual", Exec: "true", Env: map[string]string{"GC_CITY": "x"}}
-	if _, err := orderExecEnvWithError(context.Background(), cityDir, nil, target, reserved, nil); err == nil {
+	if _, err := orderExecEnvWithError(cityDir, nil, target, reserved, nil); err == nil {
 		t.Fatal("orderExecEnvWithError: expected reserved [order.env] key GC_CITY to be rejected")
 	}
 }
@@ -366,9 +366,8 @@ func TestOrderRunAcceptsSuppliedRequiredVar(t *testing.T) {
 	aa := []orders.Order{{Name: "needs-target", Trigger: "manual", Formula: "e1-var-required", FormulaLayer: dir}}
 
 	var stdout, stderr bytes.Buffer
-	code := doOrderRunWithJSON(context.Background(), aa, "needs-target", "", "/city", beads.OrdersStore{Store: beads.NewMemStore()},
+	code := doOrderRunWithJSON(aa, "needs-target", "", "/city", beads.OrdersStore{Store: beads.NewMemStore()},
 		nil, false, map[string]string{"target": "srvcity"}, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("doOrderRunWithJSON = %d, want 0; stderr: %s\n"+
 			"a required var WAS supplied via --var but the run was rejected (sr-p3ov.12: the "+
@@ -378,7 +377,7 @@ func TestOrderRunAcceptsSuppliedRequiredVar(t *testing.T) {
 
 	// Omitting it must still be refused — the fix must not turn required off.
 	var stdout2, stderr2 bytes.Buffer
-	if code := doOrderRunWithJSON(context.Background(), aa, "needs-target", "", "/city", beads.OrdersStore{Store: beads.NewMemStore()},
+	if code := doOrderRunWithJSON(aa, "needs-target", "", "/city", beads.OrdersStore{Store: beads.NewMemStore()},
 		nil, false, nil, &stdout2, &stderr2); code == 0 {
 		t.Fatal("doOrderRunWithJSON with no vars = 0, want non-zero: a required var with no " +
 			"default must still be refused when omitted")

@@ -74,11 +74,11 @@ func TestClaimHookWorkAssignedTierUnresolvableBeadDoesNotStrandLaterStore(t *tes
 		},
 		EmitClaimRejected: func(string, string, string) {},
 		ResolveWorkBranch: func(string) string { return "" },
-		DrainAck:          func(context.Context, io.Writer) error { return nil },
+		DrainAck:          func(io.Writer) error { return nil },
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner(context.Background(), "gc ready --json", "city", stores[0].env, stores, assignedFederationClaimOpts(), ops, run, func(string, error) {}, &stdout, &stderr)
+	code := claimHookWorkWithRunner("gc ready --json", "city", stores[0].env, stores, assignedFederationClaimOpts(), ops, run, func(string, error) {}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("claimHookWorkWithRunner = %d, want 0: an assigned graph step this store cannot resolve must not exit before the store holding claimable work is tried; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -116,7 +116,7 @@ func TestClaimHookWorkAssignedTierUnresolvableBeadDrainsClaimsErrored(t *testing
 		},
 		EmitClaimRejected: func(string, string, string) {},
 		ResolveWorkBranch: func(string) string { return "" },
-		DrainAck: func(context.Context, io.Writer) error {
+		DrainAck: func(io.Writer) error {
 			drained = true
 			return nil
 		},
@@ -124,7 +124,7 @@ func TestClaimHookWorkAssignedTierUnresolvableBeadDrainsClaimsErrored(t *testing
 
 	emitted := false
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner(context.Background(), "gc ready --json", "city", stores[0].env, stores, assignedFederationClaimOpts(), ops, run, func(string, error) { emitted = true }, &stdout, &stderr)
+	code := claimHookWorkWithRunner("gc ready --json", "city", stores[0].env, stores, assignedFederationClaimOpts(), ops, run, func(string, error) { emitted = true }, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("claimHookWorkWithRunner = %d, want 0 (structured drain); stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -172,11 +172,11 @@ func TestClaimHookWorkAssignedTierOperationalErrorStaysTerminal(t *testing.T) {
 		},
 		EmitClaimRejected: func(string, string, string) {},
 		ResolveWorkBranch: func(string) string { return "" },
-		DrainAck:          func(context.Context, io.Writer) error { return nil },
+		DrainAck:          func(io.Writer) error { return nil },
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner(context.Background(), "gc ready --json", "city", stores[0].env, stores, assignedFederationClaimOpts(), ops, run, func(string, error) {}, &stdout, &stderr)
+	code := claimHookWorkWithRunner("gc ready --json", "city", stores[0].env, stores, assignedFederationClaimOpts(), ops, run, func(string, error) {}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("claimHookWorkWithRunner = %d, want 1: an unresolved mutation failure on this session's OWN assigned bead must fail closed, not claim unrelated work; stdout=%q", code, stdout.String())
 	}

@@ -628,14 +628,14 @@ func TestReadyFailsLoudWhenALegErrors(t *testing.T) {
 
 	t.Run("a rig leg that cannot be OPENED", func(t *testing.T) {
 		cityDir := newReadyCityWithBrokenRig(t)
-		cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+		cityStore, err := openStoreAtForCity(cityDir, cityDir)
 		if err != nil {
 			t.Fatalf("open city store: %v", err)
 		}
 		mustCreateReadyBead(t, cityStore, beads.Bead{Title: "city work", Type: "task"})
 
 		var stdout, stderr bytes.Buffer
-		code := cmdReady(context.Background(), readyOpts{}, &stdout, &stderr)
+		code := cmdReady(readyOpts{}, &stdout, &stderr)
 		if code == 0 {
 			t.Fatalf("gc ready exited 0 with the %q rig leg unopened; stdout=%s — a short array is indistinguishable from \"no work\", and stderr is not part of the answer any work query parses", readyBrokenRigName, stdout.String())
 		}
@@ -668,7 +668,7 @@ func TestRigStoreOpenPolicyDiffersByCaller(t *testing.T) {
 	}
 
 	var warnings bytes.Buffer
-	stores := buildStandaloneRigStores(context.Background(), cfg, cityDir, &warnings)
+	stores := buildStandaloneRigStores(cfg, cityDir, &warnings)
 	if _, ok := stores["good"]; !ok {
 		t.Fatalf("the controller's opener returned %v; it must keep supervising the rigs it COULD open", stores)
 	}
@@ -679,7 +679,7 @@ func TestRigStoreOpenPolicyDiffersByCaller(t *testing.T) {
 		t.Fatalf("controller warnings = %q, want the unchanged supervisor warning naming %q", warnings.String(), readyBrokenRigName)
 	}
 
-	legs, err := readyRigLegStores(context.Background(), cfg, cityDir)
+	legs, err := readyRigLegStores(cfg, cityDir)
 	if err == nil {
 		t.Fatalf("gc ready's opener returned %v and no error; a leg it silently dropped is claimable work missing from an array that has nowhere to say so", legs)
 	}
@@ -717,7 +717,7 @@ func TestReadyUnboundRigIsSkippedOnBothSurfaces(t *testing.T) {
 		Rigs:      []config.Rig{{Name: "unbound"}},
 	}
 
-	stores, err := readyRigLegStores(context.Background(), cfg, cityDir)
+	stores, err := readyRigLegStores(cfg, cityDir)
 	if err != nil {
 		t.Fatalf("gc ready rejected an unbound rig: %v; it is a rig with no store, not a store the city failed to reach", err)
 	}
@@ -726,7 +726,7 @@ func TestReadyUnboundRigIsSkippedOnBothSurfaces(t *testing.T) {
 	}
 
 	cs := &controllerState{cfg: cfg, cityName: cfg.Workspace.Name, cityPath: cityDir, cacheCtx: context.Background()}
-	if apiStores := cs.buildStores(context.Background(), cfg); len(apiStores) != 0 {
+	if apiStores := cs.buildStores(cfg); len(apiStores) != 0 {
 		t.Fatalf("the API built %v for the unbound rig but gc ready built %v; the two surfaces must skip it identically or this slice's CLI == API criterion is false on the arm it did not change", apiStores, stores)
 	}
 }
@@ -972,11 +972,11 @@ func TestCmdReadyOnALegacyCityFederatesCityAndRigStores(t *testing.T) {
 			t.Fatalf("ensuring file store at %s: %v", scope, err)
 		}
 	}
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("open city store: %v", err)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("open rig store: %v", err)
 	}
@@ -1022,7 +1022,7 @@ func TestCmdReadyOnALegacyCityFederatesCityAndRigStores(t *testing.T) {
 func runCmdReady(t *testing.T, opts readyOpts) []readyBead {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	if code := cmdReady(context.Background(), opts, &stdout, &stderr); code != 0 {
+	if code := cmdReady(opts, &stdout, &stderr); code != 0 {
 		t.Fatalf("gc ready = %d, stderr:\n%s", code, stderr.String())
 	}
 	var rows []readyBead

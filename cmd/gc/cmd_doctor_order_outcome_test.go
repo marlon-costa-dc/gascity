@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +16,7 @@ func TestBuildDoctorChecksRegistersOrderOutcomeHealthy(t *testing.T) {
 	t.Setenv("GC_DOLT", "skip")
 	cfg := &config.City{Workspace: config.Workspace{Name: "demo"}}
 
-	names := doctorCheckNames(buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
+	names := doctorCheckNames(buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    false,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,

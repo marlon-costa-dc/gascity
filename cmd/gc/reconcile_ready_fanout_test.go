@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"sort"
 	"testing"
@@ -173,7 +172,7 @@ func TestReadyDemandCacheControllerDemandEquivalentToDirect(t *testing.T) {
 				t.Fatalf("seed backing: %v", err)
 			}
 			c := beads.NewCachingStoreForTest(backing, nil)
-			if err := c.PrimeActive(context.Background()); err != nil {
+			if err := c.PrimeActive(); err != nil {
 				t.Fatalf("PrimeActive: %v", err)
 			}
 			return c

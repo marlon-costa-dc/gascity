@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -140,7 +139,7 @@ func TestCmdBeadsList_RemoteRoutesToServerNoFallback(t *testing.T) {
 
 	out.Reset()
 	errb.Reset()
-	_ = cmdBeadsList(context.Background(), "text", beadFilters{}, &out, &errb)
+	_ = cmdBeadsList("text", beadFilters{}, &out, &errb)
 
 	if !strings.Contains(gotPath, "/v0/city/mc/beads") {
 		t.Errorf("remote server path = %q, want it to include /v0/city/mc/beads", gotPath)

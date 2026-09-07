@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"strings"
@@ -105,22 +104,22 @@ type hookStoreRunner func(command, dir string, env []string) (string, error)
 // this leg's workspace. This function is the seam that pins it
 // (conformanceClaimRouting); closing the gap makes the claim stop being a bd
 // subprocess call, and I15 pins the see-but-cannot-claim asymmetry until it does.
-func hookWorkQueryStores(ctx context.Context, cityPath string, cfg *config.City, a *config.Agent, agentForQuery, workDir string, queryEnv []string, identityOverrides map[string]string) []hookStore {
+func hookWorkQueryStores(cityPath string, cfg *config.City, a *config.Agent, agentForQuery, workDir string, queryEnv []string, identityOverrides map[string]string) []hookStore {
 	stores := []hookStore{{dir: workDir, env: queryEnv}}
 	if agentIsCrossStoreEligible(a) {
-		return appendRigHookStores(ctx, stores, cityPath, cfg, a, identityOverrides)
+		return appendRigHookStores(stores, cityPath, cfg, a, identityOverrides)
 	}
 	rig := rigScopedHookRig(cfg, agentForQuery)
 	if rig == "" {
 		return stores
 	}
-	if rigStores := appendOneRigHookStore(ctx, nil, cityPath, cfg, a, rig, identityOverrides); len(rigStores) > 0 {
+	if rigStores := appendOneRigHookStore(nil, cityPath, cfg, a, rig, identityOverrides); len(rigStores) > 0 {
 		stores = append(rigStores, stores...)
 	}
 	// A rig-backed agent's own env above is ALSO rig-scoped, so without this no
 	// entry reaches the CITY store and root-only beads assigned to the agent
 	// stay invisible. Best-effort tertiary; see appendCityHookStore.
-	return appendCityHookStore(ctx, stores, cityPath, cfg, a, identityOverrides)
+	return appendCityHookStore(stores, cityPath, cfg, a, identityOverrides)
 }
 
 // hookIdentityEnvKeys are the identity overrides that must stay constant across
@@ -139,12 +138,12 @@ var hookIdentityEnvKeys = []string{
 // reads the RIG store but still matches work routed/assigned to the city agent.
 // Best-effort: a rig whose env cannot be built is skipped (the agent's own store
 // is always queried first by the caller).
-func appendRigHookStores(ctx context.Context, stores []hookStore, cityPath string, cfg *config.City, a *config.Agent, identityOverrides map[string]string) []hookStore {
+func appendRigHookStores(stores []hookStore, cityPath string, cfg *config.City, a *config.Agent, identityOverrides map[string]string) []hookStore {
 	if cfg == nil || a == nil {
 		return stores
 	}
 	for i := range cfg.Rigs {
-		stores = appendOneRigHookStore(ctx, stores, cityPath, cfg, a, cfg.Rigs[i].Name, identityOverrides)
+		stores = appendOneRigHookStore(stores, cityPath, cfg, a, cfg.Rigs[i].Name, identityOverrides)
 	}
 	return stores
 }
@@ -157,7 +156,7 @@ func appendRigHookStores(ctx context.Context, stores []hookStore, cityPath strin
 // appendRigHookStores (city-scoped read federation, #2877, which keeps the
 // agent's own store first) and the rig-scoped hook path (which puts the rig
 // store first, as the agent's primary store).
-func appendOneRigHookStore(ctx context.Context, stores []hookStore, cityPath string, cfg *config.City, a *config.Agent, rigName string, identityOverrides map[string]string) []hookStore {
+func appendOneRigHookStore(stores []hookStore, cityPath string, cfg *config.City, a *config.Agent, rigName string, identityOverrides map[string]string) []hookStore {
 	rigName = strings.TrimSpace(rigName)
 	if cfg == nil || a == nil || rigName == "" {
 		return stores
@@ -174,7 +173,7 @@ func appendOneRigHookStore(ctx context.Context, stores []hookStore, cityPath str
 	}
 	view := *a
 	view.Dir = rigName
-	rigEnv, err := hookQueryEnv(ctx, cityPath, cfg, &view)
+	rigEnv, err := hookQueryEnv(cityPath, cfg, &view)
 	if err != nil || rigEnv == nil {
 		return stores
 	}
@@ -202,13 +201,13 @@ func appendOneRigHookStore(ctx context.Context, stores []hookStore, cityPath str
 // returns stores unchanged when the city env cannot be built, and the city
 // entry is appended LAST so the rig store keeps bestStoreWithWork's
 // emit-on-timeout contract as the primary entry.
-func appendCityHookStore(ctx context.Context, stores []hookStore, cityPath string, cfg *config.City, a *config.Agent, identityOverrides map[string]string) []hookStore {
+func appendCityHookStore(stores []hookStore, cityPath string, cfg *config.City, a *config.Agent, identityOverrides map[string]string) []hookStore {
 	if cfg == nil || a == nil {
 		return stores
 	}
 	view := *a
 	view.Dir = ""
-	cityEnv, err := hookQueryEnv(ctx, cityPath, cfg, &view)
+	cityEnv, err := hookQueryEnv(cityPath, cfg, &view)
 	if err != nil || cityEnv == nil {
 		return stores
 	}

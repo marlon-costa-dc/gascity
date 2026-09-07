@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/events"
@@ -61,7 +62,7 @@ func (h *failureHookHarness) ops() hookClaimOps {
 		Claim: func(_ context.Context, _ string, _ []string, beadID, assignee string) (beads.Bead, bool, error) {
 			return beads.Bead{ID: beadID, Status: "in_progress", Assignee: assignee}, true, nil
 		},
-		DrainAck:                 func(context.Context, io.Writer) error { h.drained = true; return nil },
+		DrainAck:                 func(io.Writer) error { h.drained = true; return nil },
 		ResolveWorkBranch:        func(string) string { return "" },
 		PublishRunMap:            func(string, string, ...string) error { return nil },
 		EmitExecutionStepStarted: func(beads.Bead, string, []string, string) {},
@@ -118,9 +119,8 @@ func inProgressRowJSON(id string) string {
 func runFailureClaim(t *testing.T, h *failureHookHarness, stores []hookStore) (hookClaimJSONResult, int, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner(context.Background(), "work-query", stores[0].dir, stores[0].env, stores, failureClaimOptions(), h.ops(),
+	code := claimHookWorkWithRunner("work-query", stores[0].dir, stores[0].env, stores, failureClaimOptions(), h.ops(),
 		h.run, h.emitFailure, &stdout, &stderr)
-
 	var result hookClaimJSONResult
 	if trimmed := strings.TrimSpace(stdout.String()); trimmed != "" {
 		if err := json.Unmarshal([]byte(trimmed), &result); err != nil {
@@ -130,11 +130,20 @@ func runFailureClaim(t *testing.T, h *failureHookHarness, stores []hookStore) (h
 	return result, code, stderr.String()
 }
 
-// TestClaimQueryFailureIsReportedNotDrained is D4's core row: an ordinary
-// non-zero work-query exit is a failed read. It must be recorded on the bus and
-// exit non-zero with NO drain result and NO drain-ack, so the demand-spawned
-// seat is retained rather than converted into a false idle.
-func TestClaimQueryFailureIsReportedNotDrained(t *testing.T) {
+func withFastClaimRetries(t *testing.T) {
+	t.Helper()
+	prev := hookClaimQueryRetryInterval
+	hookClaimQueryRetryInterval = time.Nanosecond
+	t.Cleanup(func() { hookClaimQueryRetryInterval = prev })
+}
+
+// TestClaimQueryFailureIsRetriedThenReportedNotDrained is D4's core row: an
+// ordinary non-zero work-query exit is a failed read. It must be retried, must
+// be recorded on the bus, and — if it persists — must exit non-zero with NO
+// drain result and NO drain-ack, so the demand-spawned seat is retained rather
+// than converted into a false idle.
+func TestClaimQueryFailureIsRetriedThenReportedNotDrained(t *testing.T) {
+	withFastClaimRetries(t)
 	h := newFailureHookHarness()
 	h.script("/rig", hookRunnerAnswer{err: errors.New("bd ready: exit status 1")})
 	stores := []hookStore{{dir: "/rig", env: []string{"BEADS_DIR=/rig"}}}
@@ -150,8 +159,8 @@ func TestClaimQueryFailureIsReportedNotDrained(t *testing.T) {
 	if h.drained {
 		t.Fatal("drain was acknowledged for a failed read; the seat must be retained")
 	}
-	if h.calls["/rig"] != 1 {
-		t.Fatalf("primary-leg reads = %d, want exactly 1", h.calls["/rig"])
+	if want := 1 + hookClaimQueryRetryAttempts; h.calls["/rig"] != want {
+		t.Fatalf("primary-leg reads = %d, want %d (one attempt plus %d bounded retries)", h.calls["/rig"], want, hookClaimQueryRetryAttempts)
 	}
 	if len(h.events) == 0 {
 		t.Fatal("no session.work_query_failed event recorded for an ordinary query failure")
@@ -164,7 +173,10 @@ func TestClaimQueryFailureIsReportedNotDrained(t *testing.T) {
 	}
 }
 
-func TestClaimQueryFailureDoesNotRecoverFromSecondScriptedRead(t *testing.T) {
+// The retry earns its keep: a read that recovers mid-retry claims, so a
+// transient store fault costs seconds instead of a parked seat.
+func TestClaimQueryFailureRecoveredMidRetryClaims(t *testing.T) {
+	withFastClaimRetries(t)
 	h := newFailureHookHarness()
 	h.script("/rig",
 		hookRunnerAnswer{err: errors.New("bd ready: exit status 1")},
@@ -174,14 +186,11 @@ func TestClaimQueryFailureDoesNotRecoverFromSecondScriptedRead(t *testing.T) {
 
 	result, code, stderr := runFailureClaim(t, h, stores)
 
-	if code != 1 {
-		t.Fatalf("exit = %d, want 1 after first read failure; stderr=%s", code, stderr)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 after a mid-retry recovery; stderr=%s", code, stderr)
 	}
-	if result.Action != "" || result.BeadID != "" {
-		t.Fatalf("result = %+v, want no claim after first read failure", result)
-	}
-	if h.calls["/rig"] != 1 {
-		t.Fatalf("primary-leg reads = %d, want exactly 1", h.calls["/rig"])
+	if result.Action != "work" || result.BeadID != "wb-1" {
+		t.Fatalf("result = %+v, want the recovered row claimed", result)
 	}
 }
 
@@ -189,6 +198,7 @@ func TestClaimQueryFailureDoesNotRecoverFromSecondScriptedRead(t *testing.T) {
 // records nothing — the correct-pull outcome that must stay distinguishable from
 // the failure above (drain+ack vs exit 1).
 func TestClaimQueryEmptyStillDrainsWithoutAnEvent(t *testing.T) {
+	withFastClaimRetries(t)
 	h := newFailureHookHarness()
 	h.script("/rig", hookRunnerAnswer{out: "[]"})
 	stores := []hookStore{{dir: "/rig", env: []string{"BEADS_DIR=/rig"}}}
@@ -212,6 +222,7 @@ func TestClaimQueryEmptyStillDrainsWithoutAnEvent(t *testing.T) {
 // Control: an EXTRA leg's error is best-effort discovery and must not abort the
 // invocation — the pre-existing contract, unchanged.
 func TestClaimQueryExtraLegErrorDoesNotAbort(t *testing.T) {
+	withFastClaimRetries(t)
 	h := newFailureHookHarness()
 	h.script("/rig", hookRunnerAnswer{out: routedRowJSON("wb-1")})
 	h.script("/city", hookRunnerAnswer{err: errors.New("bd ready: exit status 1")})
@@ -236,6 +247,7 @@ func TestClaimQueryExtraLegErrorDoesNotAbort(t *testing.T) {
 // invocation's authoritative one — least of all a nil-error empty, which would
 // mint a false no_work drain-ack and reap a seat whose demand still exists.
 func TestFederatedPrimaryFailureIsTerminalNotADowngrade(t *testing.T) {
+	withFastClaimRetries(t)
 	h := newFailureHookHarness()
 	h.script("/rig", hookRunnerAnswer{err: errors.New("bd ready: exit status 1")})
 	h.script("/city", hookRunnerAnswer{out: "[]"}) // blind extra: sees nothing
@@ -260,6 +272,7 @@ func TestFederatedPrimaryFailureIsTerminalNotADowngrade(t *testing.T) {
 // Same shape, but the blind extra holds unrelated ROUTED work. Claiming it would
 // be acting on a partial view of the federation the primary was carrying.
 func TestFederatedPrimaryFailureDoesNotClaimFromABlindLeg(t *testing.T) {
+	withFastClaimRetries(t)
 	h := newFailureHookHarness()
 	h.script("/rig", hookRunnerAnswer{err: errors.New("bd ready: exit status 1")})
 	h.script("/city", hookRunnerAnswer{out: routedRowJSON("unrelated-1")})
@@ -280,6 +293,7 @@ func TestFederatedPrimaryFailureDoesNotClaimFromABlindLeg(t *testing.T) {
 // federated view can change that verdict — so it is served even while the
 // primary is down. Anything else from a blind leg is not.
 func TestFederatedPrimaryFailureStillResumesOwnInProgressWork(t *testing.T) {
+	withFastClaimRetries(t)
 	h := newFailureHookHarness()
 	h.script("/rig", hookRunnerAnswer{err: errors.New("bd ready: exit status 1")})
 	h.script("/city", hookRunnerAnswer{out: inProgressRowJSON("resume-1")})
@@ -301,6 +315,7 @@ func TestFederatedPrimaryFailureStillResumesOwnInProgressWork(t *testing.T) {
 // Control for the row above: with a HEALTHY primary, the extras' single-store
 // answers are accepted exactly as they are today.
 func TestHealthyPrimaryStillAcceptsExtraLegWork(t *testing.T) {
+	withFastClaimRetries(t)
 	h := newFailureHookHarness()
 	h.script("/rig", hookRunnerAnswer{out: "[]"})
 	h.script("/city", hookRunnerAnswer{out: routedRowJSON("city-1")})

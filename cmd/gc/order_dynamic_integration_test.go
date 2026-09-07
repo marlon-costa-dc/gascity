@@ -4,7 +4,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -28,7 +27,7 @@ func TestControllerDiscoversAddedCronOrderWithoutRestart(t *testing.T) {
 
 	sp := runtime.NewFake()
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		ds := make(map[string]TemplateParams)
 		for _, a := range c.Agents {
@@ -94,7 +93,7 @@ schedule = "*/1 * * * *"
 		t.Fatal(err)
 	}
 
-	store, err := openStoreAtForCity(context.Background(), dir, dir)
+	store, err := openStoreAtForCity(dir, dir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"time"
@@ -73,7 +72,7 @@ does not put the session into a suspended state or change its sleep_intent.
 The default duration (` + defaultHeartbeatDuration.String() + `) covers long-running operations.
 Pass --duration to override.`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			d := defaultHeartbeatDuration
 			if durationStr != "" {
 				var err error
@@ -87,7 +86,7 @@ Pass --duration to override.`,
 					return errExit
 				}
 			}
-			if cmdRuntimeHeartbeat(cmd.Context(), d, jsonOutput, stdout, stderr) != 0 {
+			if cmdRuntimeHeartbeat(d, jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -107,14 +106,14 @@ type runtimeHeartbeatJSON struct {
 	HeldUntil     string `json:"held_until"`
 }
 
-func cmdRuntimeHeartbeat(ctx context.Context, duration time.Duration, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdRuntimeHeartbeat(duration time.Duration, jsonOutput bool, stdout, stderr io.Writer) int {
 	current, err := currentSessionRuntimeTarget()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc runtime heartbeat: %v\n", err) //nolint:errcheck
 		return 1
 	}
 
-	store, err := openCityStoreAt(ctx, current.cityPath)
+	store, err := openCityStoreAt(current.cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc runtime heartbeat: opening store: %v\n", err) //nolint:errcheck
 		return 1

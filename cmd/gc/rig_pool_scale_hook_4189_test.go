@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,9 +34,10 @@ func TestRigScopedPoolDefaultsCoverFieldScenario_4189(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		result := buildDesiredStateWithSessionBeads(context.Background(),
+		result := buildDesiredStateWithSessionBeads(
 			"test-city", t.TempDir(), time.Now(), cfg, &localMockProvider{},
-			cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr)
+			cityStore, rigStores, &sessionBeadSnapshot{}, nil, os.Stderr,
+		)
 
 		if got := result.ScaleCheckCounts[qualified]; got != 1 {
 			t.Errorf("controller demand = %d, want 1 (default scale_check must read the rig store for a no-scale_check rig pool agent)", got)

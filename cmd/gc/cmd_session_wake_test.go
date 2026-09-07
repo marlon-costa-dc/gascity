@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"net"
 	"os"
@@ -161,7 +160,7 @@ func TestDoSessionWake_PokesManagedControllerAfterStateChange(t *testing.T) {
 		now: func() time.Time {
 			return time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
 		},
-		withdrawQueuedWaitNudges: func(_ context.Context, cityPath string, nudgeIDs []string) error {
+		withdrawQueuedWaitNudges: func(cityPath string, nudgeIDs []string) error {
 			if cityPath != "/city" {
 				t.Fatalf("withdraw cityPath = %q, want /city", cityPath)
 			}
@@ -198,7 +197,7 @@ func TestDoSessionWake_PokesManagedControllerAfterStateChange(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doSessionWake(context.Background(), sessionBead.ID, &stdout, &stderr, false, deps); code != 0 {
+	if code := doSessionWake(sessionBead.ID, &stdout, &stderr, false, deps); code != 0 {
 		t.Fatalf("doSessionWake() = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if got := strings.Join(calls, ","); got != "withdraw,managed,poke" {
@@ -245,7 +244,7 @@ func TestDoSessionWake_DoesNotPokeWithoutManagedController(t *testing.T) {
 		now: func() time.Time {
 			return time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
 		},
-		withdrawQueuedWaitNudges: func(context.Context, string, []string) error {
+		withdrawQueuedWaitNudges: func(string, []string) error {
 			return nil
 		},
 		cityUsesManagedReconciler: func(string) bool {
@@ -257,7 +256,7 @@ func TestDoSessionWake_DoesNotPokeWithoutManagedController(t *testing.T) {
 		},
 	}
 
-	if code := doSessionWake(context.Background(), sessionBead.ID, &bytes.Buffer{}, &bytes.Buffer{}, false, deps); code != 0 {
+	if code := doSessionWake(sessionBead.ID, &bytes.Buffer{}, &bytes.Buffer{}, false, deps); code != 0 {
 		t.Fatalf("doSessionWake() = %d, want 0", code)
 	}
 	if poked {
@@ -286,7 +285,7 @@ func TestDoSessionWake_PokeFailureWarnsWithoutFailingWake(t *testing.T) {
 		now: func() time.Time {
 			return time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
 		},
-		withdrawQueuedWaitNudges: func(context.Context, string, []string) error {
+		withdrawQueuedWaitNudges: func(string, []string) error {
 			return nil
 		},
 		cityUsesManagedReconciler: func(string) bool {
@@ -298,7 +297,7 @@ func TestDoSessionWake_PokeFailureWarnsWithoutFailingWake(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	if code := doSessionWake(context.Background(), sessionBead.ID, &bytes.Buffer{}, &stderr, false, deps); code != 0 {
+	if code := doSessionWake(sessionBead.ID, &bytes.Buffer{}, &stderr, false, deps); code != 0 {
 		t.Fatalf("doSessionWake() = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if got := stderr.String(); !strings.Contains(got, "warning: poke failed: dial failed") {
@@ -376,7 +375,7 @@ func TestDoSessionWake_StuckInFlightAgeGate(t *testing.T) {
 				cityPath:     "/city",
 				cityResolved: true,
 				now:          time.Now,
-				withdrawQueuedWaitNudges: func(context.Context, string, []string) error {
+				withdrawQueuedWaitNudges: func(string, []string) error {
 					withdrawCalled = true
 					return nil
 				},
@@ -384,7 +383,7 @@ func TestDoSessionWake_StuckInFlightAgeGate(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := doSessionWake(context.Background(), b.ID, &stdout, &stderr, false, deps)
+			code := doSessionWake(b.ID, &stdout, &stderr, false, deps)
 			if code != tt.wantCode {
 				t.Fatalf("doSessionWake() = %d, want %d; stderr=%s", code, tt.wantCode, stderr.String())
 			}
@@ -473,7 +472,7 @@ func TestDoSessionWake_NoRunnableTemplateAgeGate(t *testing.T) {
 			deps := sessionWakeDeps{store: store, cfg: cfg, cityPath: "/city", now: time.Now}
 
 			var stdout, stderr bytes.Buffer
-			if code := doSessionWake(context.Background(), b.ID, &stdout, &stderr, false, deps); code != 0 {
+			if code := doSessionWake(b.ID, &stdout, &stderr, false, deps); code != 0 {
 				t.Fatalf("doSessionWake() = %d, want 0; stderr=%s", code, stderr.String())
 			}
 
@@ -515,11 +514,11 @@ func TestCmdSessionWake_PokesManagedControllerAndRequestsSuspendedStart(t *testi
 	if err != nil {
 		t.Fatalf("loadCityConfig(%q): %v", cityDir, err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityDir, err)
 	}
-	sessionID, err := resolveSessionIDMaterializingNamed(context.Background(), cityDir, cfg, store, "mayor")
+	sessionID, err := resolveSessionIDMaterializingNamed(cityDir, cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -571,7 +570,7 @@ func TestCmdSessionWake_PokesManagedControllerAndRequestsSuspendedStart(t *testi
 	}()
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionWake(context.Background(), []string{"mayor"}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionWake([]string{"mayor"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionWake() = %d, want 0; stderr=%s", code, stderr.String())
 	}
 
@@ -599,7 +598,7 @@ func TestCmdSessionWake_PokesManagedControllerAndRequestsSuspendedStart(t *testi
 		}
 	}
 
-	freshStore, err := openCityStoreAt(context.Background(), cityDir)
+	freshStore, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityDir, err)
 	}
@@ -644,11 +643,11 @@ func TestCmdSessionWake_RejectsArchivedHistoricalSessionID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadCityConfig(%q): %v", cityDir, err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityDir, err)
 	}
-	sessionID, err := resolveSessionIDMaterializingNamed(context.Background(), cityDir, cfg, store, "mayor")
+	sessionID, err := resolveSessionIDMaterializingNamed(cityDir, cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -662,7 +661,7 @@ func TestCmdSessionWake_RejectsArchivedHistoricalSessionID(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionWake(context.Background(), []string{sessionID}, &stdout, &stderr); code == 0 {
+	if code := cmdSessionWake([]string{sessionID}, &stdout, &stderr); code == 0 {
 		t.Fatalf("cmdSessionWake() = %d, want rejection; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	// Pin the CLI wake-conflict artifact: the fused WakeSession returns a
@@ -692,11 +691,11 @@ func TestCmdSessionWake_RequestsStartForContinuityEligibleArchivedSessionID(t *t
 	if err != nil {
 		t.Fatalf("loadCityConfig(%q): %v", cityDir, err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityDir, err)
 	}
-	sessionID, err := resolveSessionIDMaterializingNamed(context.Background(), cityDir, cfg, store, "mayor")
+	sessionID, err := resolveSessionIDMaterializingNamed(cityDir, cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -709,14 +708,14 @@ func TestCmdSessionWake_RequestsStartForContinuityEligibleArchivedSessionID(t *t
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionWake(context.Background(), []string{sessionID}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionWake([]string{sessionID}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionWake() = %d, want success; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "wake requested") {
 		t.Fatalf("stdout = %q, want wake requested message", stdout.String())
 	}
 
-	freshStore, err := openCityStoreAt(context.Background(), cityDir)
+	freshStore, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", cityDir, err)
 	}

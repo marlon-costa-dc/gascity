@@ -179,7 +179,7 @@ func TestCachingStoreObservedListRejectsRealPartialPrimeWithoutBackingRead(t *te
 	}
 	backing := &observationReadCountingStore{Store: partial}
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -199,7 +199,7 @@ func TestCachingStoreObservedListAcceptsCleanPrimeActiveCache(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	rows, observation, ok := cache.ObservedList(ListQuery{Status: "open"})
@@ -355,7 +355,7 @@ func TestCachingStorePrimePublicationsInvalidateObservationsWithoutMutationSeque
 
 				var err error
 				if method == "PrimeActive" {
-					err = cache.PrimeActive(context.Background())
+					err = cache.PrimeActive()
 				} else {
 					err = cache.Prime(context.Background())
 				}

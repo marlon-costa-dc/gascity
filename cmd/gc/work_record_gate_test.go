@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -497,7 +496,7 @@ func TestRunWorkRecordCloseGateReusesPreOpenedStore(t *testing.T) {
 	var stderr strings.Builder
 	const bogusCityPath = "/nonexistent/does-not-exist"
 	t.Setenv(workRecordEnforceEnvVar, "1")
-	block := runWorkRecordCloseGate(context.Background(), []string{"close", "wr-shipped-nocommit"}, t.TempDir(), bogusCityPath, nil, panicOnGetStore{}, preFetched, &stderr)
+	block := runWorkRecordCloseGate([]string{"close", "wr-shipped-nocommit"}, t.TempDir(), bogusCityPath, nil, panicOnGetStore{}, preFetched, &stderr)
 	if !block {
 		t.Fatalf("expected block=true for shipped-without-commit, got false (fallback store open may have silently swallowed the preOpened store); stderr=%s", stderr.String())
 	}

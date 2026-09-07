@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -46,7 +45,7 @@ func TestRouteWaitList_APIPartialShowsRowsAndNotice(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeWaitList(context.Background(), t.TempDir(), c, "", "", "", false, &stdout, &stderr); code != 0 {
+	if code := routeWaitList(t.TempDir(), c, "", "", "", false, &stdout, &stderr); code != 0 {
 		t.Fatalf("routeWaitList exit = %d, want 0; stderr=%q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "w-partial") {

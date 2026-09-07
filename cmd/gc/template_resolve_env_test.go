@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -21,7 +20,6 @@ func TestResolveTemplatePrependsGCBinDirToPATH(t *testing.T) {
 	t.Setenv("PATH", "/opt/homebrew/bin"+sep+"/usr/bin")
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -66,7 +64,6 @@ func TestResolveTemplatePrependsGCBinDirToConfiguredAgentPATH(t *testing.T) {
 	t.Setenv("PATH", "/opt/homebrew/bin"+sep+"/usr/bin")
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -113,7 +110,6 @@ func TestResolveTemplateUsesTrustedRuntimeRootForControlTraceDefault(t *testing.
 	t.Setenv("GC_CITY_RUNTIME_DIR", customRuntimeDir)
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -148,7 +144,6 @@ func TestResolveTemplateUsesTrustedRuntimeRootForControlDispatcherTraceDefault(t
 	t.Setenv("GC_CITY_RUNTIME_DIR", customRuntimeDir)
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},
@@ -216,7 +211,6 @@ func TestResolveTemplateInjectsPerDispatcherTraceDefault(t *testing.T) {
 			t.Setenv("GC_CITY_RUNTIME_DIR", "")
 
 			params := &agentBuildParams{
-				ctx:        context.Background(),
 				cityName:   "city",
 				cityPath:   cityPath,
 				workspace:  &config.Workspace{Provider: "test"},
@@ -260,7 +254,6 @@ func TestResolveTemplateWithholdsControllerTokenFromConfigAuthoredEnv(t *testing
 	t.Setenv(convergence.TokenEnvVar, token)
 
 	params := &agentBuildParams{
-		ctx:      context.Background(),
 		cityName: "city",
 		cityPath: cityPath,
 		city: &config.City{Upstreams: map[string]config.UpstreamSpec{

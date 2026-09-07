@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -302,7 +301,7 @@ func TestMaterializeProviderOverlays_SkipsMergeableCodexHook(t *testing.T) {
 		RigOverlayDirs: map[string][]string{"myrig": {overlayDir}},
 	}
 
-	bp := newAgentBuildParams(context.Background(), "test-city", cityDir, cfg, runtime.NewFake(), time.Now().UTC(), nil, io.Discard)
+	bp := newAgentBuildParams("test-city", cityDir, cfg, runtime.NewFake(), time.Now().UTC(), nil, io.Discard)
 	cfgAgent := &cfg.Agents[0]
 	resolved, err := config.ResolveProvider(cfgAgent, bp.workspace, bp.providers, bp.lookPath)
 	if err != nil {

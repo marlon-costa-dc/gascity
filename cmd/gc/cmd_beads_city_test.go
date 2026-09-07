@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,7 +48,7 @@ name = "demo"
 	t.Setenv("GC_BEADS", "file")
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, want 1", code)
 	}
@@ -81,7 +80,7 @@ func TestDoBeadsCityEndpointSupportsExecGcBeadsBdProvider(t *testing.T) {
 	t.Setenv("GC_BEADS", "exec:"+gcBeadsBdScriptPath(cityDir))
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true, DryRun: true}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true, DryRun: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -130,7 +129,7 @@ func TestDoBeadsCityUseExternalWritesVerifiedCityAndInheritedRigs(t *testing.T) 
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", User: "city-user"}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", User: "city-user"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -237,7 +236,7 @@ prefix = "fe"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", User: "city-user"}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", User: "city-user"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -295,13 +294,12 @@ func TestDoBeadsCityUseExternalStopsManagedLocalProvider(t *testing.T) {
 	t.Setenv("GC_BEADS", "exec:"+script)
 	t.Setenv("GC_BEADS_SCOPE_ROOT", cityDir)
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{
 		External:        true,
 		Host:            "127.0.0.1",
 		Port:            "4406",
 		AdoptUnverified: true,
 	}, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -342,12 +340,11 @@ func TestDoBeadsCityUseExternalValidationFailureDoesNotStopManagedLocalProvider(
 	t.Setenv("GC_BEADS", "exec:"+script)
 	t.Setenv("GC_BEADS_SCOPE_ROOT", cityDir)
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{
 		External: true,
 		Host:     "127.0.0.1",
 		Port:     "4406",
 	}, &stdout, &stderr)
-
 	if code != 1 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, want 1", code)
 	}
@@ -457,13 +454,12 @@ func TestDoBeadsCityUseExternalStopFailureKeepsExternalConfig(t *testing.T) {
 	t.Setenv("GC_BEADS", "exec:"+script)
 	t.Setenv("GC_BEADS_SCOPE_ROOT", cityDir)
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{
 		External:        true,
 		Host:            "127.0.0.1",
 		Port:            "4406",
 		AdoptUnverified: true,
 	}, &stdout, &stderr)
-
 	if code != 1 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, want 1", code)
 	}
@@ -522,7 +518,7 @@ func TestDoBeadsCityUseExternalRewritesCompatRigWithRelativePath(t *testing.T) {
 	}()
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", User: "city-user"}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", User: "city-user"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -560,7 +556,7 @@ func TestDoBeadsCityUseExternalPreservesCompatOnlyExplicitRigs(t *testing.T) {
 	verifyCityExternalEndpoint = func(contract.ConfigState, string, string) error { return nil }
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -623,7 +619,7 @@ func TestDoBeadsCityUseExternalToleratesUninitializedInheritedRig(t *testing.T) 
 			writeRigEndpointCanonicalConfig(t, readyDir, contract.ConfigState{IssuePrefix: "fe", EndpointOrigin: contract.EndpointOriginInheritedCity, EndpointStatus: contract.EndpointStatusVerified, DoltHost: "old-city.example.com", DoltPort: "3306"})
 
 			var stdout, stderr bytes.Buffer
-			code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", User: "city-user", AdoptUnverified: true}, &stdout, &stderr)
+			code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", User: "city-user", AdoptUnverified: true}, &stdout, &stderr)
 			if code != 0 {
 				t.Fatalf("doBeadsCityEndpoint() = %d, want 0; stderr = %s", code, stderr.String())
 			}
@@ -668,7 +664,7 @@ func TestDoBeadsCityUseExternalRejectsUnusableInheritedRigMetadata(t *testing.T)
 	writeRigEndpointCanonicalConfig(t, brokenDir, contract.ConfigState{IssuePrefix: "ad", EndpointOrigin: contract.EndpointOriginInheritedCity, EndpointStatus: contract.EndpointStatusVerified, DoltHost: "old-city.example.com", DoltPort: "3306"})
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, want 1; stderr = %s", code, stderr.String())
 	}
@@ -701,7 +697,7 @@ func TestDoBeadsCityUseExternalAdoptUnverifiedSkipsValidation(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -756,7 +752,7 @@ func TestDoBeadsCityUseManagedWritesManagedCityAndInheritedRigs(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -813,7 +809,7 @@ func TestDoBeadsCityUseManagedPreservesCompatOnlyExplicitRigs(t *testing.T) {
 	writeRigEndpointMetadata(t, explicitDir, "ops")
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -889,7 +885,7 @@ func TestDoBeadsCityUseExternalDryRunDoesNotWriteFilesOrValidate(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", DryRun: true}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "db.example.com", Port: "4406", DryRun: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -1051,7 +1047,7 @@ func TestDoBeadsCityUseExternalPreservesCityTomlCommentsAndLayout(t *testing.T) 
 	cityDir, _, original := setupCommentedEndpointCity(t)
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "127.0.0.1", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "127.0.0.1", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -1095,7 +1091,7 @@ dolt_port = "3306"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "127.0.0.1", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "127.0.0.1", Port: "4406", AdoptUnverified: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}
@@ -1116,7 +1112,7 @@ func TestDoBeadsCityUseExternalDryRunAnnouncesCityTomlChange(t *testing.T) {
 	cityDir, _, original := setupCommentedEndpointCity(t)
 
 	var stdout, stderr bytes.Buffer
-	code := doBeadsCityEndpoint(context.Background(), fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "127.0.0.1", Port: "4406", DryRun: true}, &stdout, &stderr)
+	code := doBeadsCityEndpoint(fsys.OSFS{}, cityDir, cityEndpointOptions{External: true, Host: "127.0.0.1", Port: "4406", DryRun: true}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doBeadsCityEndpoint() = %d, stderr = %s", code, stderr.String())
 	}

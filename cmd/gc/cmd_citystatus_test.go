@@ -31,7 +31,7 @@ func TestCityStatusEmptyCity(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, "/home/user/bright-lights", &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, "/home/user/bright-lights", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -70,7 +70,7 @@ func TestCityStatusWithAgents(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, "/home/user/city", &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, "/home/user/city", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -112,7 +112,7 @@ func TestCityStatusReportsObservationErrors(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, "/home/user/city", &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, "/home/user/city", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -168,7 +168,7 @@ func TestCityStatusSuspended(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, t.TempDir(), &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, t.TempDir(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -198,7 +198,7 @@ func TestCityStatusPoolExpansion(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, t.TempDir(), &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, t.TempDir(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -242,7 +242,7 @@ func TestCityStatusCanonicalSingletonPoolUsesCanonicalName(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, t.TempDir(), &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, t.TempDir(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -271,7 +271,7 @@ func TestCityStatusRigs(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, t.TempDir(), &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, t.TempDir(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -300,7 +300,7 @@ func TestCityStatusJSONEmpty(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatusJSON(context.Background(), sp, cfg, "/home/user/bright-lights", &stdout, &stderr)
+	code := doCityStatusJSON(sp, cfg, "/home/user/bright-lights", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -338,7 +338,7 @@ name = "bright-lights"
 	}
 
 	oldOpen := openCityStoreAtForStatus
-	openCityStoreAtForStatus = func(context.Context, string) (beads.StoreOpenResult, error) {
+	openCityStoreAtForStatus = func(string) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{
 			Store: beads.NewMemStore(),
 			Diagnostic: beads.BeadsDiagnostic{
@@ -422,7 +422,7 @@ func TestCityStatusJSONWithAgents(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatusJSON(context.Background(), sp, cfg, "/home/user/city", &stdout, &stderr)
+	code := doCityStatusJSON(sp, cfg, "/home/user/city", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -494,7 +494,7 @@ func TestCityStatusJSONReportsObservationErrors(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatusJSON(context.Background(), sp, cfg, t.TempDir(), &stdout, &stderr)
+	code := doCityStatusJSON(sp, cfg, t.TempDir(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -517,7 +517,7 @@ func TestCityStatusJSONReportsObservationErrors(t *testing.T) {
 func TestCityStatusJSONReportsStoreOpenError(t *testing.T) {
 	sp := runtime.NewFake()
 	oldOpen := openCityStoreAtForStatus
-	openCityStoreAtForStatus = func(context.Context, string) (beads.StoreOpenResult, error) {
+	openCityStoreAtForStatus = func(string) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{}, errors.New("bead store unavailable")
 	}
 	t.Cleanup(func() { openCityStoreAtForStatus = oldOpen })
@@ -530,7 +530,7 @@ func TestCityStatusJSONReportsStoreOpenError(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatusJSON(context.Background(), sp, cfg, cityPath, &stdout, &stderr)
+	code := doCityStatusJSON(sp, cfg, cityPath, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
@@ -548,7 +548,7 @@ func TestCityStatusJSONReportsStoreOpenError(t *testing.T) {
 func TestCityStatusJSONReportsCatalogListError(t *testing.T) {
 	sp := runtime.NewFake()
 	oldOpen := openCityStoreAtForStatus
-	openCityStoreAtForStatus = func(context.Context, string) (beads.StoreOpenResult, error) {
+	openCityStoreAtForStatus = func(string) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: &listErrorStore{Store: beads.NewMemStore()}}, nil
 	}
 	t.Cleanup(func() { openCityStoreAtForStatus = oldOpen })
@@ -561,7 +561,7 @@ func TestCityStatusJSONReportsCatalogListError(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatusJSON(context.Background(), sp, cfg, cityPath, &stdout, &stderr)
+	code := doCityStatusJSON(sp, cfg, cityPath, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1 (degraded session snapshot); stderr=%s", code, stderr.String())
 	}
@@ -578,7 +578,7 @@ func TestCityStatusJSONReportsCatalogListError(t *testing.T) {
 
 func TestCmdCityStatusJSONConfigErrorIsStructured(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := cmdCityStatus(context.Background(), []string{filepath.Join(t.TempDir(), "missing-city")}, true, &stdout, &stderr)
+	code := cmdCityStatus([]string{filepath.Join(t.TempDir(), "missing-city")}, true, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
@@ -609,7 +609,7 @@ func TestCityStatusReportsCatalogListError(t *testing.T) {
 	sp := runtime.NewFake()
 	dops := newFakeDrainOps()
 	oldOpen := openCityStoreAtForStatus
-	openCityStoreAtForStatus = func(context.Context, string) (beads.StoreOpenResult, error) {
+	openCityStoreAtForStatus = func(string) (beads.StoreOpenResult, error) {
 		return beads.StoreOpenResult{Store: &listErrorStore{Store: beads.NewMemStore()}}, nil
 	}
 	t.Cleanup(func() { openCityStoreAtForStatus = oldOpen })
@@ -625,7 +625,7 @@ func TestCityStatusReportsCatalogListError(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, cityPath, &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, cityPath, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1 (degraded session snapshot); stderr=%s", code, stderr.String())
 	}
@@ -643,7 +643,7 @@ func TestCityStatusSkipsStoreOpenWhenNoPersistedStoreExists(t *testing.T) {
 	dops := newFakeDrainOps()
 	oldOpen := openCityStoreAtForStatus
 	called := false
-	openCityStoreAtForStatus = func(context.Context, string) (beads.StoreOpenResult, error) {
+	openCityStoreAtForStatus = func(string) (beads.StoreOpenResult, error) {
 		called = true
 		return beads.StoreOpenResult{}, errors.New("unexpected store open")
 	}
@@ -653,7 +653,7 @@ func TestCityStatusSkipsStoreOpenWhenNoPersistedStoreExists(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, t.TempDir(), &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, t.TempDir(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -676,7 +676,7 @@ func TestCityStatusAgentSuspendedByRig(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doCityStatus(context.Background(), sp, dops, cfg, t.TempDir(), &stdout, &stderr)
+	code := doCityStatus(sp, dops, cfg, t.TempDir(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -1117,7 +1117,7 @@ func TestRouteCityStatus_SixRowMatrix(t *testing.T) {
 			sp := runtime.NewFake()
 			dops := newFakeDrainOps()
 			var stdout, stderr bytes.Buffer
-			code := routeCityStatus(context.Background(), cityPath, cfg, sp, dops, c, tc.nilReason, false, &stdout, &stderr)
+			code := routeCityStatus(cityPath, cfg, sp, dops, c, tc.nilReason, false, &stdout, &stderr)
 
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
@@ -1176,7 +1176,7 @@ func TestCmdCityStatus_SupervisorManagedNoAPIPortUsesSupervisorAPI(t *testing.T)
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdCityStatus(context.Background(), []string{cityPath}, true, &stdout, &stderr)
+	code := cmdCityStatus([]string{cityPath}, true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdCityStatus exit = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -1212,7 +1212,7 @@ func TestRouteCityStatus_APIJSONIncludesCacheAge(t *testing.T) {
 	sp := runtime.NewFake()
 	dops := newFakeDrainOps()
 	var stdout, stderr bytes.Buffer
-	if code := routeCityStatus(context.Background(), cityPath, cfg, sp, dops, c, "", true, &stdout, &stderr); code != 0 {
+	if code := routeCityStatus(cityPath, cfg, sp, dops, c, "", true, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	var envelope map[string]any
@@ -1238,7 +1238,7 @@ func TestRouteCityStatus_FallbackJSONOmitsCacheAge(t *testing.T) {
 	sp := runtime.NewFake()
 	dops := newFakeDrainOps()
 	var stdout, stderr bytes.Buffer
-	if code := routeCityStatus(context.Background(), cityPath, cfg, sp, dops, nil, "controller-down", true, &stdout, &stderr); code != 0 {
+	if code := routeCityStatus(cityPath, cfg, sp, dops, nil, "controller-down", true, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	var envelope map[string]any
@@ -1279,7 +1279,7 @@ func TestRouteCityStatus_APIStaleBanner(t *testing.T) {
 	sp := runtime.NewFake()
 	dops := newFakeDrainOps()
 	var stdout, stderr bytes.Buffer
-	if code := routeCityStatus(context.Background(), cityPath, cfg, sp, dops, c, "", false, &stdout, &stderr); code != 0 {
+	if code := routeCityStatus(cityPath, cfg, sp, dops, c, "", false, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr=%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "cache age:") {

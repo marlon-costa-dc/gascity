@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -22,7 +21,7 @@ func TestResolveSessionIDMaterializingNamed_DoesNotMaterializeMissingMultiSessio
 		}},
 	}
 
-	_, err := resolveSessionIDMaterializingNamed(context.Background(), t.TempDir(), cfg, store, "gascity/claude")
+	_, err := resolveSessionIDMaterializingNamed(t.TempDir(), cfg, store, "gascity/claude")
 	if !errors.Is(err, session.ErrSessionNotFound) {
 		t.Fatalf("resolveSessionIDMaterializingNamed(gascity/claude) error = %v, want ErrSessionNotFound", err)
 	}

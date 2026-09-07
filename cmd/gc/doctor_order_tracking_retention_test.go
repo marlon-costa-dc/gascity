@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -110,11 +109,10 @@ func TestOrderTrackingRetentionCheck_RegisteredInBuildDoctorChecks(t *testing.T)
 	cityPath := t.TempDir()
 	cfg := &config.City{}
 	withHealthyStorePreflight(t)
-	checks := buildDoctorChecks(context.Background(), cityPath, cfg, nil, buildDoctorChecksOpts{
+	checks := buildDoctorChecks(cityPath, cfg, nil, buildDoctorChecksOpts{
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,
 	})
-
 	for _, c := range checks {
 		if c.Name() == "order-tracking-retention" {
 			return

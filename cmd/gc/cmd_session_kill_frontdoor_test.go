@@ -50,7 +50,7 @@ func TestCmdSessionKill_ForeignAndMissingRejectedAtResolutionWithoutWrite(t *tes
 	}
 	t.Cleanup(func() { buildSessionProviderByName = oldBuild })
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestCmdSessionKill_ForeignAndMissingRejectedAtResolutionWithoutWrite(t *tes
 
 	t.Run("foreign bead rejected at resolution, left unwritten", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		code := cmdSessionKill(context.Background(), []string{foreign.ID}, &stdout, &stderr)
+		code := cmdSessionKill([]string{foreign.ID}, &stdout, &stderr)
 		if code != 1 {
 			t.Fatalf("cmdSessionKill(foreign) = %d, want 1 (rejected at resolution); stderr=%s", code, stderr.String())
 		}
@@ -100,7 +100,7 @@ func TestCmdSessionKill_ForeignAndMissingRejectedAtResolutionWithoutWrite(t *tes
 
 	t.Run("missing id rejected at resolution", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer
-		code := cmdSessionKill(context.Background(), []string{"ga-does-not-exist"}, &stdout, &stderr)
+		code := cmdSessionKill([]string{"ga-does-not-exist"}, &stdout, &stderr)
 		if code != 1 {
 			t.Fatalf("cmdSessionKill(missing) = %d, want 1 (session not found); stderr=%s", code, stderr.String())
 		}

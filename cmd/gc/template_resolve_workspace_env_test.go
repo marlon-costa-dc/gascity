@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"testing"
 	"time"
@@ -16,7 +15,6 @@ func TestResolveTemplateMergesWorkspaceEnv(t *testing.T) {
 	writeTemplateResolveCityConfig(t, cityPath, "file")
 
 	params := &agentBuildParams{
-		ctx:      context.Background(),
 		cityName: "city",
 		cityPath: cityPath,
 		workspace: &config.Workspace{
@@ -52,7 +50,6 @@ func TestResolveTemplateAgentEnvWinsOverWorkspaceEnv(t *testing.T) {
 	writeTemplateResolveCityConfig(t, cityPath, "file")
 
 	params := &agentBuildParams{
-		ctx:      context.Background(),
 		cityName: "city",
 		cityPath: cityPath,
 		workspace: &config.Workspace{
@@ -87,7 +84,6 @@ func TestResolveTemplateDisablesProductMetricsForManagedAgent(t *testing.T) {
 	writeTemplateResolveCityConfig(t, cityPath, "file")
 
 	params := &agentBuildParams{
-		ctx:        context.Background(),
 		cityName:   "city",
 		cityPath:   cityPath,
 		workspace:  &config.Workspace{Provider: "test"},

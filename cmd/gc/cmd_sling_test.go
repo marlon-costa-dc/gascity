@@ -457,7 +457,7 @@ func TestDoSlingBeadToFixedAgent(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -489,7 +489,7 @@ func TestDoSlingPinnedDefaultSlingQueryUsesBuiltInRouting(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -522,7 +522,7 @@ func TestDoSlingEnvPassthrough(t *testing.T) {
 
 		deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 		opts := testOpts(a, "BL-42")
-		code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+		code := doSling(opts, deps, nil, stdout, stderr)
 
 		if code != 0 {
 			t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -559,7 +559,7 @@ func TestDoSlingEnvPassthrough(t *testing.T) {
 
 		deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 		opts := testOpts(a, "HW-7")
-		code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+		code := doSling(opts, deps, nil, stdout, stderr)
 
 		if code != 0 {
 			t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -638,7 +638,7 @@ func TestDoSlingBeadToPool(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "HW-7")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -679,7 +679,7 @@ func TestDoSlingRefusesCrossStoreRoute(t *testing.T) {
 	opts := testOpts(cfg.Agents[0], "HQ-1")
 	opts.Force = true
 
-	if code := doSling(context.Background(), opts, deps, &fakeQuerier{bead: beads.Bead{ID: "HQ-1", Type: "task", Status: "open"}}, stdout, stderr); code == 0 {
+	if code := doSling(opts, deps, &fakeQuerier{bead: beads.Bead{ID: "HQ-1", Type: "task", Status: "open"}}, stdout, stderr); code == 0 {
 		t.Fatalf("doSling returned 0, want cross-store refusal; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
 	msg := stderr.String()
@@ -778,7 +778,7 @@ func TestDoSlingFormulaToAgent(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "code-review")
 	opts.IsFormula = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -808,7 +808,7 @@ func TestDoSlingFormulaWithTitle(t *testing.T) {
 	opts := testOpts(a, "code-review")
 	opts.IsFormula = true
 	opts.Title = "my-review"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -831,7 +831,7 @@ func TestDoSlingSuspendedAgentWarns(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-1")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (still routes)", code)
@@ -854,7 +854,7 @@ func TestDoSlingSuspendedAgentForce(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-1")
 	opts.Force = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -878,7 +878,7 @@ func TestDoSlingSuspendedRigWarns(t *testing.T) {
 	// cross-store route guard does not trip before the rig check.
 	deps.StoreRef = "rig:myrig"
 	opts := testOpts(a, "my-1")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (still routes)", code)
@@ -907,7 +907,7 @@ func TestDoSlingSuspendedRigForce(t *testing.T) {
 	deps.StoreRef = "rig:myrig"
 	opts := testOpts(a, "my-1")
 	opts.Force = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -936,7 +936,7 @@ func TestDoSlingMultiSessionMaxZeroWarns(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-1")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (still routes)", code)
@@ -959,7 +959,7 @@ func TestDoSlingMultiSessionMaxZeroForce(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-1")
 	opts.Force = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -981,7 +981,7 @@ func TestDoSlingRunnerError(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-1")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1", code)
@@ -1000,7 +1000,7 @@ func TestDoSlingFormulaInstantiationError(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "nonexistent")
 	opts.IsFormula = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1", code)
@@ -1025,12 +1025,12 @@ func TestDoSlingNudgeFixedAgent(t *testing.T) {
 	t.Cleanup(func() { startNudgePoller = prev })
 	opts := testOpts(a, "BL-1")
 	opts.Nudge = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
-	pending, _, dead, err := listQueuedNudges(context.Background(), deps.CityPath, "mayor", time.Now())
+	pending, _, dead, err := listQueuedNudges(deps.CityPath, "mayor", time.Now())
 	if err != nil {
 		t.Fatalf("listQueuedNudges: %v", err)
 	}
@@ -1056,7 +1056,7 @@ func TestDoSlingNudgeNoSession(t *testing.T) {
 	deps.CityPath = t.TempDir() // isolated path so poke doesn't hit real socket
 	opts := testOpts(a, "BL-1")
 	opts.Nudge = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (sling succeeds, poke attempted)", code)
@@ -1064,7 +1064,7 @@ func TestDoSlingNudgeNoSession(t *testing.T) {
 	if !strings.Contains(stderr.String(), "poke failed") {
 		t.Errorf("stderr = %q, want 'poke failed' message (no controller socket in test)", stderr.String())
 	}
-	pending, _, dead, err := listQueuedNudges(context.Background(), deps.CityPath, "mayor", time.Now())
+	pending, _, dead, err := listQueuedNudges(deps.CityPath, "mayor", time.Now())
 	if err != nil {
 		t.Fatalf("listQueuedNudges: %v", err)
 	}
@@ -1083,7 +1083,7 @@ func TestDoSlingNudgeSuspended(t *testing.T) {
 	opts := testOpts(a, "BL-1")
 	opts.Nudge = true
 	opts.Force = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -1113,7 +1113,7 @@ func TestDoSlingNudgePoolMember(t *testing.T) {
 	t.Cleanup(func() { startNudgePoller = prev })
 	opts := testOpts(a, "BL-1")
 	opts.Nudge = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -1168,7 +1168,7 @@ func TestDoSlingNudgePoolMemberUsesBeadDerivedSessionName(t *testing.T) {
 
 	opts := testOpts(a, "BL-1")
 	opts.Nudge = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -1230,7 +1230,7 @@ func TestDoSlingNudgePoolBeadDerivedSession(t *testing.T) {
 	startNudgePoller = func(_, _, _ string) error { return nil }
 	t.Cleanup(func() { startNudgePoller = prev })
 
-	doSlingNudge(context.Background(), &a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, stdout, stderr)
+	doSlingNudge(&a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, stdout, stderr)
 	if strings.Contains(stdout.String(), "No running sessions") || strings.Contains(stderr.String(), "poke failed") {
 		t.Fatalf("sling nudge missed live bead-derived pool session; stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
@@ -1287,7 +1287,7 @@ func TestDoSlingNudgePoolUsesCityStoreForSessionBeads(t *testing.T) {
 		t.Fatal(err)
 	}
 	prevOpen := slingOpenCityStore
-	slingOpenCityStore = func(_ context.Context, path string) (beads.Store, error) {
+	slingOpenCityStore = func(path string) (beads.Store, error) {
 		if path != deps.CityPath {
 			t.Fatalf("slingOpenCityStore(%q), want %q", path, deps.CityPath)
 		}
@@ -1298,7 +1298,7 @@ func TestDoSlingNudgePoolUsesCityStoreForSessionBeads(t *testing.T) {
 	startNudgePoller = func(_, _, _ string) error { return nil }
 	t.Cleanup(func() { startNudgePoller = prevPoller })
 
-	doSlingNudge(context.Background(), &a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, stdout, stderr)
+	doSlingNudge(&a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, stdout, stderr)
 	if strings.Contains(stdout.String(), "No running sessions") || strings.Contains(stderr.String(), "poke failed") {
 		t.Fatalf("sling nudge missed live city-store pool session; stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
@@ -1365,7 +1365,7 @@ func TestDoSlingNudgePoolMemberBindingQualifiedCityScope(t *testing.T) {
 	startNudgePoller = func(_, _, _ string) error { return nil }
 	t.Cleanup(func() { startNudgePoller = prev })
 
-	doSlingNudge(context.Background(), &a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, stdout, stderr)
+	doSlingNudge(&a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, stdout, stderr)
 	if strings.Contains(stderr.String(), "not found in config") {
 		t.Fatalf("doSlingNudge logged 'not found in config' for a binding-qualified pool instance (#4843); stderr=%q", stderr.String())
 	}
@@ -1392,7 +1392,7 @@ func TestDoSlingNudgePoolNoMembers(t *testing.T) {
 	deps.CityPath = t.TempDir() // isolated path so poke doesn't hit real socket
 	opts := testOpts(a, "BL-1")
 	opts.Nudge = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (sling succeeds, poke attempted)", code)
@@ -1437,7 +1437,7 @@ func TestBuiltInSlingSlotSuffixedTargetNormalizesRoutedTo(t *testing.T) {
 	}
 
 	opts := testOpts(target, created.ID)
-	code := doSling(context.Background(), opts, deps, &fakeQuerier{bead: created}, stdout, stderr)
+	code := doSling(opts, deps, &fakeQuerier{bead: created}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("doSling returned %d; stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
@@ -1476,7 +1476,7 @@ func TestBuiltInSlingSlotSuffixedTargetRefusesCrossStoreRoute(t *testing.T) {
 	}
 
 	opts := testOpts(target, created.ID)
-	code := doSling(context.Background(), opts, deps, &fakeQuerier{bead: created}, stdout, stderr)
+	code := doSling(opts, deps, &fakeQuerier{bead: created}, stdout, stderr)
 	if code == 0 {
 		t.Fatalf("doSling returned 0, want cross-store refusal; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
@@ -1522,7 +1522,7 @@ func TestBuiltInSlingPoolRouteContractUsesMetadataOnly(t *testing.T) {
 	}
 
 	opts := testOpts(cfg.Agents[0], created.ID)
-	code := doSling(context.Background(), opts, deps, &fakeQuerier{bead: created}, stdout, stderr)
+	code := doSling(opts, deps, &fakeQuerier{bead: created}, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("doSling returned %d; stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
@@ -1625,7 +1625,7 @@ func TestDoSlingCustomSlingQuery(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-99")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -1655,7 +1655,7 @@ func TestDoSlingCustomSlingQueryExpandsTemplateContext(t *testing.T) {
 	deps.CityPath = cityPath
 	deps.CityName = ""
 	opts := testOpts(a, "FR-99")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -1703,12 +1703,12 @@ dir = "frontend"
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(), []string{"frontend/worker", "ship feature"}, false, false, true, "", nil, "", true, false, false, "", false, false, false, "", "", &stdout, &stderr)
+	code := cmdSling([]string{"frontend/worker", "ship feature"}, false, false, true, "", nil, "", true, false, false, "", false, false, false, "", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -1726,7 +1726,7 @@ dir = "frontend"
 		t.Fatalf("rig bead gc.routed_to = %q, want %q", rigBeads[0].Metadata["gc.routed_to"], "frontend/worker")
 	}
 
-	cityStore, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	cityStore, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
@@ -1775,12 +1775,12 @@ mode = "on_demand"
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(), []string{"worker", "ship feature"}, false, false, true, "", nil, "", true, false, false, "", false, false, false, "", "", &stdout, &stderr)
+	code := cmdSling([]string{"worker", "ship feature"}, false, false, true, "", nil, "", true, false, false, "", false, false, false, "", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
@@ -1847,7 +1847,7 @@ mode = "on_demand"
 		t.Fatalf("LoadWithIncludes: %v", err)
 	}
 	var dsErr bytes.Buffer
-	ds := buildDesiredState(context.Background(), "demo", cityDir, time.Now().UTC(), cfg, runtime.NewFake(), store, &dsErr)
+	ds := buildDesiredState("demo", cityDir, time.Now().UTC(), cfg, runtime.NewFake(), store, &dsErr)
 	desiredWorkers := 0
 	for name := range ds.State {
 		if strings.HasPrefix(name, "worker-") {
@@ -1958,7 +1958,7 @@ func installCaptureBdRunner(t *testing.T) *[]bdInvocation {
 	t.Cleanup(func() { beadsExecCommandRunnerWithEnv = orig })
 
 	calls := &[]bdInvocation{}
-	beadsExecCommandRunnerWithEnv = func(_ context.Context, env map[string]string) beads.CommandRunner {
+	beadsExecCommandRunnerWithEnv = func(env map[string]string) beads.CommandRunner {
 		snap := maps.Clone(env)
 		return func(dir, name string, args ...string) ([]byte, error) {
 			*calls = append(*calls, bdInvocation{Env: snap, Dir: dir, Args: append([]string(nil), args...)})
@@ -2021,7 +2021,7 @@ func TestCmdSlingInlineBeadRigScopedBdProvider(t *testing.T) {
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(), []string{"frontend/worker", "ship feature"}, false, false, true, "", nil, "", true, false, false, "", false, false, false, "", "", &stdout, &stderr)
+	code := cmdSling([]string{"frontend/worker", "ship feature"}, false, false, true, "", nil, "", true, false, false, "", false, false, false, "", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -2056,7 +2056,7 @@ func TestCmdSlingInlineBeadBareTargetFromRigCwdBdProvider(t *testing.T) {
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(), []string{"worker", "ship feature"}, false, false, true, "", nil, "", true, false, false, "", false, false, false, "", "", &stdout, &stderr)
+	code := cmdSling([]string{"worker", "ship feature"}, false, false, true, "", nil, "", true, false, false, "", false, false, false, "", "", &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -2089,15 +2089,15 @@ func TestCmdSlingRefusesMissingBead(t *testing.T) {
 	setupCmdSlingBeadExistsFixture(t)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"frontend/worker", "FE-ghost1"},
-		false, false, false,
+		false, false, false, // isFormula, doNudge, force=false
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code == 0 {
 		t.Fatalf("cmdSling returned 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -2130,15 +2130,15 @@ func TestCmdSlingDryRunRefusesMissingBead(t *testing.T) {
 	setupCmdSlingBeadExistsFixture(t)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"frontend/worker", "FE-ghost1"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, true,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code == 0 {
 		t.Fatalf("cmdSling dry-run returned 0, want non-zero; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
@@ -2155,15 +2155,15 @@ func TestCmdSlingDryRunPreviewsInlineText(t *testing.T) {
 	cityDir := setupCmdSlingBeadExistsFixture(t)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"frontend/worker", "write docs"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, true,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling dry-run returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2181,7 +2181,7 @@ func TestCmdSlingDryRunPreviewsInlineText(t *testing.T) {
 		t.Fatalf("stdout = %s, want dry-run footer", out)
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), filepath.Join(cityDir, "frontend"), cityDir)
+	rigStore, err := openStoreAtForCity(filepath.Join(cityDir, "frontend"), cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2202,15 +2202,15 @@ func TestCmdSlingDryRunInlineTextHasNoFalsePositivePreCheck(t *testing.T) {
 	cityDir := setupCmdSlingBeadExistsFixture(t)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"frontend/worker", "write docs"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, true,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling dry-run returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2238,7 +2238,7 @@ func TestCmdSlingDryRunInlineTextHasNoFalsePositivePreCheck(t *testing.T) {
 
 	// Sanity: city/frontend stores must remain empty (no bead created).
 	for _, dir := range []string{cityDir, filepath.Join(cityDir, "frontend")} {
-		store, err := openStoreAtForCity(context.Background(), dir, cityDir)
+		store, err := openStoreAtForCity(dir, cityDir)
 		if err != nil {
 			t.Fatalf("openStoreAtForCity(%s): %v", dir, err)
 		}
@@ -2555,15 +2555,15 @@ dir = "orders"
 	t.Chdir(cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"orders/worker", "FE-abcde"},
 		false, false, true,
 		"", nil, "",
 		true, false, false, "",
 		true, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code == 0 {
 		t.Fatalf("cmdSling returned 0, want non-zero refusal; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
@@ -2573,7 +2573,7 @@ dir = "orders"
 		}
 	}
 
-	frontendStore, err := openStoreAtForCity(context.Background(), frontendDir, cityDir)
+	frontendStore, err := openStoreAtForCity(frontendDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(frontend): %v", err)
 	}
@@ -2585,7 +2585,7 @@ dir = "orders"
 		t.Fatalf("refused route mutated metadata: gc.routed_to = %q, want empty", got)
 	}
 
-	ordersStore, err := openStoreAtForCity(context.Background(), ordersDir, cityDir)
+	ordersStore, err := openStoreAtForCity(ordersDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(orders): %v", err)
 	}
@@ -2607,15 +2607,15 @@ func TestCmdSlingHyphenatedRigPrefixExistingBeadDoesNotOrphan(t *testing.T) {
 	cityDir, rigDir, _ := setupCmdSlingHyphenatedRigPrefixBeadFixture(t, beadID, "agent-diagnostics")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"agent-diagnostics/worker", beadID},
 		false, false, true,
 		"", nil, "",
 		true, false, false, "",
 		true, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2633,15 +2633,15 @@ func TestCmdSlingHyphenatedRigPrefixMultiDashExistingBeadDoesNotOrphan(t *testin
 	cityDir, rigDir, _ := setupCmdSlingHyphenatedRigPrefixBeadFixture(t, beadID, "agent-diagnostics")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"agent-diagnostics/worker", beadID},
 		false, false, true,
 		"", nil, "",
 		true, false, false, "",
 		true, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2657,15 +2657,15 @@ func TestCmdSlingOneArgHyphenatedPrefixMultiDashExistingBeadUsesDefaultTarget(t 
 	cityDir, rigDir, _ := setupCmdSlingHyphenatedRigPrefixBeadFixture(t, beadID, "agent-diagnostics")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{beadID},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2685,15 +2685,15 @@ func TestCmdSlingCrossRigHyphenatedPrefixMultiDashRouteRefused(t *testing.T) {
 	cityDir, rigDir, otherDir := setupCmdSlingHyphenatedRigPrefixBeadFixture(t, beadID, "other")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"other/worker", beadID},
 		false, false, true,
 		"", nil, "",
 		true, false, false, "",
 		true, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code == 0 {
 		t.Fatalf("cmdSling returned 0, want non-zero refusal; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
@@ -2715,7 +2715,7 @@ func TestCmdSlingCrossRigHyphenatedPrefixMultiDashRouteRefused(t *testing.T) {
 func assertHyphenatedRigBeadNotMutatedAndNoOrphan(t *testing.T, cityDir, rigDir, beadID string) {
 	t.Helper()
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2791,7 +2791,7 @@ dir = %q
 func assertHyphenatedRigBeadRoutedWithoutInlineOrphan(t *testing.T, cityDir, rigDir, beadID, wantTarget string) {
 	t.Helper()
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -2809,7 +2809,7 @@ func assertHyphenatedRigBeadRoutedWithoutInlineOrphan(t *testing.T, cityDir, rig
 
 func assertStoreHasNoBeadTitle(t *testing.T, cityDir, storeDir, beadTitle string) {
 	t.Helper()
-	store, err := openStoreAtForCity(context.Background(), storeDir, cityDir)
+	store, err := openStoreAtForCity(storeDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(%s): %v", storeDir, err)
 	}
@@ -2828,15 +2828,15 @@ func TestCmdSlingConfiguredPrefixAllAlphaExistingBeadUsesSelectedPrefixStore(t *
 	cityDir, frontendDir := setupCmdSlingConfiguredPrefixAllAlphaFrontendFixture(t, false, true)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"frontend/worker", "FE-abcde"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		true, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2844,7 +2844,7 @@ func TestCmdSlingConfiguredPrefixAllAlphaExistingBeadUsesSelectedPrefixStore(t *
 		t.Fatalf("stdout = %q, want existing bead route without inline creation", stdout.String())
 	}
 
-	frontendStore, err := openStoreAtForCity(context.Background(), frontendDir, cityDir)
+	frontendStore, err := openStoreAtForCity(frontendDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(frontend): %v", err)
 	}
@@ -2868,15 +2868,15 @@ func TestCmdSlingOneArgConfiguredPrefixAllAlphaExistingBeadUsesDefaultTarget(t *
 	cityDir, frontendDir := setupCmdSlingConfiguredPrefixAllAlphaFrontendFixture(t, true, true)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"FE-abcde"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		true, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -2884,7 +2884,7 @@ func TestCmdSlingOneArgConfiguredPrefixAllAlphaExistingBeadUsesDefaultTarget(t *
 		t.Fatalf("stdout = %q, want existing bead route without inline creation", stdout.String())
 	}
 
-	frontendStore, err := openStoreAtForCity(context.Background(), frontendDir, cityDir)
+	frontendStore, err := openStoreAtForCity(frontendDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(frontend): %v", err)
 	}
@@ -2974,15 +2974,15 @@ func TestCmdSlingForceBypassesMissingBeadCheck(t *testing.T) {
 	setupCmdSlingBeadExistsFixture(t)
 
 	var stdout, stderr bytes.Buffer
-	_ = cmdSling(context.Background(),
+	_ = cmdSling(
 		[]string{"frontend/worker", "FE-ghost1"},
-		false, false, true,
+		false, false, true, // force=true
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	got := stderr.String()
 	if strings.Contains(got, "not found in store") {
 		t.Errorf("--force did not bypass bead-existence check; stderr: %s", got)
@@ -3026,15 +3026,15 @@ sling_query = "true"
 	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"frontend/worker", "FE-ghost1"},
 		false, false, true,
 		"", nil, "",
 		false, false, false, "",
 		true, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -3052,7 +3052,7 @@ func TestCmdSlingAcceptsExistingBead(t *testing.T) {
 	cityDir := setupCmdSlingBeadExistsFixture(t)
 	rigDir := filepath.Join(cityDir, "frontend")
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -3062,15 +3062,15 @@ func TestCmdSlingAcceptsExistingBead(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	_ = cmdSling(context.Background(),
+	_ = cmdSling(
 		[]string{"frontend/worker", seeded.ID},
-		false, false, false,
+		false, false, false, // force=false; existence check should pass naturally
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if strings.Contains(stderr.String(), "not found in store") {
 		t.Errorf("existence check incorrectly tripped on a real bead; stderr: %s", stderr.String())
 	}
@@ -3082,15 +3082,15 @@ func TestCmdSlingMultiDashBeadIDRoutesExistingBead(t *testing.T) {
 	cityDir, rigDir := setupCmdSlingMultiDashBeadFixture(t, true)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"foundations/worker", "fo-spawn-storm"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -3101,7 +3101,7 @@ func TestCmdSlingMultiDashBeadIDRoutesExistingBead(t *testing.T) {
 		t.Errorf("stderr = %q, want existing-bead routing breadcrumb", stderr.String())
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -3125,15 +3125,15 @@ func TestCmdSlingOneArgMultiDashExistingBeadUsesDefaultTarget(t *testing.T) {
 	cityDir, rigDir := setupCmdSlingMultiDashBeadFixture(t, true)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"fo-spawn-storm"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -3144,7 +3144,7 @@ func TestCmdSlingOneArgMultiDashExistingBeadUsesDefaultTarget(t *testing.T) {
 		t.Errorf("stderr = %q, want existing-bead routing breadcrumb", stderr.String())
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -3199,15 +3199,15 @@ dir = "orders"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"orders/worker", "fo-spawn-storm"},
 		false, false, true,
 		"", nil, "",
 		true, false, false, "",
 		true, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code == 0 {
 		t.Fatalf("cmdSling returned 0, want non-zero refusal; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
@@ -3217,7 +3217,7 @@ dir = "orders"
 		}
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -3236,7 +3236,7 @@ dir = "orders"
 		t.Fatalf("rig store bead count = %d, want 1: %#v", len(all), all)
 	}
 
-	ordersStore, err := openStoreAtForCity(context.Background(), ordersDir, cityDir)
+	ordersStore, err := openStoreAtForCity(ordersDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(orders): %v", err)
 	}
@@ -3297,15 +3297,15 @@ dir = "live_docs"
 	t.Chdir(cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"live_docs/worker", beadID},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -3313,7 +3313,7 @@ dir = "live_docs"
 		t.Fatalf("stdout = %q, want existing bead route without inline creation", stdout.String())
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -3423,15 +3423,15 @@ dir = "orders"
 	t.Chdir(cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"orders/worker", "od-zzzz1"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code == 0 {
 		t.Fatalf("cmdSling returned 0, want non-zero; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
@@ -3447,15 +3447,15 @@ func TestCmdSlingRefusesMissingConfiguredPrefixAllAlphaBeadID(t *testing.T) {
 	cityDir, _ := setupCmdSlingConfiguredPrefixAllAlphaFrontendFixture(t, false, false)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"frontend/worker", "FE-abcde"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		true, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code == 0 {
 		t.Fatalf("cmdSling returned 0, want non-zero; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}
@@ -3466,7 +3466,7 @@ func TestCmdSlingRefusesMissingConfiguredPrefixAllAlphaBeadID(t *testing.T) {
 		t.Fatalf("stderr = %q, want missing bead diagnostic", stderr.String())
 	}
 
-	frontendStore, err := openStoreAtForCity(context.Background(), filepath.Join(cityDir, "frontend"), cityDir)
+	frontendStore, err := openStoreAtForCity(filepath.Join(cityDir, "frontend"), cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(frontend): %v", err)
 	}
@@ -3506,7 +3506,7 @@ dolt.auto-start: false
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "repo", Path: rigDir}}}
 
-	env, err := slingStoreEnvWithError(context.Background(), cfg, cityDir, rigDir)
+	env, err := slingStoreEnvWithError(cfg, cityDir, rigDir)
 	if err != nil {
 		t.Fatalf("slingStoreEnvWithError() error = %v", err)
 	}
@@ -3546,7 +3546,7 @@ dolt.auto-start: false
 	}
 	cfg := &config.City{Rigs: []config.Rig{{Name: "pg", Path: rigDir}}}
 
-	_, err := slingStoreEnvWithError(context.Background(), cfg, cityDir, rigDir)
+	_, err := slingStoreEnvWithError(cfg, cityDir, rigDir)
 	assertRefusesUnregisteredBackend(t, err)
 }
 
@@ -3663,7 +3663,7 @@ func TestCheckBeadStateAssigneeWarns(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "MY-42")
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -3686,7 +3686,7 @@ func TestCheckBeadStatePoolLabelWarns(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -3709,7 +3709,7 @@ func TestCheckBeadStateBothWarnings(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -3731,7 +3731,7 @@ func TestCheckBeadStateCleanNoWarning(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -3750,7 +3750,7 @@ func TestCheckBeadStateQueryFailsNoWarning(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -3768,7 +3768,7 @@ func TestCheckBeadStateNilQuerierNoWarning(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -3788,7 +3788,7 @@ func TestCheckBeadStateForceSkipsCheck(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.Force = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -3810,7 +3810,7 @@ func TestCheckBeadStateFormulaChecksResolvedBead(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "my-formula")
 	opts.IsFormula = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -3838,7 +3838,7 @@ func TestDoSlingBatchConvoyExpandsChildren(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -3874,7 +3874,7 @@ func TestDoSlingBatchConvoyMixedStatus(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-2")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -3914,7 +3914,7 @@ func TestDoSlingBatchConvoyNoOpenChildren(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-3")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSlingBatch returned %d, want 1", code)
@@ -3939,7 +3939,7 @@ func TestDoSlingBatchEpicErrors(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "EP-1")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSlingBatch returned %d, want 1; stderr: %s", code, stderr.String())
@@ -3966,7 +3966,7 @@ func TestDoSlingBatchRegularBeadPassthrough(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -3996,7 +3996,7 @@ func TestDoSlingBatchFormulaPassthrough(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "convoy-formula")
 	opts.IsFormula = true
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -4015,7 +4015,7 @@ func TestDoSlingBatchNilQuerier(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatch(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSlingBatch(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -4036,7 +4036,7 @@ func TestDoSlingBatchGetFails(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code == 0 {
 		t.Fatalf("doSlingBatch returned 0, want lookup failure; stdout: %s", stdout.String())
@@ -4061,7 +4061,7 @@ func TestDoSlingBatchChildrenFails(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSlingBatch returned %d, want 1", code)
@@ -4091,7 +4091,7 @@ func TestDoSlingBatchPartialFailure(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSlingBatch returned %d, want 1 (partial failure)", code)
@@ -4129,7 +4129,7 @@ func TestDoSlingBatchAllChildrenFail(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSlingBatch returned %d, want 1", code)
@@ -4161,7 +4161,7 @@ func TestDoSlingBatchNudgeOnceAfterAll(t *testing.T) {
 	t.Cleanup(func() { startNudgePoller = prev })
 	opts := testOpts(a, "CVY-1")
 	opts.Nudge = true
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -4171,7 +4171,7 @@ func TestDoSlingBatchNudgeOnceAfterAll(t *testing.T) {
 			t.Fatalf("expected queued sling reminder, got direct nudge calls: %+v", sp.Calls)
 		}
 	}
-	pending, _, dead, err := listQueuedNudges(context.Background(), deps.CityPath, "mayor", time.Now())
+	pending, _, dead, err := listQueuedNudges(deps.CityPath, "mayor", time.Now())
 	if err != nil {
 		t.Fatalf("listQueuedNudges: %v", err)
 	}
@@ -4199,7 +4199,7 @@ func TestDoSlingBatchForceSkipsPerChildWarnings(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
 	opts.Force = true
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -4237,7 +4237,7 @@ func TestOnFormulaAttachesAndRoutes(t *testing.T) {
 	}, nil)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr)
+	code := doSling(opts, deps, deps.Store, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -4299,7 +4299,7 @@ version = 1
 	}, nil)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "root-only"
-	code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr)
+	code := doSling(opts, deps, deps.Store, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -4356,7 +4356,7 @@ version = 1
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "root-only")
 	opts.IsFormula = true
-	code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr)
+	code := doSling(opts, deps, deps.Store, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -4395,7 +4395,7 @@ func TestOnFormulaCopiesSourcePriorityToCreatedBeads(t *testing.T) {
 	}, nil)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -4491,7 +4491,7 @@ title = "Do work"
 	opts.OnFormula = "graph-work"
 	opts.ScopeKind = "city"
 	opts.ScopeRef = "test-city"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -4652,7 +4652,7 @@ title = "Do work"
 	addTestControlDispatcherAgents(cfg, "", "frontend")
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "graph-work"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 3 {
 		t.Fatalf("doSling returned %d, want 3 for legacy source workflow conflict; stderr: %s", code, stderr.String())
@@ -4699,7 +4699,7 @@ title = "Do work"
 	opts.OnFormula = "graph-work"
 	opts.ScopeKind = "city"
 	opts.ScopeRef = "test-city"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -4776,7 +4776,7 @@ title = "Do work"
 	addTestControlDispatcherAgents(cfg, "", "frontend")
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "graph-work"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0 under convoy-first graph.v2; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -5093,7 +5093,7 @@ func TestCLIDirectSessionResolverMaterializesNamedSessionAliasShadow(t *testing.
 		}},
 	}
 
-	id, ok, err := cliDirectSessionResolver(context.Background(), store, cfg.Workspace.Name, t.TempDir(), cfg, "claude", "")
+	id, ok, err := cliDirectSessionResolver(store, cfg.Workspace.Name, t.TempDir(), cfg, "claude", "")
 	if err != nil {
 		t.Fatalf("cliDirectSessionResolver: %v", err)
 	}
@@ -5127,7 +5127,7 @@ func TestResolveGraphDirectSessionBindingMaterializesNamedSessionAliasShadow(t *
 		}},
 	}
 
-	binding, ok, err := graphroute.ResolveGraphDirectSessionBinding(context.Background(), store, cfg.Workspace.Name, cfg, "claude", "", cliGraphrouteDeps(t.TempDir()))
+	binding, ok, err := graphroute.ResolveGraphDirectSessionBinding(store, cfg.Workspace.Name, cfg, "claude", "", cliGraphrouteDeps(t.TempDir()))
 	if err != nil {
 		t.Fatalf("ResolveGraphDirectSessionBinding: %v", err)
 	}
@@ -5166,7 +5166,7 @@ func TestDoSlingRejectsScopeForPlainBeadRouting(t *testing.T) {
 	opts.ScopeKind = "city"
 	opts.ScopeRef = "test-city"
 
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code == 0 {
 		t.Fatalf("doSling returned %d, want non-zero", code)
@@ -5215,7 +5215,7 @@ title = "Do work"
 		return nil
 	}
 
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -5234,7 +5234,7 @@ func TestOnFormulaWithTitle(t *testing.T) {
 	opts := testOpts(a, "BL-42")
 	opts.Title = "my-review"
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -5364,7 +5364,7 @@ func TestOnFormulaCookError(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "nonexistent-formula"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1", code)
@@ -5383,7 +5383,7 @@ func TestOnFormulaCookMissingFormula(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "totally-missing"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1", code)
@@ -5425,7 +5425,7 @@ description = "Target: {{target_id}}, workspace: {{workspace}}"
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "repro")
 	opts.IsFormula = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -5475,7 +5475,7 @@ description = "Target: {{target_id}}, workspace: {{workspace}}"
 	opts := testOpts(a, "repro-mixed-vars")
 	opts.IsFormula = true
 	opts.Vars = []string{"target_id=BL-42"}
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -5505,7 +5505,7 @@ func TestOnFormulaExistingMoleculeErrors(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1", code)
@@ -5552,7 +5552,7 @@ title = "Work in {{workspace}}"
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "requires-workspace"
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -5582,7 +5582,7 @@ func TestOnFormulaExistingWispErrors(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1", code)
@@ -5610,7 +5610,7 @@ func TestOnFormulaAutoBurnStaleMolecule(t *testing.T) {
 
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (auto-burn should unblock); stderr: %s", code, stderr.String())
@@ -5632,7 +5632,7 @@ func TestOnFormulaMetadataAttachmentSkipsIdempotentRetry(t *testing.T) {
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
 
-	if code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr); code != 0 {
+	if code := doSling(opts, deps, deps.Store, stdout, stderr); code != 0 {
 		t.Fatalf("first doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
 	source, err := deps.Store.Get("BL-42")
@@ -5647,7 +5647,7 @@ func TestOnFormulaMetadataAttachmentSkipsIdempotentRetry(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr); code != 0 {
+	if code := doSling(opts, deps, deps.Store, stdout, stderr); code != 0 {
 		t.Fatalf("second doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
 	if stderr.Len() != 0 {
@@ -5689,7 +5689,7 @@ func TestOnFormulaSkipsClosedMolecule(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (closed molecule should be skipped); stderr: %s", code, stderr.String())
@@ -5709,7 +5709,7 @@ func TestOnFormulaCleanBead(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -5730,7 +5730,7 @@ func TestOnFormulaNilQuerier(t *testing.T) {
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
 	// nil querier → molecule check skipped, should succeed.
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -5746,7 +5746,7 @@ func TestOnFormulaOutput(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -5791,7 +5791,7 @@ title = "Work"
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "root-title-placeholder"
 	opts.Title = "Reviewed work"
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -5818,7 +5818,7 @@ func TestBatchOnConvoy(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "code-review"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -5885,7 +5885,7 @@ title = "Work {{issue}}"
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "requires-issue"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -5931,7 +5931,7 @@ title = "Work {{workspace}}"
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "batch-requires-workspace"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSlingBatch returned %d, want 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -5960,7 +5960,7 @@ func TestBatchOnConvoyCopiesChildPriorityToCreatedBeads(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "code-review"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -5997,7 +5997,7 @@ func TestBatchOnFailFastMolecule(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "code-review"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSlingBatch returned %d, want 1", code)
@@ -6035,7 +6035,7 @@ func TestBatchAutoBurnStaleMolecules(t *testing.T) {
 
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "code-review"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0 (auto-burn should unblock); stderr: %s", code, stderr.String())
@@ -6083,7 +6083,7 @@ needs = ["prep"]
 
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "multi-step"
-	code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr)
+	code := doSling(opts, deps, deps.Store, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6149,7 +6149,7 @@ func TestBatchSkipsClosedMolecules(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "code-review"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0 (closed molecule should be skipped); stderr: %s", code, stderr.String())
@@ -6187,7 +6187,7 @@ func TestBatchOnPartialCookFailure(t *testing.T) {
 	}
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "code-review"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSlingBatch returned %d, want 1 (partial failure)", code)
@@ -6232,7 +6232,7 @@ func TestBatchOnNudgeOnce(t *testing.T) {
 	opts := testOpts(a, "CVY-1")
 	opts.Nudge = true
 	opts.OnFormula = "code-review"
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6242,7 +6242,7 @@ func TestBatchOnNudgeOnce(t *testing.T) {
 			t.Fatalf("expected queued sling reminder, got direct nudge calls: %+v", sp.Calls)
 		}
 	}
-	pending, _, dead, err := listQueuedNudges(context.Background(), deps.CityPath, "mayor", time.Now())
+	pending, _, dead, err := listQueuedNudges(deps.CityPath, "mayor", time.Now())
 	if err != nil {
 		t.Fatalf("listQueuedNudges: %v", err)
 	}
@@ -6264,7 +6264,7 @@ func TestBatchOnRegularPassthrough(t *testing.T) {
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
 	// Non-container bead + --on → should fall through to doSling.
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6306,7 +6306,7 @@ func TestDryRunSingleBead(t *testing.T) {
 	deps.Store = seededStore("BL-42")
 	opts := testOpts(a, "BL-42")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6358,7 +6358,7 @@ func TestDryRunSingleBeadExpandsSlingQuerySummary(t *testing.T) {
 	deps.Store = seededStore("FR-42")
 	opts := testOpts(a, "FR-42")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6379,7 +6379,7 @@ func TestDryRunFormula(t *testing.T) {
 	opts := testOpts(a, "code-review")
 	opts.IsFormula = true
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6416,7 +6416,7 @@ func TestDryRunOnFormula(t *testing.T) {
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6489,7 +6489,7 @@ func TestDryRunOnFormulaGraphV2(t *testing.T) {
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "graph-work"
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6520,7 +6520,7 @@ func TestDryRunMultiSessionConfig(t *testing.T) {
 	deps.Store = seededStore("BL-42")
 	opts := testOpts(a, "BL-42")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6560,7 +6560,7 @@ func TestDryRunConvoy(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
 	opts.DryRun = true
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6619,7 +6619,7 @@ func TestDryRunConvoyUsesTracksMembers(t *testing.T) {
 	deps.Store = store
 	opts := testOpts(a, "CVY-1")
 	opts.DryRun = true
-	code := doSlingBatch(context.Background(), opts, deps, store, stdout, stderr)
+	code := doSlingBatch(opts, deps, store, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6682,7 +6682,7 @@ func TestDryRunLeafTaskViaBatchDispatchOnFormula(t *testing.T) {
 	// Mirror the live CLI: every sling invocation goes through
 	// doSlingBatchWithJSON; the function decides single-vs-batch
 	// internally from the bead type.
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6734,7 +6734,7 @@ func TestDryRunBatchOnFormula(t *testing.T) {
 	opts := testOpts(a, "CVY-1")
 	opts.OnFormula = "code-review"
 	opts.DryRun = true
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6775,7 +6775,7 @@ func TestDryRunNudgeRunning(t *testing.T) {
 	opts := testOpts(a, "BL-1")
 	opts.Nudge = true
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0", code)
@@ -6809,7 +6809,7 @@ func TestDryRunNudgeNotRunning(t *testing.T) {
 	opts := testOpts(a, "BL-1")
 	opts.Nudge = true
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -6830,7 +6830,7 @@ func TestDryRunNoMutations(t *testing.T) {
 	deps.Store = seededStore("BL-42")
 	opts := testOpts(a, "BL-42")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0", code)
@@ -6850,7 +6850,7 @@ func TestDryRunSuspendedWarning(t *testing.T) {
 	deps.Store = seededStore("BL-1")
 	opts := testOpts(a, "BL-1")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0", code)
@@ -6882,7 +6882,7 @@ func TestDryRunOnExistingMolecule(t *testing.T) {
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "code-review"
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("dry-run returned %d, want 1 (existing molecule)", code)
@@ -6917,7 +6917,7 @@ func TestDryRunDefaultFormulaExistingMolecule(t *testing.T) {
 	deps.Store = seededStore("BL-42")
 	opts := testOpts(a, "BL-42")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0 (default formula falls back to plain routing); stderr: %s", code, stderr.String())
@@ -6947,7 +6947,7 @@ func TestDryRunNilQuerier(t *testing.T) {
 	deps.Store = seededStore("BL-42")
 	opts := testOpts(a, "BL-42")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7077,7 +7077,7 @@ func TestDoSlingIdempotentSkipsRouting(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -7127,7 +7127,7 @@ func TestDoSlingRecoversMissingConvoyOnPreRoutedBead(t *testing.T) {
 	}
 
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr)
+	code := doSling(opts, deps, deps.Store, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7199,7 +7199,7 @@ func TestDoSlingNoConvoyRepeatIsIdempotent(t *testing.T) {
 
 	opts := testOpts(a, "BL-42")
 	opts.NoConvoy = true
-	code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr)
+	code := doSling(opts, deps, deps.Store, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("first doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -7216,7 +7216,7 @@ func TestDoSlingNoConvoyRepeatIsIdempotent(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	code = doSling(context.Background(), opts, deps, deps.Store, stdout, stderr)
+	code = doSling(opts, deps, deps.Store, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("second doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -7273,7 +7273,7 @@ func TestDoSlingKeepsWorkflowParentIdempotent(t *testing.T) {
 	}, nil)
 
 	opts := testOpts(a, "BL-42")
-	code := doSling(context.Background(), opts, deps, deps.Store, stdout, stderr)
+	code := doSling(opts, deps, deps.Store, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -7302,7 +7302,7 @@ func TestDoSlingIdempotentForceOverrides(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.Force = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0", code)
@@ -7337,7 +7337,7 @@ func TestDoSlingIdempotentWithOnFormula(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
 	opts.OnFormula = "my-formula"
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7368,7 +7368,7 @@ func TestDoSlingBatchIdempotentChildSkipped(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7409,7 +7409,7 @@ func TestDoSlingBatchAllIdempotent(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7440,7 +7440,7 @@ func TestDryRunIdempotentBead(t *testing.T) {
 	deps.Store = seededStore("BL-42")
 	opts := testOpts(a, "BL-42")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	// Dry-run reaches the full preview — including the Idempotency section.
 	if code != 0 {
@@ -7573,7 +7573,7 @@ func TestDoSlingCrossRigBlocks(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "FE-123")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1 (cross-rig block)", code)
@@ -7599,7 +7599,7 @@ func TestDoSlingCrossRigForceOverrides(t *testing.T) {
 	deps.StoreRef = "rig:hello-world"
 	opts := testOpts(a, "FE-123")
 	opts.Force = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (--force overrides cross-rig); stderr: %s", code, stderr.String())
@@ -7625,7 +7625,7 @@ func TestDoSlingCrossRigSameRigAllowed(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	deps.StoreRef = "rig:hello-world"
 	opts := testOpts(a, "HW-7")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (same rig); stderr: %s", code, stderr.String())
@@ -7653,7 +7653,7 @@ func TestDoSlingBatchCrossRigBlocks(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "FE-1")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSlingBatch returned %d, want 1 (cross-rig block)", code)
@@ -7680,7 +7680,7 @@ func TestDryRunCrossRigSection(t *testing.T) {
 	deps.Store = seededStore("FE-123")
 	opts := testOpts(a, "FE-123")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7722,7 +7722,7 @@ func TestDryRunBatchCrossRigSection(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "FE-1")
 	opts.DryRun = true
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7756,7 +7756,7 @@ func TestDoSlingCrossRigFormulaExempt(t *testing.T) {
 	opts := testOpts(a, "code-review")
 	opts.IsFormula = true
 	// Formula mode — cross-rig check should not apply.
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0 (formula exempt from cross-rig); stderr: %s", code, stderr.String())
@@ -7810,7 +7810,7 @@ func TestDoSlingOnFormulaCrossRigBlocked(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "FE-123")
 	opts.OnFormula = "code-review"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1 (cross-rig block with --on)", code)
@@ -7837,7 +7837,7 @@ func TestDoSlingOnFormulaCrossRigForceOverrides(t *testing.T) {
 	opts := testOpts(a, "FE-123")
 	opts.OnFormula = "code-review"
 	opts.Force = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7867,7 +7867,7 @@ func TestDoSlingBatchAllIdempotentNoNudge(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
 	opts.Nudge = true
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7891,7 +7891,7 @@ func TestDefaultFormulaApplied(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	deps.Store = beads.NewMemStoreFrom(1, []beads.Bead{{ID: "HW-42", Title: "Work", Type: "task", Status: "open"}}, nil)
 	opts := testOpts(a, "HW-42")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7932,7 +7932,7 @@ func TestDefaultFormulaAppliedFromInheritedPackDefault(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	deps.Store = beads.NewMemStoreFrom(1, []beads.Bead{{ID: "HW-42", Title: "Work", Type: "task", Status: "open"}}, nil)
 	opts := testOpts(a, "HW-42")
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -7970,7 +7970,7 @@ func TestDefaultFormulaNoFormulaOverride(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "HW-42")
 	opts.NoFormula = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -8013,7 +8013,7 @@ title = "Work in {{workspace}}"
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "HW-42")
-	code := doSling(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSling(opts, deps, q, stdout, stderr)
 
 	if code != 1 {
 		t.Fatalf("doSling returned %d, want 1; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -8036,7 +8036,7 @@ func TestDefaultFormulaExplicitOnOverrides(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "HW-42")
 	opts.OnFormula = "custom-formula"
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -8079,7 +8079,7 @@ title = "Work"
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "explicit-root-only")
 	opts.IsFormula = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
@@ -8112,7 +8112,7 @@ func TestDefaultFormulaBatchApplied(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "CVY-1")
-	code := doSlingBatch(context.Background(), opts, deps, querier, stdout, stderr)
+	code := doSlingBatch(opts, deps, querier, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -8143,7 +8143,7 @@ func TestDefaultFormulaDryRun(t *testing.T) {
 	deps.Store = seededStore("HW-42")
 	opts := testOpts(a, "HW-42")
 	opts.DryRun = true
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("dryRunSingle returned %d, want 0", code)
@@ -8888,7 +8888,7 @@ func TestSlingStdinSingleLine(t *testing.T) {
 	}
 
 	opts := testOpts(a, created.ID)
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -8931,7 +8931,7 @@ func TestSlingStdinMultiLine(t *testing.T) {
 	}
 
 	opts := testOpts(a, created.ID)
-	code := doSling(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSling(opts, deps, nil, stdout, stderr)
 	if code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -9067,20 +9067,20 @@ func TestCmdSlingMultiDefaultTargetsPicksFromList(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"fo-multi-work"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -9102,20 +9102,20 @@ func TestCmdSlingMultiDefaultTargetsSingleEntry(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"fo-multi-work"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code != 0 {
 		t.Fatalf("cmdSling returned %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -9134,15 +9134,15 @@ func TestCmdSlingMultiDefaultTargetsEmptyEntryRejected(t *testing.T) {
 	setupCmdSlingMultiDefaultTargetsFixture(t, []string{"foundations/worker-a", ""})
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSling(context.Background(),
+	code := cmdSling(
 		[]string{"fo-multi-work"},
 		false, false, false,
 		"", nil, "",
 		true, false, false, "",
 		false, false, false,
 		"", "",
-		&stdout, &stderr)
-
+		&stdout, &stderr,
+	)
 	if code == 0 {
 		t.Fatalf("cmdSling returned 0, want non-zero for empty entry in default_sling_targets")
 	}

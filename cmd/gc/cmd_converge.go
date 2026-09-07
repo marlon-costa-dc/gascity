@@ -145,9 +145,9 @@ func newConvergeStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "status <bead-id>",
 		Short: "Show convergence loop status",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			beadID := args[0]
-			store, _, _, code := openConvergeStore(cmd.Context(), stderr, "gc converge status")
+			store, _, _, code := openConvergeStore(stderr, "gc converge status")
 			if code != 0 {
 				return errExit
 			}
@@ -274,7 +274,7 @@ func newConvergeListCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List convergence loops",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			type convEntry struct {
 				ID        string `json:"id"`
 				State     string `json:"state"`
@@ -335,7 +335,7 @@ func newConvergeListCmd(stdout, stderr io.Writer) *cobra.Command {
 				// openConvergeStore, so it needs the same graph-class routing;
 				// otherwise `gc converge list --all-rigs` is the one surface that
 				// still reads the city's retained work-store copies.
-				store, err := openStoreAtForCity(cmd.Context(), rctx.CityPath, rctx.CityPath)
+				store, err := openStoreAtForCity(rctx.CityPath, rctx.CityPath)
 				if err != nil {
 					fmt.Fprintf(stderr, "gc converge list: %v\n", err) //nolint:errcheck
 					return errExit
@@ -365,7 +365,7 @@ func newConvergeListCmd(stdout, stderr io.Writer) *cobra.Command {
 					// buildConvergenceScopes and controlScopeTakesGraphClass:
 					// class routing is city-keyed, so routing rig scopes to the
 					// one graph binding would merge every rig's loops into it.
-					store, err := openStoreAtForCity(cmd.Context(), rigPathByName[rig], rctx.CityPath)
+					store, err := openStoreAtForCity(rigPathByName[rig], rctx.CityPath)
 					if err != nil {
 						fmt.Fprintf(stderr, "gc converge list: rig %q: %v\n", rig, err) //nolint:errcheck
 						hadScopeError = true
@@ -378,7 +378,7 @@ func newConvergeListCmd(stdout, stderr io.Writer) *cobra.Command {
 					}
 				}
 			} else {
-				store, _, _, code := openConvergeStore(cmd.Context(), stderr, "gc converge list")
+				store, _, _, code := openConvergeStore(stderr, "gc converge list")
 				if code != 0 {
 					return errExit
 				}
@@ -434,9 +434,9 @@ func newConvergeTestGateCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "test-gate <bead-id>",
 		Short: "Dry-run the gate condition (no state changes)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			beadID := args[0]
-			store, rctx, storePath, code := openConvergeStore(cmd.Context(), stderr, "gc converge test-gate")
+			store, rctx, storePath, code := openConvergeStore(stderr, "gc converge test-gate")
 			if code != 0 {
 				return errExit
 			}
@@ -506,7 +506,7 @@ func newConvergeTestGateCmd(stdout, stderr io.Writer) *cobra.Command {
 				fmt.Fprintf(stdout, "Testing gate: %s\n", gateConfig.Condition) //nolint:errcheck
 			}
 			result := convergence.RunCondition(
-				cmd.Context(),
+				context.TODO(),
 				gateConfig.Condition, env, gateConfig.Timeout, 0,
 			)
 			if jsonOutput {
@@ -546,9 +546,9 @@ func newConvergeTestTriggerCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "test-trigger <bead-id>",
 		Short: "Dry-run the trigger condition (no state changes)",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			beadID := args[0]
-			store, rctx, storePath, code := openConvergeStore(cmd.Context(), stderr, "gc converge test-trigger")
+			store, rctx, storePath, code := openConvergeStore(stderr, "gc converge test-trigger")
 			if code != 0 {
 				return errExit
 			}
@@ -614,7 +614,7 @@ func newConvergeTestTriggerCmd(stdout, stderr io.Writer) *cobra.Command {
 				fmt.Fprintf(stdout, "Testing trigger: %s\n", triggerConfig.Condition) //nolint:errcheck
 			}
 			result := convergence.RunCondition(
-				cmd.Context(),
+				context.TODO(),
 				triggerConfig.Condition, env, gateConfig.Timeout, 0,
 			)
 			if jsonOutput {
@@ -827,7 +827,7 @@ type convergeTestGateJSONResult struct {
 // empty, at exit 0, about a loop that is running. storePath is returned
 // unrouted on purpose; it is the scope root, and every caller that passes it
 // to a gate command wants the directory, not the database.
-func openConvergeStore(ctx context.Context, stderr io.Writer, cmdName string) (beads.Store, resolvedContext, string, int) {
+func openConvergeStore(stderr io.Writer, cmdName string) (beads.Store, resolvedContext, string, int) {
 	rctx, err := resolveContext()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", cmdName, err) //nolint:errcheck
@@ -839,7 +839,7 @@ func openConvergeStore(ctx context.Context, stderr io.Writer, cmdName string) (b
 		fmt.Fprintln(stderr, "hint: run \"gc doctor\" for diagnostics") //nolint:errcheck
 		return nil, resolvedContext{}, "", 1
 	}
-	store, err := openStoreAtForCity(ctx, storePath, rctx.CityPath)
+	store, err := openStoreAtForCity(storePath, rctx.CityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", cmdName, err)                   //nolint:errcheck
 		fmt.Fprintln(stderr, "hint: run \"gc doctor\" for diagnostics") //nolint:errcheck

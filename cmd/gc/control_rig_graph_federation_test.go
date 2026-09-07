@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io"
 	"os"
@@ -232,7 +231,7 @@ func TestControlDispatchRigScopeResolvesAGraphResidentControlBead(t *testing.T) 
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, rigPath, rigStore, control.ID, cfg, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(cityPath, rigPath, rigStore, control.ID, cfg, &stdout, &stderr); err != nil {
 		t.Fatalf("rig-scoped dispatch of a graph-resident control bead: %v; "+
 			"a federated readiness scan enumerates these ids, so a fatal not-found here crash-loops the dispatcher session", err)
 	}
@@ -293,7 +292,7 @@ func TestRunControlDispatcherResolvesACityGraphBindingResidentControlBead(t *tes
 
 	// PREMISE: the city work store does not hold this id, so a pass can only come
 	// from consulting the binding rather than from a local resolve.
-	workStore, err := openStoreAtForCity(context.Background(), cityPath, cityPath)
+	workStore, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -302,7 +301,7 @@ func TestRunControlDispatcherResolvesACityGraphBindingResidentControlBead(t *tes
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcher(context.Background(), control.ID, &stdout, &stderr); err != nil {
+	if err := runControlDispatcher(control.ID, &stdout, &stderr); err != nil {
 		t.Fatalf("manual dispatch of a binding-resident control bead: %v; "+
 			"`gc convoy control <id>` cannot reach a graph-class control bead the serve loop already federates", err)
 	}
@@ -367,14 +366,14 @@ func TestFindBeadScopeAcrossStoresRoutesABindingResidentRigBeadToItsRigScope(t *
 
 	// PREMISE: neither the city work store nor the rig control store holds the id,
 	// so the scope can only have come from consulting the binding.
-	cityStore, err := openStoreAtForCity(context.Background(), cityPath, cityPath)
+	cityStore, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(city): %v", err)
 	}
 	if _, err := cityStore.Get(control.ID); err == nil {
 		t.Fatalf("premise failed: the city work store holds %s", control.ID)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigPath, cityPath)
+	rigStore, err := openStoreAtForCity(rigPath, cityPath)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -382,7 +381,7 @@ func TestFindBeadScopeAcrossStoresRoutesABindingResidentRigBeadToItsRigScope(t *
 		t.Fatalf("premise failed: the rig store holds %s", control.ID)
 	}
 
-	_, storePath, err := findBeadScopeAcrossStores(context.Background(), cityPath, control.ID, io.Discard)
+	_, storePath, err := findBeadScopeAcrossStores(cityPath, control.ID, io.Discard)
 	if err != nil {
 		t.Fatalf("findBeadScopeAcrossStores for a rig-routed binding-resident control bead: %v; "+
 			"the manual entry point never consults the city graph binding", err)
@@ -503,7 +502,7 @@ func TestControlDispatchRigScopePrefersItsOwnStore(t *testing.T) {
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, rigPath, rigStore, control.ID, cfg, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(cityPath, rigPath, rigStore, control.ID, cfg, &stdout, &stderr); err != nil {
 		t.Fatalf("rig-scoped dispatch of a rig-resident control bead: %v", err)
 	}
 	if got := beadByID(t, rigStore, control.ID); got.Status != "closed" {
@@ -610,7 +609,7 @@ func TestControlReadyCacheSourcesRouteTheSameLegsAsTheFallback(t *testing.T) {
 		cityPath, rigPath, binding := rigFederationFixture(t, `[]`)
 		seedCLIStorageRoutes(t, cityPath, messagingSplitRoutes(binding))
 
-		sources, err := controlReadyCacheSources(context.Background(), rigPath, cityPath, nil)
+		sources, err := controlReadyCacheSources(rigPath, cityPath, nil)
 		if err != nil {
 			t.Fatalf("controlReadyCacheSources for a split rig scope: %v", err)
 		}
@@ -630,7 +629,7 @@ func TestControlReadyCacheSourcesRouteTheSameLegsAsTheFallback(t *testing.T) {
 		cityPath, _, binding := rigFederationFixture(t, `[]`)
 		seedCLIStorageRoutes(t, cityPath, messagingSplitRoutes(binding))
 
-		sources, err := controlReadyCacheSources(context.Background(), cityPath, cityPath, nil)
+		sources, err := controlReadyCacheSources(cityPath, cityPath, nil)
 		if err != nil {
 			t.Fatalf("controlReadyCacheSources for a split city scope: %v", err)
 		}
@@ -644,7 +643,7 @@ func TestControlReadyCacheSourcesRouteTheSameLegsAsTheFallback(t *testing.T) {
 		cityPath, rigPath, binding := rigFederationFixture(t, `[]`)
 		seedCLIStorageRoutes(t, cityPath, nil)
 
-		sources, err := controlReadyCacheSources(context.Background(), rigPath, cityPath, nil)
+		sources, err := controlReadyCacheSources(rigPath, cityPath, nil)
 		if err != nil {
 			t.Fatalf("controlReadyCacheSources for a single-store rig scope: %v", err)
 		}
@@ -675,7 +674,7 @@ func TestCachedControlReadyUnionRequiresEveryLeg(t *testing.T) {
 			t.Fatalf("seed %s: %v", title, err)
 		}
 		cache := beads.NewCachingStore(store, nil)
-		if err := cache.PrimeActive(context.Background()); err != nil {
+		if err := cache.PrimeActive(); err != nil {
 			t.Fatalf("prime %s: %v", title, err)
 		}
 		return cache, bead.ID
@@ -796,7 +795,7 @@ func TestControlReadyScanRigScopeStopsOfferingABeadTheDispatchClosed(t *testing.
 
 	cfg := &config.City{Workspace: config.Workspace{Name: "test-city"}}
 	var stdout, stderr bytes.Buffer
-	if err := runControlDispatcherWithStoreAndConfig(context.Background(), cityPath, rigPath, rigStore, live.ID, cfg, &stdout, &stderr); err != nil {
+	if err := runControlDispatcherWithStoreAndConfig(cityPath, rigPath, rigStore, live.ID, cfg, &stdout, &stderr); err != nil {
 		t.Fatalf("rig-scoped control dispatch: %v", err)
 	}
 	if closed := beadByID(t, binding, live.ID); closed.Status != "closed" {

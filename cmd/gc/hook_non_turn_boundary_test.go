@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -107,7 +106,7 @@ func TestNonTurnHookInvocationCannotMintExecution(t *testing.T) {
 			t.Setenv(marker.key, marker.value)
 
 			var stdout, stderr bytes.Buffer
-			code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, DrainAck: true, JSON: true}, &stdout, &stderr)
+			code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, DrainAck: true, JSON: true}, &stdout, &stderr)
 
 			if code != 0 {
 				t.Fatalf("code = %d, want 0; stdout=%q stderr=%s", code, stdout.String(), stderr.String())
@@ -154,7 +153,7 @@ func TestTurnHookInvocationMintsTheClaim(t *testing.T) {
 	setFenceClaimEnv(t, cityDir, sessionID, "live-token")
 
 	var stdout, stderr bytes.Buffer
-	cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	if !nonTurnProbeClaimed(t, argvLog) {
 		t.Fatalf("a real turn did not reach the claim mutation; stdout=%q stderr=%s\nbd argv log:\n%s",

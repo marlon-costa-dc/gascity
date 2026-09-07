@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,12 +24,11 @@ func TestBuildDoctorChecks_NameSetUnchanged(t *testing.T) {
 	doctorBeadStorePreflight = func(string, func(string) (beads.Store, error)) error { return nil }
 	t.Cleanup(func() { doctorBeadStorePreflight = old })
 
-	checks := buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
+	checks := buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    false,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,
 	})
-
 	names := doctorCheckNames(checks)
 
 	data, err := os.ReadFile(filepath.Join("testdata", "doctor_check_names.golden"))
@@ -52,7 +50,7 @@ func TestBuildDoctorChecksRegistersNamedAlwaysMinConflictCheck(t *testing.T) {
 	t.Setenv("GC_DOLT", "skip")
 	cfg := &config.City{Workspace: config.Workspace{Name: "demo"}}
 
-	names := doctorCheckNames(buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{
+	names := doctorCheckNames(buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{
 		ControllerRunning:    false,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,
@@ -85,7 +83,7 @@ func TestBuildDoctorChecksSkipsNamedAlwaysMinConflictCheckWithoutConfig(t *testi
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			names := doctorCheckNames(buildDoctorChecks(context.Background(), cityDir, tt.cfg, tt.cfgErr, buildDoctorChecksOpts{
+			names := doctorCheckNames(buildDoctorChecks(cityDir, tt.cfg, tt.cfgErr, buildDoctorChecksOpts{
 				ControllerRunning:    false,
 				SkipCityDoltCheck:    true,
 				SkipManagedDoltCheck: true,

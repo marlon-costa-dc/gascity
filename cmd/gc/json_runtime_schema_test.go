@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -32,7 +31,7 @@ func TestDirectJSONWriterPayloadsValidateDeclaredSchemas(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dogDir, "agent.toml"), []byte("start_command = \"true\"\nmin_active_sessions = 0\nmax_active_sessions = 3\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(agents/dog/agent.toml): %v", err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityPath)
+	store, err := openCityStoreAt(cityPath)
 	if err != nil {
 		t.Fatalf("open city store: %v", err)
 	}

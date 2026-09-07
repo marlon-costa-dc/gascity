@@ -541,7 +541,7 @@ func TestResolveSessionIDMaterializingNamed_QualifiedAliasBasenameDoesNotStealNa
 		},
 	})
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), t.TempDir(), cfg, store, "mayor")
+	id, err := resolveSessionIDMaterializingNamed(t.TempDir(), cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -600,7 +600,7 @@ func TestResolveSessionIDMaterializingNamed_MaterializesConfiguredNamedSession(t
 		}},
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), t.TempDir(), cfg, store, "mayor")
+	id, err := resolveSessionIDMaterializingNamed(t.TempDir(), cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -633,7 +633,7 @@ func TestResolveSessionIDMaterializingNamedIgnoresAgentTmuxAlias(t *testing.T) {
 		}},
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "mayor")
+	id, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -695,7 +695,7 @@ func TestResolveSessionIDMaterializingNamed_BareNameResolvesV2BoundNamedSession(
 		t.Fatalf("store.Create(): %v", err)
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "mayor")
+	id, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -745,7 +745,7 @@ func TestResolveSessionIDMaterializingNamed_FullyQualifiedStillResolvesV2BoundNa
 		t.Fatalf("store.Create(): %v", err)
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "gastown.mayor")
+	id, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, "gastown.mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(gastown.mayor): %v", err)
 	}
@@ -787,7 +787,7 @@ func TestResolveSessionIDMaterializingNamed_AdoptsCanonicalRuntimeSessionNameBea
 		t.Fatalf("store.Create(): %v", err)
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "mayor")
+	id, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -874,7 +874,7 @@ func TestResolveSessionIDMaterializingNamed_DoesNotAdoptOrdinaryPoolSessionForSa
 		t.Fatalf("store.Create(): %v", err)
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "gascity/claude")
+	id, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, "gascity/claude")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(gascity/claude): %v", err)
 	}
@@ -947,7 +947,7 @@ func TestResolveSessionIDMaterializingNamed_RuntimeSessionNameWrongTemplateConfl
 		t.Fatalf("findNamedSessionConflictInfo() info template = %q, want other", info.Template)
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "mayor")
+	id, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, "mayor")
 	if err == nil || !strings.Contains(err.Error(), "conflicts with configured named session") {
 		t.Fatalf(
 			"resolveSessionIDMaterializingNamed(mayor) = id %q err %v, want configured named session conflict (wrong bead %q)",
@@ -986,7 +986,7 @@ func TestResolveSessionIDMaterializingNamed_RecreatesClosedConfiguredNamedSessio
 		t.Fatalf("Close: %v", err)
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), t.TempDir(), cfg, store, "mayor")
+	id, err := resolveSessionIDMaterializingNamed(t.TempDir(), cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -1025,7 +1025,7 @@ func TestResolveSessionIDMaterializingNamed_UsesQualifiedNamedTarget(t *testing.
 		}},
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), t.TempDir(), cfg, store, "demo/witness")
+	id, err := resolveSessionIDMaterializingNamed(t.TempDir(), cfg, store, "demo/witness")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(demo/witness): %v", err)
 	}
@@ -1091,7 +1091,7 @@ func TestResolveSessionIDMaterializingNamed_PrefersReopenableCanonicalClosedBead
 		t.Fatalf("Close(canonical): %v", err)
 	}
 
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "mayor")
+	id, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
@@ -1127,11 +1127,11 @@ func TestResolveSessionIDMaterializingNamed_RejectsTemplatePrefixOnSessionSurfac
 	}
 	cityPath := t.TempDir()
 
-	canonicalID, err := resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "mayor")
+	canonicalID, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed(mayor): %v", err)
 	}
-	_, err = resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "template:mayor")
+	_, err = resolveSessionIDMaterializingNamed(cityPath, cfg, store, "template:mayor")
 	if !errors.Is(err, session.ErrSessionNotFound) {
 		t.Fatalf("resolveSessionIDMaterializingNamed(template:mayor) = %v, want ErrSessionNotFound", err)
 	}
@@ -1169,7 +1169,7 @@ func TestResolveSessionIDMaterializingNamed_DoesNotResolveQualifiedTemplateSessi
 		t.Fatalf("create existing session: %v", err)
 	}
 
-	_, err = resolveSessionIDMaterializingNamed(context.Background(), t.TempDir(), cfg, store, "gascity/claude")
+	_, err = resolveSessionIDMaterializingNamed(t.TempDir(), cfg, store, "gascity/claude")
 	if !errors.Is(err, session.ErrSessionNotFound) {
 		t.Fatalf("resolveSessionIDMaterializingNamed(gascity/claude) = %v, want ErrSessionNotFound", err)
 	}
@@ -1225,7 +1225,7 @@ func TestResolveSessionIDMaterializingNamed_NilStderrDoesNotPanic(t *testing.T) 
 	}
 
 	// Exercise the reopen path — before #423 this would SIGSEGV.
-	id, err := resolveSessionIDMaterializingNamed(context.Background(), cityPath, cfg, store, "mayor")
+	id, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, "mayor")
 	if err != nil {
 		t.Fatalf("resolveSessionIDMaterializingNamed: %v", err)
 	}

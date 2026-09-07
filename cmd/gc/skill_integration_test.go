@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -245,7 +244,7 @@ func TestSharedSkillCatalogForAgentDoesNotFallBackWhenRigCatalogFails(t *testing
 	}
 
 	var stderr strings.Builder
-	params := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, nil, time.Now(), nil, &stderr)
+	params := newAgentBuildParams("test-city", cityPath, cfg, nil, time.Now(), nil, &stderr)
 	if params.skillCatalog == nil {
 		t.Fatal("city skill catalog should still load")
 	}
@@ -280,14 +279,14 @@ func TestSharedSkillCatalogForAgentUsesCachedRigCatalogAfterFailure(t *testing.T
 	}
 	agent := &config.Agent{Name: "rig-agent", Scope: "rig", Dir: "fe"}
 
-	params := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, nil, time.Now(), nil, nil)
+	params := newAgentBuildParams("test-city", cityPath, cfg, nil, time.Now(), nil, nil)
 	if got := params.sharedSkillCatalogForAgent(agent); got == nil || len(got.Entries) == 0 {
 		t.Fatalf("baseline sharedSkillCatalogForAgent() = %+v, want non-empty rig catalog", got)
 	}
 
 	replaceWithSelfSymlink(t, rigCatalog)
 	var stderr strings.Builder
-	params = newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, nil, time.Now(), nil, &stderr)
+	params = newAgentBuildParams("test-city", cityPath, cfg, nil, time.Now(), nil, &stderr)
 	got := params.sharedSkillCatalogForAgent(agent)
 	if got == nil || len(got.Entries) == 0 {
 		t.Fatalf("sharedSkillCatalogForAgent() = %+v, want cached rig catalog after transient failure", got)
@@ -315,7 +314,7 @@ func TestNewAgentBuildParams_EmptyRigCatalogClearsLastGoodCatalog(t *testing.T) 
 	}
 	agent := &config.Agent{Name: "rig-agent", Scope: "rig", Dir: "fe"}
 
-	params := newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, nil, time.Now(), nil, nil)
+	params := newAgentBuildParams("test-city", cityPath, cfg, nil, time.Now(), nil, nil)
 	if got := params.sharedSkillCatalogForAgent(agent); got == nil || len(got.Entries) == 0 {
 		t.Fatalf("baseline sharedSkillCatalogForAgent() = %+v, want non-empty rig catalog", got)
 	}
@@ -323,7 +322,7 @@ func TestNewAgentBuildParams_EmptyRigCatalogClearsLastGoodCatalog(t *testing.T) 
 	if err := os.RemoveAll(filepath.Join(realRigCatalog, "ops")); err != nil {
 		t.Fatal(err)
 	}
-	params = newAgentBuildParams(context.Background(), "test-city", cityPath, cfg, nil, time.Now(), nil, nil)
+	params = newAgentBuildParams("test-city", cityPath, cfg, nil, time.Now(), nil, nil)
 	got := params.sharedSkillCatalogForAgent(agent)
 	if got == nil {
 		t.Fatal("empty successful rig catalog should be represented as an empty catalog, not nil")

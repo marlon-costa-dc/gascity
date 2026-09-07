@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -37,7 +36,7 @@ func TestHookClaimAdoptsOwnGraphResidentClaim(t *testing.T) {
 	output := `[` + selfResumeOwnClaim + `,` + selfResumeFreshDemand + `]`
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
+	code := doHookClaim("query", "/rig", hookClaimOptions{
 		Assignee:           "worker-1",
 		IdentityCandidates: []string{"worker-1"},
 		RouteTargets:       []string{"worker"},
@@ -69,7 +68,7 @@ func TestHookClaimDoesNotAdoptForeignGraphResidentClaim(t *testing.T) {
 	output := `[` + foreign + `,` + selfResumeFreshDemand + `]`
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
+	code := doHookClaim("query", "/rig", hookClaimOptions{
 		Assignee:           "worker-1",
 		IdentityCandidates: []string{"worker-1"},
 		RouteTargets:       []string{"worker"},
@@ -98,7 +97,7 @@ func TestHookClaimSkipsGraphResidentMessageBead(t *testing.T) {
 	output := `[` + message + `,` + selfResumeFreshDemand + `]`
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
+	code := doHookClaim("query", "/rig", hookClaimOptions{
 		Assignee:           "worker-1",
 		IdentityCandidates: []string{"worker-1"},
 		RouteTargets:       []string{"worker"},
@@ -144,7 +143,7 @@ func TestHookClaimSelfResumeBeforeFreshClaimAcrossStores(t *testing.T) {
 	ops := rec.ops(t, "")
 	ops.Runner = nil
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner(context.Background(), "query", "/rig-a", nil, legs, hookClaimOptions{
+	code := claimHookWorkWithRunner("query", "/rig-a", nil, legs, hookClaimOptions{
 		Assignee:           "worker-1",
 		IdentityCandidates: []string{"worker-1"},
 		RouteTargets:       []string{"worker"},
@@ -183,7 +182,7 @@ func TestHookClaimFreshClaimWhenNothingHeldAcrossStores(t *testing.T) {
 	ops := rec.ops(t, "")
 	ops.Runner = nil
 	var stdout, stderr bytes.Buffer
-	code := claimHookWorkWithRunner(context.Background(), "query", "/rig-a", nil, legs, hookClaimOptions{
+	code := claimHookWorkWithRunner("query", "/rig-a", nil, legs, hookClaimOptions{
 		Assignee:           "worker-1",
 		IdentityCandidates: []string{"worker-1"},
 		RouteTargets:       []string{"worker"},

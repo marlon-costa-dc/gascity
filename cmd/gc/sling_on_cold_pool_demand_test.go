@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -65,7 +64,7 @@ func TestOnFormulaLegacyColdPoolSeesDemand(t *testing.T) {
 
 	opts := testOpts(cfg.Agents[0], created.ID)
 	opts.OnFormula = "code-review"
-	if code := doSling(context.Background(), opts, deps, store, stdout, stderr); code != 0 {
+	if code := doSling(opts, deps, store, stdout, stderr); code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
 
@@ -154,7 +153,7 @@ title = "Do work"
 	opts.OnFormula = "graph-work"
 	opts.ScopeKind = "city"
 	opts.ScopeRef = "test-city"
-	if code := doSling(context.Background(), opts, deps, nil, stdout, stderr); code != 0 {
+	if code := doSling(opts, deps, nil, stdout, stderr); code != 0 {
 		t.Fatalf("doSling returned %d, want 0; stderr: %s", code, stderr.String())
 	}
 

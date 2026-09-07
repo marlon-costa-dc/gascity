@@ -540,7 +540,7 @@ func doStorageRecoverStranded(ctx context.Context, request storageOperatorReques
 		return 1
 	}
 	if !ok {
-		reportUnresolvedInfraBinding(ctx, request, logPrefix, stdout, stderr)
+		reportUnresolvedInfraBinding(request, logPrefix, stdout, stderr)
 		return 1
 	}
 	if _, err := resolveCityStoragePlan(request.CityPath, request.Cfg); err != nil {
@@ -609,7 +609,7 @@ func doStorageRecoverStranded(ctx context.Context, request storageOperatorReques
 		return 1
 	}
 
-	source, err := openInfraMigrationSource(ctx, request.CityPath)
+	source, err := openInfraMigrationSource(request.CityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: opening the work store: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -972,7 +972,7 @@ func doStorageRecoverStranded(ctx context.Context, request storageOperatorReques
 	fmt.Fprintf(stdout, "manifest: %d -> %d bead(s) (previous manifest retained at %s)\n", len(proven), len(extended), backup) //nolint:errcheck // best-effort stdout
 
 	// The residual, read back through the same classifier the boot check uses.
-	residual, err := classifyInfraContainmentGap(ctx, request.CityPath, target, setOf(extended))
+	residual, err := classifyInfraContainmentGap(request.CityPath, target, setOf(extended))
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: re-reading the containment gap: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -1006,13 +1006,13 @@ func doStorageRecoverStranded(ctx context.Context, request storageOperatorReques
 // So the born-split arm defers to the authority that CAN answer, and reports the
 // same discipline doStorageStatus reports rather than asserting a fact about
 // data this verb never read.
-func reportUnresolvedInfraBinding(ctx context.Context, request storageOperatorRequest, logPrefix string, stdout, stderr io.Writer) {
+func reportUnresolvedInfraBinding(request storageOperatorRequest, logPrefix string, stdout, stderr io.Writer) {
 	storage := request.Cfg.EffectiveStorage()
 	if shape, binding := storageSplitShapeOf(storage); shape == storageSplitWhole {
 		provider := storage.Bindings[binding].Provider
 		fmt.Fprintf(stderr, "%s: binding %q is served by provider %q, which this build carries no repair for — the one it carries serves only a binding backed by its own bead engine. This city serves under the born-split discipline instead, and this command cannot state anything about it.\n", //nolint:errcheck // best-effort stderr
 			logPrefix, binding, provider)
-		report := checkBornSplitDiscipline(ctx, request.CityPath, logPrefix, stderr)
+		report := checkBornSplitDiscipline(request.CityPath, logPrefix, stderr)
 		switch report.Outcome {
 		case infraMigrationConverged:
 			fmt.Fprintf(stdout, "born-split: clean — the work store holds no infrastructure bead, so nothing here is stranded and the binding may serve.\n") //nolint:errcheck // best-effort stdout

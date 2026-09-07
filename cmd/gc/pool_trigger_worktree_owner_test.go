@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -45,7 +44,7 @@ func TestBindPoolSessionTriggerBeadVerifiesManagedWorktreeBeforePublishing(t *te
 			Name: "worker", WorkDir: filepath.Join(root, "slot"),
 		}},
 	}
-	bp := newAgentBuildParams(context.Background(), "city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &bytes.Buffer{})
+	bp := newAgentBuildParams("city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &bytes.Buffer{})
 
 	bound, err := bindPoolSessionTriggerBead(bp, &cfg.Agents[0], "worker", info, SessionRequest{
 		WorkBeadID: "gc-test", WorkStoreRef: "rig:gascity", WorktreeSpec: &spec,
@@ -92,7 +91,7 @@ func TestBindPoolSessionTriggerBeadRejectsCompetingOwnerBeforeMetadata(t *testin
 		t.Fatalf("Get session info: %v", err)
 	}
 	cfg := &config.City{Workspace: config.Workspace{Name: "city"}, Agents: []config.Agent{{Name: "worker"}}}
-	bp := newAgentBuildParams(context.Background(), "city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &bytes.Buffer{})
+	bp := newAgentBuildParams("city", t.TempDir(), cfg, runtime.NewFake(), time.Now().UTC(), store, &bytes.Buffer{})
 
 	if _, err := bindPoolSessionTriggerBead(bp, &cfg.Agents[0], "worker", info, SessionRequest{
 		WorkBeadID: "gc-test", WorkStoreRef: "rig:gascity", WorktreeSpec: &spec,

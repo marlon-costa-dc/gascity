@@ -922,13 +922,8 @@ func preserveScopeCheckForSubject(candidate beads.Bead, deps []beads.Dep, subjec
 // abort-scope failure path. Retry-managed attempt subjects are exempt — their
 // contract violations are classified by retry-eval as transient retries, not
 // scope aborts.
-//
-// The gc.work_outcome fallback in resolveControlOutcome (see retry.go) makes
-// the worker close-contract ordering automatic: a worker that stamps
-// gc.work_outcome before closing is recognized without a separate gc.outcome
-// write.
 func beadOutcomeFailed(subject beads.Bead) bool {
-	outcome := resolveControlOutcome(subject)
+	outcome := strings.TrimSpace(subject.Metadata[beadmeta.OutcomeMetadataKey])
 	if outcome == beadmeta.OutcomeFail {
 		return true
 	}

@@ -218,7 +218,7 @@ func TestCityRuntimeTickSkipsBeforeManagedDoltAndDemandUnderFSPressure(t *testin
 		cfg:                 &config.City{},
 		sp:                  sp,
 		standaloneCityStore: beads.NewMemStore(),
-		buildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			buildCalls.Add(1)
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
@@ -235,7 +235,7 @@ func TestCityRuntimeTickSkipsBeforeManagedDoltAndDemandUnderFSPressure(t *testin
 		managedDoltPort: func(string) string {
 			return ""
 		},
-		managedDoltHealth: func(context.Context, string) error {
+		managedDoltHealth: func(string) error {
 			managedDoltCalls.Add(1)
 			return nil
 		},
@@ -322,7 +322,7 @@ func TestCityRuntimeTickSkipsDueOrderDispatchUnderFSPressure(t *testing.T) {
 		cfg:                 &config.City{Workspace: config.Workspace{Name: "test-city"}},
 		sp:                  sp,
 		standaloneCityStore: store,
-		buildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			buildCalls.Add(1)
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
@@ -396,7 +396,7 @@ func TestCityRuntimeTickForcesRunAfterMaxConsecutiveFSPressureSkips(t *testing.T
 		cfg:                 &config.City{},
 		sp:                  sp,
 		standaloneCityStore: beads.NewMemStore(),
-		buildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		buildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			buildCalls.Add(1)
 			return DesiredStateResult{State: map[string]TemplateParams{}}
 		},
@@ -549,7 +549,6 @@ func TestCityRuntimeManualReloadBypassesFSPressureSkipUntilDemandRefresh(t *test
 	var stdout bytes.Buffer
 	rec := events.NewFake()
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:         context.Background(),
 		CityPath:    cityPath,
 		CityName:    "test-city",
 		TomlPath:    tomlPath,
@@ -557,7 +556,7 @@ func TestCityRuntimeManualReloadBypassesFSPressureSkipUntilDemandRefresh(t *test
 		ConfigDirty: dirty,
 		Cfg:         cfg,
 		SP:          sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			buildCalls.Add(1)
 			// #3206: a manual hard reload replies before the desired-state
 			// rebuild — reply latency is independent of the reconcile phases.

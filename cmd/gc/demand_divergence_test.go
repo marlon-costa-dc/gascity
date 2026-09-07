@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -75,7 +74,7 @@ func TestDivergenceIsRecordedOnlyAfterTheDrainResult(t *testing.T) {
 	capture := captureDivergenceEmitter(t, &stdout)
 	opts := divergenceOptions(demandSpawnEnv()...)
 
-	code := writeHookClaimNoWork(context.Background(), opts, hookClaimOps{DrainAck: func(context.Context, io.Writer) error { return nil }},
+	code := writeHookClaimNoWork(opts, hookClaimOps{DrainAck: func(io.Writer) error { return nil }},
 		false, "/rig", &stdout, &stderr)
 
 	if code != 0 {
@@ -99,7 +98,7 @@ func TestDivergenceIsNotRecordedForAClaimsErroredDrain(t *testing.T) {
 	capture := captureDivergenceEmitter(t, &stdout)
 	opts := divergenceOptions(demandSpawnEnv()...)
 
-	writeHookClaimNoWork(context.Background(), opts, hookClaimOps{DrainAck: func(context.Context, io.Writer) error { return nil }},
+	writeHookClaimNoWork(opts, hookClaimOps{DrainAck: func(io.Writer) error { return nil }},
 		true, "/rig", &stdout, &stderr)
 
 	if capture.calls != 0 {

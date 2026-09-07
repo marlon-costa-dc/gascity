@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -314,7 +313,7 @@ func TestDoSlingBatchPrintsDashboardLine(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatch(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSlingBatch(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -346,7 +345,7 @@ func TestDoSlingBatchPrintsBareDashboardLineForRunDetail(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatch(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSlingBatch(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -370,7 +369,7 @@ func TestDoSlingBatchOmitsDashboardLineWhenUnresolved(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatch(context.Background(), opts, deps, nil, stdout, stderr)
+	code := doSlingBatch(opts, deps, nil, stdout, stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatch returned %d, want 0; stderr: %s", code, stderr.String())
@@ -399,7 +398,7 @@ func TestDoSlingBatchSkipsDashboardLinkOnDryRun(t *testing.T) {
 	deps.Store = seededStore("BL-42")
 	opts := testOpts(a, "BL-42")
 	opts.DryRun = true
-	code := doSlingBatchWithJSON(context.Background(), opts, deps, nil, true, io.Discard, &stdout, &stderr)
+	code := doSlingBatchWithJSON(opts, deps, nil, true, io.Discard, &stdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("dry-run returned %d, want 0; stderr: %s", code, stderr.String())
@@ -431,7 +430,7 @@ func TestDoSlingBatchSkipsDashboardLinkOnError(t *testing.T) {
 
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatch(context.Background(), opts, deps, q, stdout, stderr)
+	code := doSlingBatch(opts, deps, q, stdout, stderr)
 
 	if code == 0 {
 		t.Fatalf("doSlingBatch returned 0, want failure; stdout: %s", stdout.String())
@@ -456,7 +455,7 @@ func TestDoSlingBatchJSONIncludesDashboardURL(t *testing.T) {
 	var jsonStdout, stderr bytes.Buffer
 	deps, _, _ := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatchWithJSON(context.Background(), opts, deps, nil, true, io.Discard, &jsonStdout, &stderr)
+	code := doSlingBatchWithJSON(opts, deps, nil, true, io.Discard, &jsonStdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatchWithJSON returned %d, want 0; stderr: %s", code, stderr.String())
@@ -485,7 +484,7 @@ func TestDoSlingBatchJSONRunsListURLStaysBare(t *testing.T) {
 	var jsonStdout, stderr bytes.Buffer
 	deps, _, _ := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatchWithJSON(context.Background(), opts, deps, nil, true, io.Discard, &jsonStdout, &stderr)
+	code := doSlingBatchWithJSON(opts, deps, nil, true, io.Discard, &jsonStdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatchWithJSON returned %d, want 0; stderr: %s", code, stderr.String())
@@ -514,7 +513,7 @@ func TestDoSlingBatchJSONOmitsDashboardURLWhenUnresolved(t *testing.T) {
 	var jsonStdout, stderr bytes.Buffer
 	deps, _, _ := testDeps(cfg, sp, runner.run)
 	opts := testOpts(a, "BL-42")
-	code := doSlingBatchWithJSON(context.Background(), opts, deps, nil, true, io.Discard, &jsonStdout, &stderr)
+	code := doSlingBatchWithJSON(opts, deps, nil, true, io.Discard, &jsonStdout, &stderr)
 
 	if code != 0 {
 		t.Fatalf("doSlingBatchWithJSON returned %d, want 0; stderr: %s", code, stderr.String())

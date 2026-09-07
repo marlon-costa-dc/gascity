@@ -259,7 +259,7 @@ type (
 	hookEmitClaimRejectedFunc  func(beadID, existingClaimant, attemptedClaimant string)
 	hookResolveWorkBranchFunc  func(dir string) string
 	hookStampWorkMetaFunc      func(ctx context.Context, dir string, env []string, beadID, assignee string, patch map[string]string) error
-	hookStampSessionClaimFunc  func(context.Context, string, string) error
+	hookStampSessionClaimFunc  func(sessionID, beadID string) error
 	hookPublishRunMapFunc      func(runID, beadID string, sessionKeys ...string) error
 	hookClaimReleaseFunc       func(ctx context.Context, dir string, env []string, beadID, assignee string) (bool, error)
 )
@@ -301,12 +301,12 @@ type hookClaimResult struct {
 	claimsErrored bool
 }
 
-func doHookClaim(ctx context.Context, workQuery, dir string, opts hookClaimOptions, ops hookClaimOps, stdout, stderr io.Writer) int {
-	res := tryHookClaim(ctx, workQuery, dir, &opts, &ops, stdout, stderr)
+func doHookClaim(workQuery, dir string, opts hookClaimOptions, ops hookClaimOps, stdout, stderr io.Writer) int {
+	res := tryHookClaim(workQuery, dir, &opts, &ops, stdout, stderr)
 	if res.terminal {
 		return res.code
 	}
-	return writeHookClaimNoWork(ctx, opts, ops, res.claimsErrored, dir, stdout, stderr)
+	return writeHookClaimNoWork(opts, ops, res.claimsErrored, dir, stdout, stderr)
 }
 
 // tryHookClaim runs the work query for one store (dir, via ops.Runner) and
@@ -316,7 +316,7 @@ func doHookClaim(ctx context.Context, workQuery, dir string, opts hookClaimOptio
 // a federated caller can try a later store before draining. opts and ops are
 // normalized in place so a non-terminal caller can reuse the normalized ops
 // (defaults applied) for the shared drain.
-func tryHookClaim(ctx context.Context, workQuery, dir string, opts *hookClaimOptions, ops *hookClaimOps, stdout, stderr io.Writer) hookClaimResult {
+func tryHookClaim(workQuery, dir string, opts *hookClaimOptions, ops *hookClaimOps, stdout, stderr io.Writer) hookClaimResult {
 	opts.Assignee = strings.TrimSpace(opts.Assignee)
 	opts.IdentityCandidates = hookClaimIdentityCandidates(append([]string{opts.Assignee}, opts.IdentityCandidates...)...)
 	opts.RouteTargets = hookClaimRouteTargets(opts.RouteTargets...)
@@ -699,7 +699,7 @@ func claimFirstReadyHookAssignment(candidates []beads.Bead, opts hookClaimOption
 		if result.Assignee == "" {
 			result.Assignee = claimActor
 		}
-		return hookClaimResult{terminal: true, code: writeHookClaimWorkResultForBead(ctx, result, claimed, opts, ops, dir, true, stdout, stderr)}
+		return hookClaimResult{terminal: true, code: writeHookClaimWorkResultForBead(result, claimed, opts, ops, dir, true, stdout, stderr)}
 	}
 	return hookClaimResult{claimsErrored: claimsErrored}
 }
@@ -815,7 +815,7 @@ func claimFirstEligibleHookCandidate(candidates []beads.Bead, opts hookClaimOpti
 		if result.Assignee == "" {
 			result.Assignee = opts.Assignee
 		}
-		return hookClaimResult{terminal: true, code: writeHookClaimWorkResultForBead(ctx, result, claimed, opts, ops, dir, true, stdout, stderr)}
+		return hookClaimResult{terminal: true, code: writeHookClaimWorkResultForBead(result, claimed, opts, ops, dir, true, stdout, stderr)}
 	}
 
 	return hookClaimResult{claimsErrored: claimsErrored}
@@ -944,7 +944,7 @@ func hookClaimCandidateIsMessage(candidate beads.Bead) bool {
 // owned, so releasing it on a delivery failure would give away a claim an earlier
 // turn legitimately made. A held claim that goes undelivered is re-served to the
 // next turn by the existing-assignment tier instead.
-func writeHookClaimWorkResultForBead(ctx context.Context, result hookClaimJSONResult, bead beads.Bead, opts hookClaimOptions, ops hookClaimOps, dir string, minted bool, stdout, stderr io.Writer) int {
+func writeHookClaimWorkResultForBead(result hookClaimJSONResult, bead beads.Bead, opts hookClaimOptions, ops hookClaimOps, dir string, minted bool, stdout, stderr io.Writer) int {
 	// F-B straddle. The CAS was STARTED inside the window and LANDED outside it:
 	// the claim-write child carries its own ceiling, so a claim can commit after
 	// the invoking turn is already gone. That is the same parked claim by another
@@ -960,7 +960,7 @@ func writeHookClaimWorkResultForBead(ctx context.Context, result hookClaimJSONRe
 	if stamped && hookClaimLifecycleCandidate(durable, opts) {
 		ops.EmitExecutionStepStarted(durable, dir, opts.Env, opts.Assignee)
 	}
-	stampHookSessionCurrentClaim(ctx, bead, opts, ops, stderr)
+	stampHookSessionCurrentClaim(bead, opts, ops, stderr)
 	publishHookClaimRunMap(bead, opts, ops, stderr)
 	assigned, err := preassignHookContinuationGroup(bead, opts, ops, dir)
 	if err != nil {
@@ -986,7 +986,7 @@ func writeHookClaimWorkResultForBead(ctx context.Context, result hookClaimJSONRe
 		// bead this session no longer owns — the "close somebody else's bead" hazard
 		// this back-channel exists to prevent. The straddle path (F-B) needs no clear
 		// because it returns before the stamp.
-		clearHookSessionCurrentClaim(ctx, opts, ops, stderr)
+		clearHookSessionCurrentClaim(opts, ops, stderr)
 		return unwindUndeliveredHookClaim(hookClaimReleaseReasonUndelivered, cause, bead, opts, ops, dir, stderr)
 	}
 	return 0
@@ -1069,7 +1069,7 @@ func unwindUndeliveredHookClaim(reason, cause string, bead beads.Bead, opts hook
 // used ONLY after the drain has been written. See recordDemandClaimDivergence:
 // a demand-spawned seat draining empty is either correct pull or a broken
 // agreement invariant, and the drain itself cannot tell an operator which.
-func writeHookClaimNoWork(ctx context.Context, opts hookClaimOptions, ops hookClaimOps, claimsErrored bool, dir string, stdout, stderr io.Writer) int {
+func writeHookClaimNoWork(opts hookClaimOptions, ops hookClaimOps, claimsErrored bool, dir string, stdout, stderr io.Writer) int {
 	reason := hookClaimReasonNoWork
 	if claimsErrored {
 		reason = hookClaimReasonClaimsErrored
@@ -1439,13 +1439,13 @@ func hookEmitExecutionStepStarted(step beads.Bead, dir string, env []string, ass
 // session.Store.SetCurrentClaim, and a failure is reported on stderr but never
 // fails the claim. The loud refusal for a step that cannot name its bead belongs
 // at the point of use, not here.
-func stampHookSessionCurrentClaim(ctx context.Context, bead beads.Bead, opts hookClaimOptions, ops hookClaimOps, stderr io.Writer) {
+func stampHookSessionCurrentClaim(bead beads.Bead, opts hookClaimOptions, ops hookClaimOps, stderr io.Writer) {
 	sessionID := hookClaimSessionID(opts.Env)
 	beadID := strings.TrimSpace(bead.ID)
 	if sessionID == "" || beadID == "" {
 		return
 	}
-	if err := ops.StampSessionClaim(ctx, sessionID, beadID); err != nil {
+	if err := ops.StampSessionClaim(sessionID, beadID); err != nil {
 		fmt.Fprintf(stderr, "gc hook --claim: recording current claim %s on session %s: %v\n", beadID, sessionID, err) //nolint:errcheck
 	}
 }
@@ -1466,12 +1466,12 @@ func stampHookSessionCurrentClaim(ctx context.Context, bead beads.Bead, opts hoo
 // clears BEFORE releasing so a freed bead is never simultaneously claimable by
 // another seat and still named by this session (the ordering session_beads.go's
 // cascade already relies on).
-func clearHookSessionCurrentClaim(ctx context.Context, opts hookClaimOptions, ops hookClaimOps, stderr io.Writer) {
+func clearHookSessionCurrentClaim(opts hookClaimOptions, ops hookClaimOps, stderr io.Writer) {
 	sessionID := hookClaimSessionID(opts.Env)
 	if sessionID == "" {
 		return
 	}
-	if err := ops.StampSessionClaim(ctx, sessionID, ""); err != nil {
+	if err := ops.StampSessionClaim(sessionID, ""); err != nil {
 		fmt.Fprintf(stderr, "gc hook --claim: clearing current claim on session %s: %v\n", sessionID, err) //nolint:errcheck
 	}
 }
@@ -2101,8 +2101,8 @@ func hookAssignContinuationWithBdStore(_ context.Context, dir string, env []stri
 	return store.Update(beadID, beads.UpdateOpts{Assignee: &assignee})
 }
 
-func hookRuntimeDrainAck(ctx context.Context, stderr io.Writer) error {
-	if code := cmdRuntimeDrainAck(ctx, nil, false, io.Discard, stderr); code != 0 {
+func hookRuntimeDrainAck(stderr io.Writer) error {
+	if code := cmdRuntimeDrainAck(nil, false, io.Discard, stderr); code != 0 {
 		return errors.New("runtime drain-ack returned non-zero")
 	}
 	return nil

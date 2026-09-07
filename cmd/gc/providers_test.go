@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -693,7 +692,7 @@ func TestNewSessionProvider_PreregistersACPBeadAndLegacyNames(t *testing.T) {
 	t.Setenv("GC_CITY", cityDir)
 	writeACPRouteCityTOML(t, cityDir, "test-city")
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -709,7 +708,7 @@ func TestNewSessionProvider_PreregistersACPBeadAndLegacyNames(t *testing.T) {
 		t.Fatalf("Create(session bead): %v", err)
 	}
 
-	sp, err := newSessionProvider(context.Background())
+	sp, err := newSessionProvider()
 	if err != nil {
 		t.Fatalf("newSessionProvider: %v", err)
 	}
@@ -890,7 +889,7 @@ func TestNewSessionProvider_PreregistersACPNamedSessionRuntimeName(t *testing.T)
 	t.Setenv("GC_CITY", cityDir)
 	writeACPNamedSessionRouteCityTOML(t, cityDir, "test-city")
 
-	sp, err := newSessionProvider(context.Background())
+	sp, err := newSessionProvider()
 	if err != nil {
 		t.Fatalf("newSessionProvider: %v", err)
 	}
@@ -908,7 +907,7 @@ func TestNewSessionProvider_PreregistersProviderDefaultACPNamedSessionRuntimeNam
 	t.Setenv("GC_CITY", cityDir)
 	writeProviderDefaultACPNamedSessionRouteCityTOML(t, cityDir, "test-city")
 
-	sp, err := newSessionProvider(context.Background())
+	sp, err := newSessionProvider()
 	if err != nil {
 		t.Fatalf("newSessionProvider: %v", err)
 	}
@@ -1079,7 +1078,7 @@ func TestNewSessionProviderRoutesObservedACPProviderSessionsWithoutACPAgents(t *
 	t.Setenv("GC_CITY", cityDir)
 	writeACPProviderRouteCityTOML(t, cityDir, "test-city")
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1096,7 +1095,7 @@ func TestNewSessionProviderRoutesObservedACPProviderSessionsWithoutACPAgents(t *
 		t.Fatalf("Create(provider session bead): %v", err)
 	}
 
-	sp, err := newSessionProvider(context.Background())
+	sp, err := newSessionProvider()
 	if err != nil {
 		t.Fatalf("newSessionProvider: %v", err)
 	}
@@ -1113,7 +1112,7 @@ func TestNewSessionProviderRoutesLegacyObservedACPProviderSessionsWithoutTranspo
 	t.Setenv("GC_CITY", cityDir)
 	writeACPProviderRouteCityTOML(t, cityDir, "test-city")
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1130,7 +1129,7 @@ func TestNewSessionProviderRoutesLegacyObservedACPProviderSessionsWithoutTranspo
 		t.Fatalf("Create(provider session bead): %v", err)
 	}
 
-	sp, err := newSessionProvider(context.Background())
+	sp, err := newSessionProvider()
 	if err != nil {
 		t.Fatalf("newSessionProvider: %v", err)
 	}
@@ -1144,19 +1143,18 @@ func TestLoadProviderSessionSnapshotLoadsStoreWithoutACPAgents(t *testing.T) {
 	t.Cleanup(func() { openSessionProviderStore = oldOpen })
 
 	calls := 0
-	openSessionProviderStore = func(_ context.Context, _ string) (beads.Store, error) {
+	openSessionProviderStore = func(string) (beads.Store, error) {
 		calls++
 		return beads.NewMemStore(), nil
 	}
 
-	snapshot := loadProviderSessionSnapshot(context.Background(), sessionProviderContext{
+	snapshot := loadProviderSessionSnapshot(sessionProviderContext{
 		providerName: "tmux",
 		cityPath:     "/tmp/city",
 		agents: []config.Agent{
 			{Name: "mayor"},
 		},
 	})
-
 	if snapshot == nil {
 		t.Fatal("loadProviderSessionSnapshot() = nil, want empty snapshot")
 	}
@@ -1170,12 +1168,12 @@ func TestStatusSessionProviderSkipsSessionSnapshot(t *testing.T) {
 	t.Cleanup(func() { openSessionProviderStore = oldOpen })
 
 	calls := 0
-	openSessionProviderStore = func(_ context.Context, _ string) (beads.Store, error) {
+	openSessionProviderStore = func(string) (beads.Store, error) {
 		calls++
 		return nil, errors.New("session snapshot should not load for status")
 	}
 
-	sp, err := newStatusSessionProviderForCity(context.Background(), &config.City{
+	sp, err := newStatusSessionProviderForCity(&config.City{
 		Workspace: config.Workspace{Name: "city"},
 		Session:   config.SessionConfig{Provider: "subprocess"},
 	}, "/tmp/city")
@@ -1218,7 +1216,7 @@ func TestStatusSessionProviderUsesProvidedSnapshotToWrapObservedACPSessions(t *t
 		},
 	}})
 
-	sp, err := newStatusSessionProviderForCityWithSnapshot(context.Background(), cfg, t.TempDir(), snapshot)
+	sp, err := newStatusSessionProviderForCityWithSnapshot(cfg, t.TempDir(), snapshot)
 	if err != nil {
 		t.Fatalf("newStatusSessionProviderForCityWithSnapshot: %v", err)
 	}
@@ -1245,19 +1243,18 @@ func TestLoadProviderSessionSnapshotLoadsOpenACPAgents(t *testing.T) {
 	}
 
 	calls := 0
-	openSessionProviderStore = func(_ context.Context, _ string) (beads.Store, error) {
+	openSessionProviderStore = func(string) (beads.Store, error) {
 		calls++
 		return store, nil
 	}
 
-	snapshot := loadProviderSessionSnapshot(context.Background(), sessionProviderContext{
+	snapshot := loadProviderSessionSnapshot(sessionProviderContext{
 		providerName: "tmux",
 		cityPath:     "/tmp/city",
 		agents: []config.Agent{
 			{Name: "reviewer", Session: "acp"},
 		},
 	})
-
 	if calls != 1 {
 		t.Fatalf("openSessionProviderStore called %d times, want 1", calls)
 	}
@@ -1442,24 +1439,22 @@ func TestErrorReturningSessionProviderFactoriesPreserveSuccessBehavior(t *testin
 		wantStatus bool
 	}{
 		"default": {
-			build: func() (runtime.Provider, error) {
-				return newSessionProvider(context.Background())
-			},
+			build: newSessionProvider,
 		},
 		"city": {
 			build: func() (runtime.Provider, error) {
-				return newSessionProviderForCity(context.Background(), cfg, "")
+				return newSessionProviderForCity(cfg, "")
 			},
 		},
 		"status": {
 			build: func() (runtime.Provider, error) {
-				return newStatusSessionProviderForCity(context.Background(), cfg, "")
+				return newStatusSessionProviderForCity(cfg, "")
 			},
 			wantStatus: true,
 		},
 		"status with snapshot": {
 			build: func() (runtime.Provider, error) {
-				return newStatusSessionProviderForCityWithSnapshot(context.Background(), cfg, "", nil)
+				return newStatusSessionProviderForCityWithSnapshot(cfg, "", nil)
 			},
 			wantStatus: true,
 		},
@@ -1514,17 +1509,15 @@ func TestErrorReturningSessionProviderFactoriesReturnContextualErrors(t *testing
 
 	cfg := &config.City{Session: config.SessionConfig{Provider: "broken"}}
 	tests := map[string]func() (runtime.Provider, error){
-		"default": func() (runtime.Provider, error) {
-			return newSessionProvider(context.Background())
-		},
+		"default": newSessionProvider,
 		"city": func() (runtime.Provider, error) {
-			return newSessionProviderForCity(context.Background(), cfg, "")
+			return newSessionProviderForCity(cfg, "")
 		},
 		"status": func() (runtime.Provider, error) {
-			return newStatusSessionProviderForCity(context.Background(), cfg, "")
+			return newStatusSessionProviderForCity(cfg, "")
 		},
 		"status with snapshot": func() (runtime.Provider, error) {
-			return newStatusSessionProviderForCityWithSnapshot(context.Background(), cfg, "", nil)
+			return newStatusSessionProviderForCityWithSnapshot(cfg, "", nil)
 		},
 	}
 

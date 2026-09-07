@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -28,49 +27,49 @@ func TestPhase0CLISessionTargetingSurfaces_RejectTemplateFactoryTargets(t *testi
 		{
 			name: "gc session attach",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionAttach(context.Background(), []string{"template:worker"}, stdout, stderr)
+				return cmdSessionAttach([]string{"template:worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session wake",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionWake(context.Background(), []string{"template:worker"}, stdout, stderr)
+				return cmdSessionWake([]string{"template:worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session suspend",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionSuspend(context.Background(), []string{"template:worker"}, stdout, stderr)
+				return cmdSessionSuspend([]string{"template:worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session pin",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionPin(context.Background(), []string{"template:worker"}, stdout, stderr)
+				return cmdSessionPin([]string{"template:worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session unpin",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionUnpin(context.Background(), []string{"template:worker"}, stdout, stderr)
+				return cmdSessionUnpin([]string{"template:worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session close",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionClose(context.Background(), []string{"template:worker"}, stdout, stderr)
+				return cmdSessionClose([]string{"template:worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc mail send",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdMailSend(context.Background(), []string{"template:worker", "hello"}, false, false, "", "", "", "", stdout, stderr)
+				return cmdMailSend([]string{"template:worker", "hello"}, false, false, "", "", "", "", stdout, stderr)
 			},
 		},
 		{
 			name: "gc session nudge",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionNudge(context.Background(), []string{"template:worker", "hello"}, nudgeDeliveryImmediate, false, stdout, stderr)
+				return cmdSessionNudge([]string{"template:worker", "hello"}, nudgeDeliveryImmediate, false, stdout, stderr)
 			},
 		},
 	}
@@ -114,49 +113,49 @@ func TestPhase0CLISessionTargetingSurfaces_BareConfigNameDoesNotMaterializeOrdin
 		{
 			name: "gc session attach",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionAttach(context.Background(), []string{"worker"}, stdout, stderr)
+				return cmdSessionAttach([]string{"worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session wake",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionWake(context.Background(), []string{"worker"}, stdout, stderr)
+				return cmdSessionWake([]string{"worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session suspend",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionSuspend(context.Background(), []string{"worker"}, stdout, stderr)
+				return cmdSessionSuspend([]string{"worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session pin",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionPin(context.Background(), []string{"worker"}, stdout, stderr)
+				return cmdSessionPin([]string{"worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session unpin",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionUnpin(context.Background(), []string{"worker"}, stdout, stderr)
+				return cmdSessionUnpin([]string{"worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc session close",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionClose(context.Background(), []string{"worker"}, stdout, stderr)
+				return cmdSessionClose([]string{"worker"}, stdout, stderr)
 			},
 		},
 		{
 			name: "gc mail send",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdMailSend(context.Background(), []string{"worker", "hello"}, false, false, "", "", "", "", stdout, stderr)
+				return cmdMailSend([]string{"worker", "hello"}, false, false, "", "", "", "", stdout, stderr)
 			},
 		},
 		{
 			name: "gc session nudge",
 			run: func(stdout, stderr *bytes.Buffer) int {
-				return cmdSessionNudge(context.Background(), []string{"worker", "hello"}, nudgeDeliveryImmediate, false, stdout, stderr)
+				return cmdSessionNudge([]string{"worker", "hello"}, nudgeDeliveryImmediate, false, stdout, stderr)
 			},
 		},
 	}
@@ -214,7 +213,7 @@ mode = "always"
 	t.Setenv("GC_BEADS", "file")
 	t.Setenv("GC_SESSION", "fake")
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -238,11 +237,11 @@ mode = "always"
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSessionClose(context.Background(), []string{"worker"}, &stdout, &stderr)
+	code := cmdSessionClose([]string{"worker"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSessionClose(worker) = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
-	reopened, err := openCityStoreAt(context.Background(), cityDir)
+	reopened, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("reopen city store: %v", err)
 	}
@@ -365,7 +364,7 @@ mode = "on_demand"
 `)
 	t.Setenv("GC_CITY", cityDir)
 
-	target, err := resolveNudgeTarget(context.Background(), "witness")
+	target, err := resolveNudgeTarget("witness")
 	if !errors.Is(err, session.ErrSessionNotFound) {
 		t.Fatalf("resolveNudgeTarget(witness) = (%+v, %v), want ErrSessionNotFound without ambient rig", target, err)
 	}
@@ -484,7 +483,7 @@ mode = "on_demand"
 	t.Setenv("GC_DIR", t.TempDir())
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSessionNew(context.Background(), []string{"worker"}, "", "", "", true, false, 0, &stdout, &stderr)
+	code := cmdSessionNew([]string{"worker"}, "", "", "", true, false, 0, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSessionNew(worker) = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -518,7 +517,7 @@ func writePhase0InterfaceCity(t *testing.T, cityDir, content string) {
 
 func phase0InterfaceSessionCount(t *testing.T, cityDir string) int {
 	t.Helper()
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}

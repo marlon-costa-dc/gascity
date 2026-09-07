@@ -459,7 +459,7 @@ func TestDoRuntimeDrain(t *testing.T) {
 
 	rec := events.NewFake()
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrain(context.Background(), dops, sp, rec, "worker", "worker", false, &stdout, &stderr)
+	code := doRuntimeDrain(dops, sp, rec, "worker", "worker", false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -482,7 +482,7 @@ func TestDoRuntimeDrainNotRunning(t *testing.T) {
 	sp := runtime.NewFake() // no sessions started
 
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrain(context.Background(), dops, sp, events.Discard, "worker", "worker", false, &stdout, &stderr)
+	code := doRuntimeDrain(dops, sp, events.Discard, "worker", "worker", false, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
@@ -500,7 +500,7 @@ func TestDoRuntimeDrainSetError(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrain(context.Background(), dops, sp, events.Discard, "worker", "worker", false, &stdout, &stderr)
+	code := doRuntimeDrain(dops, sp, events.Discard, "worker", "worker", false, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
@@ -517,7 +517,7 @@ func TestDoRuntimeDrainJSON(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrain(context.Background(), dops, sp, events.Discard, "worker", "worker", true, &stdout, &stderr)
+	code := doRuntimeDrain(dops, sp, events.Discard, "worker", "worker", true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -547,7 +547,7 @@ func TestDoRuntimeUndrain(t *testing.T) {
 
 	rec := events.NewFake()
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeUndrain(context.Background(), dops, sp, rec, "worker", "worker", false, &stdout, &stderr)
+	code := doRuntimeUndrain(dops, sp, rec, "worker", "worker", false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -567,7 +567,7 @@ func TestDoRuntimeUndrainNotRunning(t *testing.T) {
 	sp := runtime.NewFake()
 
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeUndrain(context.Background(), dops, sp, events.Discard, "worker", "worker", false, &stdout, &stderr)
+	code := doRuntimeUndrain(dops, sp, events.Discard, "worker", "worker", false, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
@@ -585,7 +585,7 @@ func TestDoRuntimeUndrainJSON(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeUndrain(context.Background(), dops, sp, events.Discard, "worker", "worker", true, &stdout, &stderr)
+	code := doRuntimeUndrain(dops, sp, events.Discard, "worker", "worker", true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -696,7 +696,7 @@ func TestDoRuntimeDrainAck(t *testing.T) {
 
 	dops := newFakeDrainOps()
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrainAck(context.Background(), dops, "", "worker", "worker", false, &stdout, &stderr)
+	code := doRuntimeDrainAck(dops, "", "worker", "worker", false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -712,7 +712,7 @@ func TestDoRuntimeDrainAckError(t *testing.T) {
 	dops := newFakeDrainOps()
 	dops.err = errors.New("tmux borked")
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrainAck(context.Background(), dops, "", "worker", "worker", false, &stdout, &stderr)
+	code := doRuntimeDrainAck(dops, "", "worker", "worker", false, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
@@ -738,7 +738,7 @@ func TestDoRuntimeDrainAckJSON(t *testing.T) {
 
 	dops := newFakeDrainOps()
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrainAck(context.Background(), dops, "", "worker", "worker", true, &stdout, &stderr)
+	code := doRuntimeDrainAck(dops, "", "worker", "worker", true, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -769,7 +769,7 @@ func TestDoRuntimeDrainAckPokesController(t *testing.T) {
 	// of the three adjacent string params in the new signature.
 	dops := newFakeDrainOps()
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrainAck(context.Background(), dops, "/city/path", "display-name", "session-name", false, &stdout, &stderr)
+	code := doRuntimeDrainAck(dops, "/city/path", "display-name", "session-name", false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -796,7 +796,7 @@ func TestDoRuntimeDrainAckErrorDoesNotPoke(t *testing.T) {
 	dops := newFakeDrainOps()
 	dops.err = errors.New("tmux borked")
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrainAck(context.Background(), dops, "/city/path", "worker", "worker", false, &stdout, &stderr)
+	code := doRuntimeDrainAck(dops, "/city/path", "worker", "worker", false, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
@@ -812,7 +812,7 @@ func TestDoRuntimeDrainAckPokeFailureWarns(t *testing.T) {
 
 	dops := newFakeDrainOps()
 	var stdout, stderr bytes.Buffer
-	code := doRuntimeDrainAck(context.Background(), dops, "/city/path", "worker", "worker", false, &stdout, &stderr)
+	code := doRuntimeDrainAck(dops, "/city/path", "worker", "worker", false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0 (poke failure is best-effort)", code)
 	}

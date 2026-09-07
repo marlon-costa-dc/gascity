@@ -154,7 +154,7 @@ type SlingDeps struct {
 	Router   BeadRouter     // typed bead routing (nil = use Runner)
 	// DirectSessionResolver optionally materializes direct graph assignee
 	// targets to concrete session bead IDs.
-	DirectSessionResolver func(ctx context.Context, store beads.Store, cityName, cityPath string, cfg *config.City, target, rigContext string) (string, bool, error)
+	DirectSessionResolver func(store beads.Store, cityName, cityPath string, cfg *config.City, target, rigContext string) (string, bool, error)
 }
 
 // graphStore returns the store that owns the graph (workflow/v2) beads this
@@ -1358,7 +1358,7 @@ func InstantiateCompiledSlingFormula(ctx context.Context, recipe *formula.Recipe
 // atomic across processes.
 func materializeCompiledSlingFormula(ctx context.Context, recipe *formula.Recipe, formulaName string, opts molecule.Options, sourceBeadID, scopeKind, scopeRef string, graphWorkflow bool, a config.Agent, deps SlingDeps, forceGraphV2Replace ...bool) (*molecule.Result, error) {
 	graphStore := deps.graphStore()
-	if err := graphroute.ApplyGraphRouting(ctx, recipe, &a, agentutil.RoutedToIdentity(&a), opts.Vars, sourceBeadID, scopeKind, scopeRef, deps.StoreRef, graphStore, deps.CityName, deps.Cfg, deps.graphrouteDeps()); err != nil {
+	if err := graphroute.ApplyGraphRouting(recipe, &a, agentutil.RoutedToIdentity(&a), opts.Vars, sourceBeadID, scopeKind, scopeRef, deps.StoreRef, graphStore, deps.CityName, deps.Cfg, deps.graphrouteDeps()); err != nil {
 		SlingTracef("instantiate decorate-error formula=%s err=%v", formulaName, err)
 		return nil, err
 	}

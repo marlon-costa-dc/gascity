@@ -39,7 +39,7 @@ type initProviderTarget struct {
 	DisplayName string
 }
 
-func finalizeInit(ctx context.Context, cityPath string, stdout, stderr io.Writer, opts initFinalizeOptions) int {
+func finalizeInit(cityPath string, stdout, stderr io.Writer, opts initFinalizeOptions) int {
 	EnsureBuiltinRuntimeAssets(cityPath, os.Stderr) //nolint:errcheck // best-effort; needed before dependency and provider checks
 
 	// Check hard binary dependencies before handing off to the supervisor.
@@ -58,7 +58,7 @@ func finalizeInit(ctx context.Context, cityPath string, stdout, stderr io.Writer
 		fmt.Fprintf(stderr, "%s: install the missing dependencies, then run 'gc start'\n", opts.commandName) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	if status := checkDoltAuthorIdentity(ctx, cityPath); status.blocked() {
+	if status := checkDoltAuthorIdentity(cityPath); status.blocked() {
 		printDoltAuthorIdentityBlock(stderr, opts.commandName, status)
 		return 1
 	}
@@ -105,7 +105,7 @@ func finalizeInit(ctx context.Context, cityPath string, stdout, stderr io.Writer
 		}
 	}
 	prefix := config.EffectiveHQPrefix(cfg)
-	if _, err := initDirIfReady(ctx, cityPath, cityPath, prefix); err != nil {
+	if _, err := initDirIfReady(cityPath, cityPath, prefix); err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", opts.commandName, err)        //nolint:errcheck // best-effort stderr
 		fmt.Fprintln(stderr, `hint: run "gc doctor" for diagnostics`) //nolint:errcheck // best-effort stderr
 		return 1
@@ -683,8 +683,8 @@ func (s doltAuthorIdentityStatus) blocked() bool {
 	return len(s.missingKeys) > 0 || len(s.probeErrors) > 0
 }
 
-func checkDoltAuthorIdentity(ctx context.Context, cityPath string) doltAuthorIdentityStatus {
-	if !initNeedsLocalDoltIdentity(ctx, cityPath) {
+func checkDoltAuthorIdentity(cityPath string) doltAuthorIdentityStatus {
+	if !initNeedsLocalDoltIdentity(cityPath) {
 		return doltAuthorIdentityStatus{}
 	}
 	if _, err := initLookPath("dolt"); err != nil {
@@ -712,7 +712,7 @@ func checkDoltAuthorIdentity(ctx context.Context, cityPath string) doltAuthorIde
 	return status
 }
 
-func initNeedsLocalDoltIdentity(ctx context.Context, cityPath string) bool {
+func initNeedsLocalDoltIdentity(cityPath string) bool {
 	if gcDoltSkip() {
 		return false
 	}
@@ -722,21 +722,21 @@ func initNeedsLocalDoltIdentity(ctx context.Context, cityPath string) bool {
 	if ok {
 		cityCfg = cfg
 	}
-	if cityUsesBdStoreContract(cityPath) && initScopeNeedsLocalDoltIdentity(ctx, cityPath, cityPath, cityCfg) {
+	if cityUsesBdStoreContract(cityPath) && initScopeNeedsLocalDoltIdentity(cityPath, cityPath, cityCfg) {
 		return true
 	}
 	if !ok {
 		return false
 	}
 	for _, rig := range cfg.Rigs {
-		if rigUsesManagedBdStoreContract(cityPath, rig) && initScopeNeedsLocalDoltIdentity(ctx, cityPath, rig.Path, cfg) {
+		if rigUsesManagedBdStoreContract(cityPath, rig) && initScopeNeedsLocalDoltIdentity(cityPath, rig.Path, cfg) {
 			return true
 		}
 	}
 	return false
 }
 
-func initScopeNeedsLocalDoltIdentity(ctx context.Context, cityPath, scopeRoot string, cfg *config.City) bool {
+func initScopeNeedsLocalDoltIdentity(cityPath, scopeRoot string, cfg *config.City) bool {
 	bound, err := scopeStoreIsExternallyBound(cityPath, scopeRoot)
 	if err != nil {
 		return true
@@ -744,10 +744,10 @@ func initScopeNeedsLocalDoltIdentity(ctx context.Context, cityPath, scopeRoot st
 	if bound {
 		return false
 	}
-	return !initScopeUsesExternalDolt(ctx, cityPath, scopeRoot, cfg)
+	return !initScopeUsesExternalDolt(cityPath, scopeRoot, cfg)
 }
 
-func initScopeUsesExternalDolt(ctx context.Context, cityPath, scopeRoot string, cfg *config.City) bool {
+func initScopeUsesExternalDolt(cityPath, scopeRoot string, cfg *config.City) bool {
 	if samePath(scopeRoot, cityPath) {
 		if target, ok, err := canonicalScopeDoltTarget(cityPath, cityPath); ok {
 			if err != nil {
@@ -755,7 +755,7 @@ func initScopeUsesExternalDolt(ctx context.Context, cityPath, scopeRoot string, 
 			}
 			return target.External
 		}
-		if isExternalDolt(ctx, cityPath) {
+		if isExternalDolt(cityPath) {
 			return true
 		}
 		if cfg != nil {
@@ -770,7 +770,7 @@ func initScopeUsesExternalDolt(ctx context.Context, cityPath, scopeRoot string, 
 		return target.External
 	}
 	if cfg == nil {
-		return isExternalDolt(ctx, cityPath)
+		return isExternalDolt(cityPath)
 	}
 	for _, rig := range cfg.Rigs {
 		if samePath(rig.Path, scopeRoot) {
@@ -782,7 +782,7 @@ func initScopeUsesExternalDolt(ctx context.Context, cityPath, scopeRoot string, 
 		}
 	}
 	host, port := configuredExternalDoltTargetForCity(cfg.Dolt)
-	return host != "" || port != "" || isExternalDolt(ctx, cityPath)
+	return host != "" || port != "" || isExternalDolt(cityPath)
 }
 
 func printDoltAuthorIdentityBlock(stderr io.Writer, commandName string, status doltAuthorIdentityStatus) {

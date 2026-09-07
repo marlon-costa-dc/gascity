@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -41,7 +40,7 @@ schedule = "0 */4 * * *"
 	if err := ensurePersistedScopeLocalFileStore(cityDir); err != nil {
 		t.Fatalf("ensurePersistedScopeLocalFileStore: %v", err)
 	}
-	store, err := openStoreAtForCity(context.Background(), cityDir, cityDir)
+	store, err := openStoreAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -67,7 +66,7 @@ schedule = "0 */4 * * *"
 	cfg := &config.City{FormulaLayers: config.FormulaLayers{City: []string{filepath.Join(cityDir, "formulas")}}}
 	var stderr bytes.Buffer
 	var check doctor.Check
-	for _, candidate := range buildDoctorChecks(context.Background(), cityDir, cfg, nil, buildDoctorChecksOpts{Stderr: &stderr}) {
+	for _, candidate := range buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{Stderr: &stderr}) {
 		if candidate.Name() == "order-firing-current" {
 			check = candidate
 			break

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"os"
 	"os/exec"
@@ -298,7 +297,7 @@ func TestStartBeadsLifecycleRefusesLiveStandaloneBdDolt(t *testing.T) {
 	cfg := &config.City{
 		Workspace: config.Workspace{Name: "test-city"},
 	}
-	err := startBeadsLifecycle(context.Background(), cityPath, "test-city", cfg, io.Discard)
+	err := startBeadsLifecycle(cityPath, "test-city", cfg, io.Discard)
 	if err == nil {
 		t.Fatal("startBeadsLifecycle returned nil, want standalone-bd conflict error")
 	}
@@ -333,7 +332,7 @@ func TestStartBeadsLifecycleIgnoresStaleStandaloneBdPID(t *testing.T) {
 	cfg := &config.City{
 		Workspace: config.Workspace{Name: "test-city"},
 	}
-	err := startBeadsLifecycle(context.Background(), cityPath, "test-city", cfg, io.Discard)
+	err := startBeadsLifecycle(cityPath, "test-city", cfg, io.Discard)
 	if err != nil && strings.Contains(err.Error(), "bd-managed dolt server is already running") {
 		t.Fatalf("startBeadsLifecycle incorrectly tripped conflict detection on stale pid: %v", err)
 	}
@@ -359,7 +358,7 @@ func TestInitDirIfReadyDetectsStandaloneBdDoltAtProviderConvergence(t *testing.T
 
 	t.Setenv("GC_BEADS", "bd")
 	t.Setenv("GC_BEADS_SCOPE_ROOT", cityPath)
-	deferred, err := initDirIfReady(context.Background(), cityPath, cityPath, "gc")
+	deferred, err := initDirIfReady(cityPath, cityPath, "gc")
 	if err == nil {
 		t.Fatal("initDirIfReady returned nil, want standalone-bd conflict error")
 	}

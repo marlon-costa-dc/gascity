@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -27,7 +26,6 @@ func resolveSessionIDAllowClosed(store beads.Store, identifier string) (string, 
 
 type namedSessionResolveOptions struct {
 	allowClosed         bool
-	materializeCtx      context.Context
 	materialize         bool
 	materializeMetadata map[string]string
 }
@@ -81,10 +79,7 @@ func resolveConfiguredNamedSessionID(
 	if !opts.materialize {
 		return "", false, fmt.Errorf("%w: %q", session.ErrSessionNotFound, identifier)
 	}
-	if opts.materializeCtx == nil {
-		return "", true, fmt.Errorf("materializing configured named session %q: context unavailable", identifier)
-	}
-	id, err := ensureSessionIDForTemplateWithOptions(opts.materializeCtx, cityPath, cfg, store, spec.Identity, io.Discard, ensureSessionForTemplateOptions{
+	id, err := ensureSessionIDForTemplateWithOptions(cityPath, cfg, store, spec.Identity, io.Discard, ensureSessionForTemplateOptions{
 		materializeMetadata: opts.materializeMetadata,
 	})
 	return id, true, err
@@ -98,13 +93,12 @@ func resolveSessionIDAllowClosedWithConfig(cityPath string, cfg *config.City, st
 	return resolveSessionIDWithOptions(cityPath, cfg, store, identifier, namedSessionResolveOptions{allowClosed: true})
 }
 
-func resolveSessionIDMaterializingNamed(ctx context.Context, cityPath string, cfg *config.City, store beads.Store, identifier string) (string, error) {
-	return resolveSessionIDWithOptions(cityPath, cfg, store, identifier, namedSessionResolveOptions{materializeCtx: ctx, materialize: true})
+func resolveSessionIDMaterializingNamed(cityPath string, cfg *config.City, store beads.Store, identifier string) (string, error) {
+	return resolveSessionIDWithOptions(cityPath, cfg, store, identifier, namedSessionResolveOptions{materialize: true})
 }
 
-func resolveSessionIDMaterializingNamedWithMetadata(ctx context.Context, cityPath string, cfg *config.City, store beads.Store, identifier string, metadata map[string]string) (string, error) {
+func resolveSessionIDMaterializingNamedWithMetadata(cityPath string, cfg *config.City, store beads.Store, identifier string, metadata map[string]string) (string, error) {
 	return resolveSessionIDWithOptions(cityPath, cfg, store, identifier, namedSessionResolveOptions{
-		materializeCtx:      ctx,
 		materialize:         true,
 		materializeMetadata: metadata,
 	})

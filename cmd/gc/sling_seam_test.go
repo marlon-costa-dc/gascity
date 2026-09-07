@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"strings"
 	"testing"
@@ -87,7 +86,7 @@ func TestApplySlingInlineBead_ExistingBeadWarns(t *testing.T) {
 // demonstrating that hoisting the store-touching pre-core orchestration out of
 // cmdSlingWithJSON makes it independently testable.
 func TestInferSling1ArgTarget_FormulaRejected(t *testing.T) {
-	target, _, errCode, errMsg := inferSling1ArgTarget(context.Background(), &config.City{}, "/tmp/nonexistent", "some-bead", true)
+	target, _, errCode, errMsg := inferSling1ArgTarget(&config.City{}, "/tmp/nonexistent", "some-bead", true)
 	if target != "" || errCode != "invalid_arguments" || errMsg == "" {
 		t.Fatalf("isFormula 1-arg: got (target=%q code=%q msg=%q), want (\"\", invalid_arguments, non-empty)", target, errCode, errMsg)
 	}
@@ -130,19 +129,19 @@ func TestCmdSlingMultiDefaultTargets_DeterministicPick(t *testing.T) {
 			defer restore()
 
 			var stdout, stderr bytes.Buffer
-			code := cmdSling(context.Background(),
+			code := cmdSling(
 				[]string{"fo-multi-work"},
 				false, false, false,
 				"", nil, "",
 				true, false, false, "",
 				false, false, false,
 				"", "",
-				&stdout, &stderr)
-
+				&stdout, &stderr,
+			)
 			if code != 0 {
 				t.Fatalf("cmdSling = %d, want 0; stderr=%s", code, stderr.String())
 			}
-			rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+			rigStore, err := openStoreAtForCity(rigDir, cityDir)
 			if err != nil {
 				t.Fatalf("openStoreAtForCity: %v", err)
 			}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -163,7 +162,7 @@ func TestCmdHookClaimUnaliasedPoolWorkerClaimsUnderItsSessionBeadID(t *testing.T
 	t.Setenv("GC_SESSION_ID", sessionID)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	var result hookClaimJSONResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
@@ -213,7 +212,7 @@ func TestCmdHookClaimAliasedSessionStillClaimsUnderItsAlias(t *testing.T) {
 	t.Setenv("GC_SESSION_ID", sessionID)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	var result hookClaimJSONResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {

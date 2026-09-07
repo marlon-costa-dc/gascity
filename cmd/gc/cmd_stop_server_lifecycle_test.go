@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -75,7 +74,7 @@ func TestCmdStopBodyTeardownRunsAfterStopOrphansBeforeBeadsShutdown(t *testing.T
 	var orderMu sync.Mutex
 	var shutdownCalled bool
 	var eventsAtShutdown []string
-	overrideShutdownBeadsProviderForStop(t, func(_ context.Context, _ string) error {
+	overrideShutdownBeadsProviderForStop(t, func(string) error {
 		sp.mu.Lock()
 		snapshot := make([]string, len(sp.events))
 		copy(snapshot, sp.events)
@@ -90,10 +89,10 @@ func TestCmdStopBodyTeardownRunsAfterStopOrphansBeforeBeadsShutdown(t *testing.T
 
 	oldFactory := sessionProviderForStopCity
 	t.Cleanup(func() { sessionProviderForStopCity = oldFactory })
-	sessionProviderForStopCity = func(_ context.Context, _ *config.City, _ string) (runtime.Provider, error) { return sp, nil }
+	sessionProviderForStopCity = func(*config.City, string) (runtime.Provider, error) { return sp, nil }
 
 	var stdout, stderr lockedBuffer
-	code := cmdStopBody(context.Background(), cityDir, cfg, false, &stdout, &stderr)
+	code := cmdStopBody(cityDir, cfg, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdStopBody() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -175,16 +174,16 @@ func TestCmdStopBodySkipsTeardownForNonLifecycleProvider(t *testing.T) {
 			"non-lifecycle providers must skip teardown via ok=false type assertion")
 	}
 
-	overrideShutdownBeadsProviderForStop(t, func(_ context.Context, _ string) error { return nil })
+	overrideShutdownBeadsProviderForStop(t, func(string) error { return nil })
 
 	oldFactory := sessionProviderForStopCity
 	t.Cleanup(func() { sessionProviderForStopCity = oldFactory })
-	sessionProviderForStopCity = func(_ context.Context, _ *config.City, _ string) (runtime.Provider, error) {
+	sessionProviderForStopCity = func(*config.City, string) (runtime.Provider, error) {
 		return runtime.NewFake(), nil
 	}
 
 	var stdout, stderr lockedBuffer
-	code := cmdStopBody(context.Background(), cityDir, cfg, false, &stdout, &stderr)
+	code := cmdStopBody(cityDir, cfg, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdStopBody() = %d, want 0 for non-lifecycle provider; stdout=%q stderr=%q",
 			code, stdout.String(), stderr.String())
@@ -217,14 +216,14 @@ func TestCmdStopBodyReportsTeardownErrorWithoutFailing(t *testing.T) {
 		teardownErr: errors.New("provider-stop-failed"),
 	}
 
-	overrideShutdownBeadsProviderForStop(t, func(_ context.Context, _ string) error { return nil })
+	overrideShutdownBeadsProviderForStop(t, func(string) error { return nil })
 
 	oldFactory := sessionProviderForStopCity
 	t.Cleanup(func() { sessionProviderForStopCity = oldFactory })
-	sessionProviderForStopCity = func(_ context.Context, _ *config.City, _ string) (runtime.Provider, error) { return sp, nil }
+	sessionProviderForStopCity = func(*config.City, string) (runtime.Provider, error) { return sp, nil }
 
 	var stdout, stderr lockedBuffer
-	code := cmdStopBody(context.Background(), cityDir, cfg, false, &stdout, &stderr)
+	code := cmdStopBody(cityDir, cfg, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdStopBody() = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}

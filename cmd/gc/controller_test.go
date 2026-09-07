@@ -33,7 +33,7 @@ func TestControllerLoopCancel(t *testing.T) {
 	defer cancel()
 
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(_ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		cancel()
 		return DesiredStateResult{}
@@ -62,7 +62,7 @@ func TestControllerLoopTick(t *testing.T) {
 	defer cancel()
 
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(_ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		if reconcileCount.Add(1) == 2 {
 			cancel()
 		}
@@ -150,7 +150,7 @@ func TestControllerShutdown(t *testing.T) {
 		Command:      "echo hello",
 	}
 
-	buildFn := func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(_ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		return DesiredStateResult{State: map[string]TemplateParams{name: tp}}
 	}
 
@@ -489,7 +489,7 @@ func TestControllerReloadsConfig(t *testing.T) {
 	// buildFn creates TemplateParams from the config it receives.
 	var lastAgentNames atomic.Value
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		var names []string
 		ds := make(map[string]TemplateParams)
@@ -580,7 +580,7 @@ func TestControllerReloadsConfigImmediatelyOnWatchEvent(t *testing.T) {
 
 	var lastAgentNames atomic.Value
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		var names []string
 		ds := make(map[string]TemplateParams)
@@ -1121,7 +1121,7 @@ func TestControllerReloadsNamedSessionModeAndAppliesIdleTimeout(t *testing.T) {
 	sp.SetActivity("mayor", time.Now().Add(-10*time.Minute))
 	var lastIdleTimeout atomic.Value
 
-	store, err := openCityStoreAt(context.Background(), dir)
+	store, err := openCityStoreAt(dir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(%q): %v", dir, err)
 	}
@@ -1164,7 +1164,7 @@ func TestControllerReloadsNamedSessionModeAndAppliesIdleTimeout(t *testing.T) {
 		t.Fatalf("seed canonical mayor bead: %v", err)
 	}
 
-	buildFn := func(_ context.Context, c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		for _, agent := range c.Agents {
 			if agent.Name == "mayor" {
 				lastIdleTimeout.Store(agent.IdleTimeout)
@@ -1207,7 +1207,7 @@ func TestControllerReloadsNamedSessionModeAndAppliesIdleTimeout(t *testing.T) {
 		t.Helper()
 		deadline := time.Now().Add(timeout)
 		for time.Now().Before(deadline) {
-			loopStore, openErr := openCityStoreAt(context.Background(), dir)
+			loopStore, openErr := openCityStoreAt(dir)
 			if openErr != nil {
 				time.Sleep(10 * time.Millisecond)
 				continue
@@ -1791,7 +1791,7 @@ func TestControllerReloadInvalidConfig(t *testing.T) {
 
 	sp := runtime.NewFake()
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		ds := make(map[string]TemplateParams)
 		for _, a := range c.Agents {
@@ -1856,7 +1856,7 @@ func TestControllerReloadCityNameChange(t *testing.T) {
 
 	sp := runtime.NewFake()
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		ds := make(map[string]TemplateParams)
 		for _, a := range c.Agents {
@@ -1945,7 +1945,7 @@ func TestControllerReloadCommandReloadsConfigImmediately(t *testing.T) {
 
 	var lastAgentNames atomic.Value
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		var names []string
 		ds := make(map[string]TemplateParams)
@@ -2037,7 +2037,7 @@ func TestControllerPokeTriggersImmediate(t *testing.T) {
 	sp := runtime.NewFake()
 
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, _ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(_ *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		return DesiredStateResult{State: map[string]TemplateParams{}}
 	}

@@ -910,10 +910,7 @@ func (c *CachingStore) fetchDirtyOverlay(todo []string, suppressed map[string]st
 // startup paths without waiting for a full scan. The cache enters
 // cachePartial state: filtered active queries and Get hit cache for primed
 // beads, while closed-bead queries still delegate to the backing store.
-func (c *CachingStore) PrimeActive(ctx context.Context) error {
-	if ctx == nil {
-		return fmt.Errorf("prime active: nil context")
-	}
+func (c *CachingStore) PrimeActive() error {
 	c.mu.RLock()
 	startSeq := c.mutationSeq
 	c.mu.RUnlock()
@@ -931,16 +928,10 @@ func (c *CachingStore) PrimeActive(ctx context.Context) error {
 		}
 		all = append(all, beads...)
 	}
-	if err := c.cacheContextErr(ctx); err != nil {
-		return fmt.Errorf("prime active ready projection: %w", err)
-	}
 	enriched, enrichErr := c.applyReadyProjection("prime active ready projection", all)
 	all = enriched
 	if enrichErr != nil {
 		partialErr = errors.Join(partialErr, enrichErr)
-	}
-	if err := c.cacheContextErr(ctx); err != nil {
-		return fmt.Errorf("prime active dep cache: %w", err)
 	}
 
 	beadMap := make(map[string]Bead, len(all))

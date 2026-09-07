@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"io"
 	"strconv"
@@ -1812,7 +1811,6 @@ func TestReusablePoolSessionInfosForRequestPreservesPromotionAndPendingCreate(t 
 	pendingHeld.Metadata["wait_hold"] = "true"
 	snapshot := newSessionBeadSnapshot([]beads.Bead{dependency, held, pendingHeld})
 	bp := &agentBuildParams{
-		ctx:          context.Background(),
 		city:         cfg,
 		agents:       cfg.Agents,
 		sessionBeads: snapshot,
@@ -2100,7 +2098,7 @@ func TestBuildDesiredState_PostCreateProtectionUsesInjectedDecisionTime(t *testi
 	store := beads.NewMemStoreFrom(1, seed, nil)
 	snapshot := newSessionBeadSnapshot(sessions)
 
-	result := buildDesiredStateWithSessionBeadsAt(context.Background(),
+	result := buildDesiredStateWithSessionBeadsAt(
 		"test-city",
 		t.TempDir(),
 		beaconTime,
@@ -2111,7 +2109,8 @@ func TestBuildDesiredState_PostCreateProtectionUsesInjectedDecisionTime(t *testi
 		nil,
 		snapshot,
 		nil,
-		io.Discard)
+		io.Discard,
+	)
 
 	if got := result.ScaleCheckCounts["claude"]; got != 1 {
 		t.Fatalf("ScaleCheckCounts[claude] = %d, want 1", got)
@@ -2147,7 +2146,7 @@ func TestBuildDesiredState_PostCreateProtectionExpiresAgainstDecisionTimeNotBeac
 	seed := append([]beads.Bead{work}, sessions...)
 	store := beads.NewMemStoreFrom(1, seed, nil)
 
-	result := buildDesiredStateWithSessionBeadsAt(context.Background(),
+	result := buildDesiredStateWithSessionBeadsAt(
 		"test-city",
 		t.TempDir(),
 		beaconTime,
@@ -2158,7 +2157,8 @@ func TestBuildDesiredState_PostCreateProtectionExpiresAgainstDecisionTimeNotBeac
 		nil,
 		newSessionBeadSnapshot(sessions),
 		nil,
-		io.Discard)
+		io.Discard,
+	)
 
 	workerCount := 0
 	for _, params := range result.BaseState {
@@ -2198,7 +2198,7 @@ func TestBuildDesiredState_PostCreateProtectionPreservesPersistedProvenance(t *t
 	snapshot := newSessionBeadSnapshot([]beads.Bead{protected})
 	store := beads.NewMemStoreFrom(1, []beads.Bead{protected}, nil)
 
-	result := buildDesiredStateWithSessionBeadsAt(context.Background(),
+	result := buildDesiredStateWithSessionBeadsAt(
 		"test-city",
 		t.TempDir(),
 		beaconTime,
@@ -2209,7 +2209,8 @@ func TestBuildDesiredState_PostCreateProtectionPreservesPersistedProvenance(t *t
 		nil,
 		snapshot,
 		nil,
-		io.Discard)
+		io.Discard,
+	)
 
 	if _, ok := result.BaseState[protected.Metadata["session_name"]]; !ok {
 		t.Fatalf("protected session absent from base desired state: keys=%v", mapKeys(result.BaseState))
@@ -2270,7 +2271,7 @@ func TestBuildDesiredState_BlockedFreshSessionMaterializesRunnableReplacement(t 
 			store := beads.NewMemStoreFrom(1, []beads.Bead{tt.work, blocked}, nil)
 			cityPath := t.TempDir()
 
-			result := buildDesiredStateWithSessionBeadsAt(context.Background(),
+			result := buildDesiredStateWithSessionBeadsAt(
 				"test-city",
 				cityPath,
 				beaconTime,
@@ -2281,7 +2282,8 @@ func TestBuildDesiredState_BlockedFreshSessionMaterializesRunnableReplacement(t 
 				nil,
 				snapshot,
 				nil,
-				io.Discard)
+				io.Discard,
+			)
 
 			var replacement *sessionpkg.Info
 			for _, info := range snapshot.OpenInfos() {
@@ -2385,7 +2387,7 @@ func TestBuildDesiredState_RealDemandPromotesDependencyOnlySession(t *testing.T)
 	snapshot := newSessionBeadSnapshot([]beads.Bead{dependency})
 	store := beads.NewMemStoreFrom(1, []beads.Bead{work, dependency}, nil)
 
-	result := buildDesiredStateWithSessionBeadsAt(context.Background(),
+	result := buildDesiredStateWithSessionBeadsAt(
 		"test-city",
 		t.TempDir(),
 		beaconTime,
@@ -2396,7 +2398,8 @@ func TestBuildDesiredState_RealDemandPromotesDependencyOnlySession(t *testing.T)
 		nil,
 		snapshot,
 		nil,
-		io.Discard)
+		io.Discard,
+	)
 
 	if got := result.ScaleCheckCounts["claude"]; got != 1 {
 		t.Fatalf("ScaleCheckCounts[claude] = %d, want 1", got)

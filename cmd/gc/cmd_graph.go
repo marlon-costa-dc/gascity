@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"sort"
@@ -31,9 +30,9 @@ By default prints a table. Use --tree for a Unicode tree view or
   gc graph gc-42 --tree        # dependency tree
   gc graph gc-42 --mermaid     # Mermaid.js diagram`,
 		Args: cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			opts := graphOpts{Mermaid: mermaid, Tree: tree, JSON: jsonOutput}
-			if cmdGraph(cmd.Context(), args, opts, stdout, stderr) != 0 {
+			if cmdGraph(args, opts, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -80,8 +79,8 @@ type graphJSONSummary struct {
 }
 
 // cmdGraph is the CLI entry point.
-func cmdGraph(ctx context.Context, args []string, opts graphOpts, stdout, stderr io.Writer) int {
-	store, code := openRigAwareStore(ctx, args, stderr)
+func cmdGraph(args []string, opts graphOpts, stdout, stderr io.Writer) int {
+	store, code := openRigAwareStore(args, stderr)
 	if store == nil {
 		return code
 	}
@@ -139,7 +138,7 @@ func (g *graphStores) memberClasses(convoyStore beads.Store) convoycore.MemberCl
 // openRigAwareStore opens a bead store, routing to the correct rig directory
 // if the first bead arg has a rig prefix. Uses rig-level Dolt config when
 // the rig has its own Dolt server.
-func openRigAwareStore(ctx context.Context, args []string, stderr io.Writer) (beads.Store, int) {
+func openRigAwareStore(args []string, stderr io.Writer) (beads.Store, int) {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc graph: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -151,7 +150,7 @@ func openRigAwareStore(ctx context.Context, args []string, stderr io.Writer) (be
 		cfg, cfgErr := loadCityConfig(cityPath, stderr)
 		if cfgErr == nil {
 			if storeDir := slingDirForBead(cfg, cityPath, args[0]); storeDir != cityPath {
-				store, err := openStoreAtForCity(ctx, storeDir, cityPath)
+				store, err := openStoreAtForCity(storeDir, cityPath)
 				if err != nil {
 					fmt.Fprintf(stderr, "gc graph: %v\n", err)                      //nolint:errcheck // best-effort stderr
 					fmt.Fprintln(stderr, "hint: run \"gc doctor\" for diagnostics") //nolint:errcheck // best-effort stderr
@@ -162,7 +161,7 @@ func openRigAwareStore(ctx context.Context, args []string, stderr io.Writer) (be
 		}
 	}
 
-	store, err := openStoreAtForCity(ctx, cityPath, cityPath)
+	store, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc graph: %v\n", err)                      //nolint:errcheck // best-effort stderr
 		fmt.Fprintln(stderr, "hint: run \"gc doctor\" for diagnostics") //nolint:errcheck // best-effort stderr

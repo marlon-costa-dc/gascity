@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"strconv"
 	"testing"
@@ -28,7 +27,6 @@ func freshSlotTestInfo(id, template, agentName string, slot int) sessionpkg.Info
 
 func freshSlotTestParams(cfg *config.City, infos ...sessionpkg.Info) *agentBuildParams {
 	return &agentBuildParams{
-		ctx:                              context.Background(),
 		city:                             cfg,
 		agents:                           cfg.Agents,
 		beadStore:                        beads.NewMemStore(),
@@ -312,7 +310,6 @@ func TestSessionOccupancyInfosForRefreshBlocksFreshCreatesWithoutFullRecensus(t 
 			cfg := &config.City{Agents: []config.Agent{agent}}
 			store := beads.NewMemStore()
 			bp := &agentBuildParams{
-				ctx:                              context.Background(),
 				city:                             cfg,
 				cityPath:                         t.TempDir(),
 				agents:                           cfg.Agents,
@@ -403,7 +400,6 @@ func TestFreshPoolPlanningRequiresCompleteSessionSnapshot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			budget := poolplan.NewCreateBudget(1)
 			bp := &agentBuildParams{
-				ctx:                              context.Background(),
 				city:                             cfg,
 				agents:                           cfg.Agents,
 				beadStore:                        beads.NewMemStore(),
@@ -454,7 +450,6 @@ func TestDependencyFloorHeldSlotUsesNextSlotWithoutBudget(t *testing.T) {
 	held := sessiontest.SeedBead(t, heldRaw)
 	budget := poolplan.NewCreateBudget(1)
 	bp := &agentBuildParams{
-		ctx:                              context.Background(),
 		city:                             cfg,
 		cityPath:                         t.TempDir(),
 		agents:                           cfg.Agents,
@@ -512,7 +507,6 @@ func TestDependencyFloorQuarantineAndWaitHoldUseNextSlot(t *testing.T) {
 			}
 			held := sessiontest.SeedBead(t, heldRaw)
 			bp := &agentBuildParams{
-				ctx:                              context.Background(),
 				city:                             cfg,
 				cityPath:                         t.TempDir(),
 				agents:                           cfg.Agents,
@@ -557,7 +551,6 @@ func TestOpenFailedCreateRetriesStableSlotOnlyAfterClose(t *testing.T) {
 	}
 	failed := sessiontest.SeedBead(t, failedRaw)
 	bp := &agentBuildParams{
-		ctx:                              context.Background(),
 		city:                             cfg,
 		cityPath:                         t.TempDir(),
 		agents:                           cfg.Agents,
@@ -599,7 +592,6 @@ func TestCrossStoreOpenFailedCreateBlocksStableSlotUntilClose(t *testing.T) {
 	failed.MetadataState = string(sessionpkg.StateFailedCreate)
 	failed.SessionNameMetadata = "worker-1-pool"
 	bp := &agentBuildParams{
-		ctx:       context.Background(),
 		city:      cfg,
 		cityPath:  t.TempDir(),
 		agents:    cfg.Agents,

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -335,12 +334,11 @@ func TestWorkOptionMetadataMigrationSkipsEffectivelySuspendedRigs(t *testing.T) 
 
 func TestBuildDoctorChecksRegistersWorkOptionMetadataMigration(t *testing.T) {
 	withHealthyStorePreflight(t)
-	checks := buildDoctorChecks(context.Background(), t.TempDir(), &config.City{}, nil, buildDoctorChecksOpts{
+	checks := buildDoctorChecks(t.TempDir(), &config.City{}, nil, buildDoctorChecksOpts{
 		Stderr:               io.Discard,
 		SkipCityDoltCheck:    true,
 		SkipManagedDoltCheck: true,
 	})
-
 	for _, check := range checks {
 		if check.Name() == "work-option-metadata-migration" {
 			return

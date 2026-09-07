@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -278,14 +277,14 @@ func bdUpdateClosesStatus(bdArgs []string) bool {
 // them in instead of paying a second openStoreAtForCity + store.Get round
 // trip. Both are optional (nil is fine): preOpened falls back to opening its
 // own store, and any ID missing from preFetched falls back to store.Get.
-func runWorkRecordCloseGate(ctx context.Context, bdArgs []string, scopeRoot, cityPath string, cfg *config.City, preOpened beads.Store, preFetched map[string]beads.Bead, stderr io.Writer) bool {
+func runWorkRecordCloseGate(bdArgs []string, scopeRoot, cityPath string, cfg *config.City, preOpened beads.Store, preFetched map[string]beads.Bead, stderr io.Writer) bool {
 	if _, ok := workRecordCloseTargets(bdArgs); !ok {
 		return false
 	}
 	store := preOpened
 	if store == nil {
 		var err error
-		store, err = openStoreAtForCityWithConfig(ctx, scopeRoot, cityPath, cfg)
+		store, err = openStoreAtForCityWithConfig(scopeRoot, cityPath, cfg)
 		if err != nil {
 			// Cannot verify — never block a close on our own read failure.
 			return false

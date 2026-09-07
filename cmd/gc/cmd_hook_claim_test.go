@@ -66,14 +66,14 @@ func TestDoHookClaimStopsAfterCommittedClaimReadbackFailure(t *testing.T) {
 			attempts = append(attempts, beadID)
 			return beads.Bead{ID: beadID, Assignee: assignee}, true, errors.New("canonical read failed")
 		},
-		DrainAck: func(context.Context, io.Writer) error {
+		DrainAck: func(io.Writer) error {
 			drained = true
 			return nil
 		},
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim(context.Background(), "query", "/rig", hookClaimOptions{
+	code := doHookClaim("query", "/rig", hookClaimOptions{
 		Assignee:     "worker-1",
 		RouteTargets: []string{"worker"},
 		DrainAck:     true,
@@ -142,18 +142,17 @@ func TestDoHookClaimUsesSelectedStoreContextForMutationAndContinuation(t *testin
 			}
 			return nil
 		},
-		DrainAck: func(context.Context, io.Writer) error { return nil },
+		DrainAck: func(io.Writer) error { return nil },
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim(context.Background(), "query", storeDir, hookClaimOptions{
+	code := doHookClaim("query", storeDir, hookClaimOptions{
 		Assignee:           "worker-1",
 		IdentityCandidates: []string{"worker-1"},
 		RouteTargets:       []string{"route-1"},
 		Env:                storeEnv,
 		JSON:               true,
 	}, ops, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("doHookClaim() = %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -247,17 +246,16 @@ func TestDoHookClaimSkipsBlockedRoutedHeadAndClaimsReadyBehindIt(t *testing.T) {
 			claimedBead = beadID
 			return beads.Bead{ID: beadID, Assignee: assignee, Status: "in_progress"}, true, nil
 		},
-		DrainAck: func(context.Context, io.Writer) error { return nil },
+		DrainAck: func(io.Writer) error { return nil },
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doHookClaim(context.Background(), "query", ".", hookClaimOptions{
+	code := doHookClaim("query", ".", hookClaimOptions{
 		Assignee:           "worker-1",
 		IdentityCandidates: []string{"worker-1"},
 		RouteTargets:       []string{"route-1"},
 		JSON:               true,
 	}, ops, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("doHookClaim() = %d, want 0; stderr=%s", code, stderr.String())
 	}

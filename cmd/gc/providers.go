@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -181,25 +180,25 @@ func isLegacyT3BridgeExecScript(script string) bool {
 // "acp" but some agents have session = "acp", returns an auto.Provider that
 // routes per-session. Provider-construction failures return to the command
 // funnel so output, cleanup, and lifecycle defers remain reachable.
-func newSessionProvider(ctx context.Context) (runtime.Provider, error) {
-	providerCtx := loadSessionProviderContext()
-	sessionBeads := loadProviderSessionSnapshot(ctx, providerCtx)
-	return withSessionProviderConstructionContext(newSessionProviderFromContext(providerCtx, sessionBeads))
+func newSessionProvider() (runtime.Provider, error) {
+	ctx := loadSessionProviderContext()
+	sessionBeads := loadProviderSessionSnapshot(ctx)
+	return withSessionProviderConstructionContext(newSessionProviderFromContext(ctx, sessionBeads))
 }
 
-func newSessionProviderForCity(ctx context.Context, cfg *config.City, cityPath string) (runtime.Provider, error) {
-	providerCtx := sessionProviderContextForCity(cfg, cityPath, os.Getenv("GC_SESSION"))
-	sessionBeads := loadProviderSessionSnapshot(ctx, providerCtx)
-	return withSessionProviderConstructionContext(newSessionProviderFromContext(providerCtx, sessionBeads))
+func newSessionProviderForCity(cfg *config.City, cityPath string) (runtime.Provider, error) {
+	ctx := sessionProviderContextForCity(cfg, cityPath, os.Getenv("GC_SESSION"))
+	sessionBeads := loadProviderSessionSnapshot(ctx)
+	return withSessionProviderConstructionContext(newSessionProviderFromContext(ctx, sessionBeads))
 }
 
-func newStatusSessionProviderForCity(ctx context.Context, cfg *config.City, cityPath string) (runtime.Provider, error) {
-	return newStatusSessionProviderForCityWithSnapshot(ctx, cfg, cityPath, nil)
+func newStatusSessionProviderForCity(cfg *config.City, cityPath string) (runtime.Provider, error) {
+	return newStatusSessionProviderForCityWithSnapshot(cfg, cityPath, nil)
 }
 
-func newStatusSessionProviderForCityWithSnapshot(_ context.Context, cfg *config.City, cityPath string, sessionBeads *sessionBeadSnapshot) (runtime.Provider, error) {
-	providerCtx := sessionProviderContextForCity(cfg, cityPath, os.Getenv("GC_SESSION"))
-	sp, err := withSessionProviderConstructionContext(newSessionProviderFromContext(providerCtx, sessionBeads))
+func newStatusSessionProviderForCityWithSnapshot(cfg *config.City, cityPath string, sessionBeads *sessionBeadSnapshot) (runtime.Provider, error) {
+	ctx := sessionProviderContextForCity(cfg, cityPath, os.Getenv("GC_SESSION"))
+	sp, err := withSessionProviderConstructionContext(newSessionProviderFromContext(ctx, sessionBeads))
 	if err != nil {
 		return nil, err
 	}
@@ -216,11 +215,11 @@ func registerStatusProviderACPRoutes(sp runtime.Provider, snapshot *sessionBeadS
 	}
 }
 
-func loadProviderSessionSnapshot(ctx context.Context, providerCtx sessionProviderContext) *sessionBeadSnapshot {
-	if providerCtx.cityPath == "" || providerCtx.providerName == "acp" {
+func loadProviderSessionSnapshot(ctx sessionProviderContext) *sessionBeadSnapshot {
+	if ctx.cityPath == "" || ctx.providerName == "acp" {
 		return nil
 	}
-	store, err := openSessionProviderStore(ctx, providerCtx.cityPath)
+	store, err := openSessionProviderStore(ctx.cityPath)
 	if err != nil {
 		return nil
 	}
@@ -230,7 +229,7 @@ func loadProviderSessionSnapshot(ctx context.Context, providerCtx sessionProvide
 	// opens its own generic store (independent of the caller), so routing here
 	// closes the gap on both the CLI and controller provider-construction paths.
 	// Identity to the opened store today (resolveClassStore is pure identity).
-	sessStore := cliSessionStore(store, providerCtx.cfg, providerCtx.cityPath)
+	sessStore := cliSessionStore(store, ctx.cfg, ctx.cityPath)
 	// The label-only, closed-excluded, IsSessionBeadOrRepairable-UNfiltered Info
 	// lister is byte-identical to the retired newSessionBeadSnapshot(ListByLabel(
 	// gc:session)) set: same gc:session label scope, same closed exclusion, same
@@ -880,14 +879,14 @@ func newMailProviderNamedWithSessionStore(v string, msgStore, sessStore beads.St
 // relocation reaches CLI mail the same way it reaches the running controller
 // (newCityMailProvider, class_store.go). Byte-identical until a class backend is
 // configured (both resolvers are identity at the single-store bd backend).
-func openCityMailProvider(ctx context.Context, stderr io.Writer, cmdName string) (mail.Provider, int) {
+func openCityMailProvider(stderr io.Writer, cmdName string) (mail.Provider, int) {
 	// For exec: and test doubles, no store needed.
 	v := mailProviderName()
 	if strings.HasPrefix(v, "exec:") || v == "fake" || v == "fail" {
 		return newCommandMailProvider(nil), 0
 	}
 
-	store, cityPath, code := openCityStoreWithPath(ctx, stderr, cmdName)
+	store, cityPath, code := openCityStoreWithPath(stderr, cmdName)
 	if store == nil {
 		return nil, code
 	}

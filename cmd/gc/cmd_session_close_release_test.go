@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"testing"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -34,7 +33,7 @@ max_active_sessions = 1
 	t.Setenv("GC_BEADS", "file")
 	t.Setenv("GC_SESSION", "fake")
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -68,11 +67,11 @@ max_active_sessions = 1
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionClose(context.Background(), []string{sessionBead.ID}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionClose([]string{sessionBead.ID}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionClose = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
-	reopened, err := openCityStoreAt(context.Background(), cityDir)
+	reopened, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("reopen city store: %v", err)
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +30,7 @@ func TestOpenNudgeBeadStoreReportsWhyItCouldNotOpen(t *testing.T) {
 		t.Fatalf("seeding the fixture: %v", err)
 	}
 
-	store, err := openNudgeBeadStoreErr(context.Background(), notACity)
+	store, err := openNudgeBeadStoreErr(notACity)
 	if err == nil {
 		t.Skipf("openNudgeBeadStoreErr(%q) opened a store over a plain file; this row needs a fixture the store layer actually refuses", notACity)
 	}
@@ -111,7 +110,7 @@ func TestManagedNudgeWakeReportsASkippedWake(t *testing.T) {
 	t.Cleanup(func() { nudgeWarningWriter = prev })
 
 	target := nudgeTarget{cityPath: t.TempDir(), alias: "worker-1", agent: config.Agent{Name: "worker"}}
-	if err := requestManagedNudgeWake(context.Background(), target, nil); err != nil {
+	if err := requestManagedNudgeWake(target, nil); err != nil {
 		t.Fatalf("requestManagedNudgeWake = %v, want nil (the enqueue still stands)", err)
 	}
 	if !strings.Contains(warnings.String(), "no managed wake was requested") {

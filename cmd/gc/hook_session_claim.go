@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"strings"
 
@@ -21,12 +20,12 @@ import (
 // loader matches the other hook-path roots (cmd_prime.go's
 // persistPrimeHookProviderSessionKey): this runs on every claim, and a nil cfg
 // leaves cliSessionStore identity to the input store.
-func sessionCurrentClaimFrontDoor(ctx context.Context) (*session.Store, error) {
+func sessionCurrentClaimFrontDoor() (*session.Store, error) {
 	cityPath, err := resolveCity()
 	if err != nil {
 		return nil, err
 	}
-	store, err := openCityStoreAt(ctx, cityPath)
+	store, err := openCityStoreAt(cityPath)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +45,8 @@ func sessionCurrentClaimFrontDoor(ctx context.Context) (*session.Store, error) {
 // publishHookClaimRunMap, which stays a file-based sidecar for exactly that
 // reason). SetCurrentClaim also compare-and-skips, so the per-tick adoption
 // re-run issues no write once the value is current.
-func hookStampSessionCurrentClaim(ctx context.Context, sessionID, beadID string) error {
-	sessFront, err := sessionCurrentClaimFrontDoor(ctx)
+func hookStampSessionCurrentClaim(sessionID, beadID string) error {
+	sessFront, err := sessionCurrentClaimFrontDoor()
 	if err != nil {
 		return err
 	}

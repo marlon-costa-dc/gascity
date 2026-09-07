@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"net"
 	"os"
 	"path/filepath"
@@ -44,7 +43,7 @@ mode = "on_demand"
 	t.Setenv("GC_CITY", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSessionPin(context.Background(), []string{"worker"}, &stdout, &stderr)
+	code := cmdSessionPin([]string{"worker"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSessionPin(worker) = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -72,7 +71,7 @@ func TestPhase2CmdSessionPin_ControllerMaterializesWithPinAsOnlyWakeCause(t *tes
 	startPhase2PinControllerSocket(t, cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSessionPin(context.Background(), []string{"worker"}, &stdout, &stderr)
+	code := cmdSessionPin([]string{"worker"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSessionPin(worker) = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
@@ -105,7 +104,7 @@ max_active_sessions = 1
 `)
 	t.Setenv("GC_CITY", cityDir)
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -128,12 +127,12 @@ max_active_sessions = 1
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSessionPin(context.Background(), []string{"worker"}, &stdout, &stderr)
+	code := cmdSessionPin([]string{"worker"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSessionPin(worker) = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
-	reopened, err := openCityStoreAt(context.Background(), cityDir)
+	reopened, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("reopen city store: %v", err)
 	}
@@ -171,7 +170,7 @@ max_active_sessions = 1
 `)
 	t.Setenv("GC_CITY", cityDir)
 
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -192,12 +191,12 @@ max_active_sessions = 1
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSessionUnpin(context.Background(), []string{"worker"}, &stdout, &stderr)
+	code := cmdSessionUnpin([]string{"worker"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("cmdSessionUnpin(worker) = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
-	reopened, err := openCityStoreAt(context.Background(), cityDir)
+	reopened, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("reopen city store: %v", err)
 	}
@@ -240,12 +239,12 @@ mode = "on_demand"
 	t.Setenv("GC_CITY", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	if code := cmdSessionPin(context.Background(), []string{"worker"}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionPin([]string{"worker"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionPin(worker) = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if code := cmdSessionUnpin(context.Background(), []string{"worker"}, &stdout, &stderr); code != 0 {
+	if code := cmdSessionUnpin([]string{"worker"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("cmdSessionUnpin(worker) = %d, want 0; stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 
@@ -508,7 +507,7 @@ max_active_sessions = 1
 	t.Setenv("GC_CITY", cityDir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdSessionPin(context.Background(), []string{"template:worker"}, &stdout, &stderr)
+	code := cmdSessionPin([]string{"template:worker"}, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("cmdSessionPin(template:worker) = 0, want rejection; stdout=%s stderr=%s", stdout.String(), stderr.String())
 	}

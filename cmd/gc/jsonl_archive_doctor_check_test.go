@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -425,7 +424,7 @@ schema = 1
 	}
 
 	var stdout, stderr strings.Builder
-	_ = doDoctor(context.Background(), false, true, false, 0, &stdout, &stderr)
+	_ = doDoctor(false, true, false, 0, &stdout, &stderr)
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "jsonl-archive") {
 		t.Fatalf("doctor output missing jsonl-archive check:\n%s", out)
@@ -472,7 +471,7 @@ schema = 1
 	}
 
 	var stdout, stderr strings.Builder
-	_ = doDoctor(context.Background(), false, false, true, 0, &stdout, &stderr)
+	_ = doDoctor(false, false, true, 0, &stdout, &stderr)
 
 	out := stdout.String()
 	if !strings.HasPrefix(strings.TrimSpace(out), "{") {

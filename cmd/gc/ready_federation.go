@@ -84,7 +84,6 @@ package main
 // deduped by the plan rather than federated twice.
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -227,8 +226,8 @@ func readyLegLabel(ref storeref.StoreRef) string {
 // Every dead rig is named, not just the first: unlike a read, the opens have all
 // already happened by here, so reporting one and discarding the rest would throw
 // away diagnosis already paid for.
-func readyRigLegStores(ctx context.Context, cfg *config.City, cityPath string) (map[string]beads.Store, error) {
-	stores, failures := openStandaloneRigStores(ctx, cfg, cityPath)
+func readyRigLegStores(cfg *config.City, cityPath string) (map[string]beads.Store, error) {
+	stores, failures := openStandaloneRigStores(cfg, cityPath)
 	if len(failures) == 0 {
 		return stores, nil
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,7 +37,7 @@ name = "worker"
 // runtime state and instance token, returning its id.
 func newFenceSessionBead(t *testing.T, cityDir string, state session.State, instanceToken string) string {
 	t.Helper()
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -105,7 +104,7 @@ func TestHookCommandClaimStaleSessionDrainsBeforeWorkQuery(t *testing.T) {
 	setFenceClaimEnv(t, cityDir, sessionID, "failed-token")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	// Without --drain-ack the refusal is still terminal (exit 1) but now carries a
 	// schema-backed drain record instead of empty stdout.
@@ -153,7 +152,7 @@ func TestHookCommandClaimEligibleStatesReachWorkQuery(t *testing.T) {
 			setFenceClaimEnv(t, cityDir, sessionID, "current-token")
 
 			var stdout, stderr bytes.Buffer
-			code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+			code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 			// The probe bd returns no work, so the claim drains with no_work; the
 			// point is that the fence let an eligible session THROUGH to the work
@@ -194,7 +193,7 @@ func TestHookCommandClaimEmptyLegacyStateReachesWorkQuery(t *testing.T) {
 	setFenceClaimEnv(t, cityDir, sessionID, "current-token")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	if _, err := os.Stat(queryMarker); err != nil {
 		t.Fatalf("work query did not run for empty-legacy-state session: %v; stderr=%s", err, stderr.String())
@@ -232,7 +231,7 @@ func TestHookCommandClaimTokenlessRuntimeSkipsFence(t *testing.T) {
 	setFenceClaimEnv(t, cityDir, sessionID, "")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	if _, err := os.Stat(queryMarker); err != nil {
 		t.Fatalf("work query did not run for token-less runtime (fence should be skipped): %v; stderr=%s", err, stderr.String())
@@ -268,7 +267,7 @@ func TestHookCommandClaimAbsentSessionBeadDrainsStale(t *testing.T) {
 	setFenceClaimEnv(t, cityDir, "worker-1-vanished", "any-token")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	if code != 1 {
 		t.Fatalf("code = %d, want 1; stdout=%q stderr=%s", code, stdout.String(), stderr.String())
@@ -311,7 +310,7 @@ func TestHookCommandClaimFailsOpenOnSessionStoreError(t *testing.T) {
 	setFenceClaimEnv(t, cityDir, "worker-1", "any-token")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	if _, err := os.Stat(queryMarker); err != nil {
 		t.Fatalf("fail-open did not reach the work query: %v; stderr=%s", err, stderr.String())
@@ -475,7 +474,7 @@ func TestHookClaimSessionEligibility(t *testing.T) {
 // exits 0 so a startup wrapper treats the refusal as a completed drain.
 func TestWriteHookClaimDrainStaleSessionWithDrainAck(t *testing.T) {
 	acked := false
-	fakeAck := func(context.Context, io.Writer) error { acked = true; return nil }
+	fakeAck := func(io.Writer) error { acked = true; return nil }
 
 	var stdout, stderr bytes.Buffer
 	code := writeHookClaimDrain(hookClaimLabel, hookClaimReasonStaleSession, true, true, fakeAck, &stdout, &stderr)
@@ -499,7 +498,7 @@ func TestWriteHookClaimDrainStaleSessionWithDrainAck(t *testing.T) {
 // runs drain-ack unless --drain-ack was requested, and returns the historical
 // exit 1 for an unacknowledged drain.
 func TestWriteHookClaimDrainDoesNotAckWhenNotRequested(t *testing.T) {
-	fakeAck := func(context.Context, io.Writer) error {
+	fakeAck := func(io.Writer) error {
 		t.Fatalf("drain-ack must not run without --drain-ack")
 		return nil
 	}
@@ -554,7 +553,7 @@ func TestHookCommandClaimStaleSessionMissingTemplateDrainsBeforeAgentResolution(
 	setFenceClaimEnv(t, cityDir, sessionID, "failed-token")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	if code != 1 {
 		t.Fatalf("code = %d, want 1; stdout=%q stderr=%s", code, stdout.String(), stderr.String())
@@ -597,7 +596,7 @@ func TestHookCommandClaimStaleSessionSuspendedAgentDrainsBeforeSuspensionCheck(t
 	setFenceClaimEnv(t, cityDir, sessionID, "failed-token")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	if code != 1 {
 		t.Fatalf("code = %d, want 1; stdout=%q stderr=%s", code, stdout.String(), stderr.String())
@@ -645,7 +644,7 @@ func TestHookCommandClaimStaleSessionSuspendedCityDrainsBeforeSuspensionCheck(t 
 	t.Setenv("GC_SUSPENDED", "1")
 
 	var stdout, stderr bytes.Buffer
-	code := cmdHookWithOptions(context.Background(), nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
+	code := cmdHookWithOptions(nil, hookCommandOptions{Claim: true, JSON: true}, &stdout, &stderr)
 
 	if code != 1 {
 		t.Fatalf("code = %d, want 1; stdout=%q stderr=%s", code, stdout.String(), stderr.String())

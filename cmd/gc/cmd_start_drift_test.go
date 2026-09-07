@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -497,7 +496,7 @@ func TestDoStartJSONAlreadyRunningSupervisorKeepsStdoutJSONOnly(t *testing.T) {
 			t.Cleanup(func() { registerCityWithSupervisorTestHook = oldRegister })
 
 			var stdout, stderr bytes.Buffer
-			code := doStartWithNameOverrideJSON(context.Background(), []string{cityPath}, false, &stdout, &stderr, "", true)
+			code := doStartWithNameOverrideJSON([]string{cityPath}, false, &stdout, &stderr, "", true)
 			if code != 0 {
 				t.Fatalf("doStartWithNameOverrideJSON = %d; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 			}

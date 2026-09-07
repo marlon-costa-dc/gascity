@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 
@@ -26,8 +25,8 @@ func newRigStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "status [name]",
 		Short: "Show rig status and agent running state",
 		Args:  cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if cmdRigStatus(cmd.Context(), args, jsonOutput, stdout, stderr) != 0 {
+		RunE: func(_ *cobra.Command, args []string) error {
+			if cmdRigStatus(args, jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -39,13 +38,13 @@ func newRigStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 }
 
 // cmdRigStatus is the CLI entry point for showing rig status.
-func cmdRigStatus(ctx context.Context, args []string, jsonOutput bool, stdout, stderr io.Writer) int {
-	gcCtx, err := resolveContext()
+func cmdRigStatus(args []string, jsonOutput bool, stdout, stderr io.Writer) int {
+	ctx, err := resolveContext()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc rig status: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	rigName := gcCtx.RigName
+	rigName := ctx.RigName
 	if len(args) > 0 {
 		rigName = args[0]
 	}
@@ -53,7 +52,7 @@ func cmdRigStatus(ctx context.Context, args []string, jsonOutput bool, stdout, s
 		fmt.Fprintln(stderr, "gc rig status: missing rig name") //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	cityPath := gcCtx.CityPath
+	cityPath := ctx.CityPath
 	cfg, err := loadCityConfig(cityPath, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc rig status: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -86,12 +85,12 @@ func cmdRigStatus(ctx context.Context, args []string, jsonOutput bool, stdout, s
 	cityName := loadedCityName(cfg, cityPath)
 	var store beads.Store
 	if cityPath != "" {
-		if opened, err := openCityStoreAt(ctx, cityPath); err == nil {
+		if opened, err := openCityStoreAt(cityPath); err == nil {
 			store = opened
 		}
 	}
 	statusSnapshot := loadStatusSessionSnapshot(cityPath, cfg, cliSessionStore(store, cfg, cityPath), stderr)
-	sp, err := newStatusSessionProviderForCityWithSnapshot(ctx, cfg, cityPath, statusSnapshot)
+	sp, err := newStatusSessionProviderForCityWithSnapshot(cfg, cityPath, statusSnapshot)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc rig status: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1

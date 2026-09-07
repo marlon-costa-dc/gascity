@@ -35,7 +35,7 @@ func stubStrandedRecoverySource(t *testing.T) beads.Store {
 	t.Helper()
 	source := splittest.NewWorkStore(t, "gc")
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) { return source, nil }
+	openInfraMigrationSource = func(string) (beads.Store, error) { return source, nil }
 	t.Cleanup(func() { openInfraMigrationSource = prev })
 	return source
 }
@@ -97,7 +97,7 @@ func strandedIDs(t *testing.T, cityPath string, target infraBindingTarget) []str
 	if !recorded {
 		t.Fatal("the city has no proven-copy manifest; the containment check is off and this assertion means nothing")
 	}
-	gap, err := classifyInfraContainmentGap(context.Background(), cityPath, target, proven)
+	gap, err := classifyInfraContainmentGap(cityPath, target, proven)
 	if err != nil {
 		t.Fatalf("classifyInfraContainmentGap: %v", err)
 	}
@@ -458,7 +458,7 @@ const postgresRelationRefusal = `operation "IssueRelations" not supported by the
 func swapRecoverySource(t *testing.T, replacement beads.Store) {
 	t.Helper()
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) { return replacement, nil }
+	openInfraMigrationSource = func(string) (beads.Store, error) { return replacement, nil }
 	t.Cleanup(func() { openInfraMigrationSource = prev })
 }
 
@@ -630,7 +630,7 @@ func TestStorageRecoverStrandedRefusesASingleStoreCity(t *testing.T) {
 	cfg := &config.City{}
 
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) {
+	openInfraMigrationSource = func(string) (beads.Store, error) {
 		t.Error("the repair opened the work store of a city with no infrastructure binding")
 		return beads.NewMemStore(), nil
 	}
@@ -832,7 +832,7 @@ func TestStrandedAlarmsNameTheRecoveryCommand(t *testing.T) {
 	// refusal. It used to print the ids and stop.
 	var stdout, stderr bytes.Buffer
 	stubInfraControllerPing(t, 0)
-	if code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
+	if code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code == 0 {
 		t.Fatalf("status exited 0 on a stranded city: %s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), stranded.ID) {

@@ -142,8 +142,8 @@ func TestInstallClaude(t *testing.T) {
 			return entries[0].Matcher
 		}())
 	}
-	if !strings.Contains(claudeHookCommand(t, runtimeData, "PreCompact"), `gc hook run --when-managed-session -- handoff --auto "context cycle"`) {
-		t.Error("claude PreCompact hook should select managed sessions before auto handoff")
+	if !strings.Contains(claudeHookCommand(t, runtimeData, "PreCompact"), `gc handoff --auto "context cycle"`) {
+		t.Error("claude PreCompact hook should use gc handoff --auto (not gc prime or restart handoff) on compaction")
 	}
 	if !strings.Contains(s, "gc hook run --timeout 15s --timeout-exit-code 0 -- nudge drain --inject") {
 		t.Error("claude settings should run nudge drain through gc hook run")
@@ -180,7 +180,7 @@ func TestInstallClaudeUpgradesStaleGeneratedFile(t *testing.T) {
 	// Build a realistic stale fixture: the embedded file stores the command
 	// as JSON, so the literal bytes contain escaped quotes. Matching that
 	// shape is what claudeFileNeedsUpgrade expects.
-	stale := strings.Replace(string(current), `gc hook run --when-managed-session -- handoff --auto \"context cycle\"`, `gc prime --hook`, 1)
+	stale := strings.Replace(string(current), `gc handoff --auto \"context cycle\"`, `gc prime --hook`, 1)
 	if stale == string(current) {
 		t.Fatal("stale fixture did not diverge from current embedded config — check stale pattern")
 	}
@@ -193,8 +193,8 @@ func TestInstallClaudeUpgradesStaleGeneratedFile(t *testing.T) {
 
 	hookData := fs.Files["/city/hooks/claude.json"]
 	runtimeData := fs.Files["/city/.gc/settings.json"]
-	if !strings.Contains(claudeHookCommand(t, hookData, "PreCompact"), `gc hook run --when-managed-session -- handoff --auto "context cycle"`) {
-		t.Fatalf("upgraded claude hook missing managed-session-selected handoff:\n%s", string(hookData))
+	if !strings.Contains(claudeHookCommand(t, hookData, "PreCompact"), `gc handoff --auto "context cycle"`) {
+		t.Fatalf("upgraded claude hook missing gc handoff:\n%s", string(hookData))
 	}
 	if string(runtimeData) != string(hookData) {
 		t.Fatalf("runtime Claude settings should mirror upgraded hook settings:\n%s", string(runtimeData))
@@ -207,7 +207,7 @@ func TestInstallClaudeUpgradesRestartingPreCompactHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readEmbedded: %v", err)
 	}
-	stale := strings.Replace(string(current), `gc hook run --when-managed-session -- handoff --auto \"context cycle\"`, `gc handoff \"context cycle\"`, 1)
+	stale := strings.Replace(string(current), `gc handoff --auto \"context cycle\"`, `gc handoff \"context cycle\"`, 1)
 	if stale == string(current) {
 		t.Fatal("stale fixture did not diverge from current embedded config — check stale pattern")
 	}
@@ -219,8 +219,8 @@ func TestInstallClaudeUpgradesRestartingPreCompactHandoff(t *testing.T) {
 	}
 
 	hookData := fs.Files["/city/hooks/claude.json"]
-	if !strings.Contains(claudeHookCommand(t, hookData, "PreCompact"), `gc hook run --when-managed-session -- handoff --auto "context cycle"`) {
-		t.Fatalf("upgraded claude hook missing managed-session-selected handoff:\n%s", string(hookData))
+	if !strings.Contains(claudeHookCommand(t, hookData, "PreCompact"), `gc handoff --auto "context cycle"`) {
+		t.Fatalf("upgraded claude hook missing gc handoff --auto:\n%s", string(hookData))
 	}
 }
 
@@ -345,8 +345,8 @@ func TestInstallCodexUpgradesGeneratedFileMissingHookFormat(t *testing.T) {
 	if !strings.Contains(got, `"PreCompact"`) {
 		t.Errorf("upgraded codex hooks missing PreCompact:\n%s", got)
 	}
-	if !strings.Contains(got, `gc --city '/city' hook run --when-managed-session -- handoff --auto --hook-format codex \"context cycle\"`) {
-		t.Errorf("upgraded codex PreCompact missing managed-session-selected handoff command:\n%s", got)
+	if !strings.Contains(got, `gc --city '/city' handoff --auto --hook-format codex \"context cycle\"`) {
+		t.Errorf("upgraded codex PreCompact missing auto handoff command:\n%s", got)
 	}
 }
 
@@ -462,8 +462,8 @@ func TestInstallCodexUpgradesManagedFileMissingPreCompact(t *testing.T) {
 	if !strings.Contains(got, `"PreCompact"`) {
 		t.Errorf("upgraded codex hooks missing PreCompact:\n%s", got)
 	}
-	if !strings.Contains(got, `gc --city '/city' hook run --when-managed-session -- handoff --auto --hook-format codex \"context cycle\"`) {
-		t.Errorf("upgraded codex PreCompact missing managed-session-selected handoff command:\n%s", got)
+	if !strings.Contains(got, `gc --city '/city' handoff --auto --hook-format codex \"context cycle\"`) {
+		t.Errorf("upgraded codex PreCompact missing auto handoff command:\n%s", got)
 	}
 	if !strings.Contains(got, `gc --city '/city' hook run --timeout 15s --timeout-exit-code 0 -- mail check --inject --hook-format codex`) {
 		t.Errorf("upgraded codex UserPromptSubmit missing bounded mail check command:\n%s", got)
@@ -522,7 +522,7 @@ func TestCodexHooksMissingManagedPreCompact(t *testing.T) {
 		t.Fatal("managed Codex hooks without PreCompact were not reported stale")
 	}
 
-	currentManaged := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"gc prime --hook --hook-format codex"}]}],"PreCompact":[{"hooks":[{"type":"command","command":"gc hook run --when-managed-session -- handoff --auto --hook-format codex"}]}]}}`)
+	currentManaged := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"gc prime --hook --hook-format codex"}]}],"PreCompact":[{"hooks":[{"type":"command","command":"gc handoff --auto --hook-format codex"}]}]}}`)
 	if CodexHooksMissingManagedPreCompact(currentManaged) {
 		t.Fatal("managed Codex hooks with PreCompact were reported stale")
 	}
@@ -543,7 +543,7 @@ func TestCodexHooksNeedManagedUpgrade(t *testing.T) {
 		t.Fatal("managed Codex hooks with stale city binding were not reported stale")
 	}
 
-	currentCity := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc --city '/old/city' prime --hook --hook-format codex"}]}],"PreCompact":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city '/old/city' hook run --when-managed-session -- handoff --auto --hook-format codex \"context cycle\""}]}]}}`)
+	currentCity := []byte(`{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc --city '/old/city' prime --hook --hook-format codex"}]}],"PreCompact":[{"hooks":[{"type":"command","command":"export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city '/old/city' handoff --auto --hook-format codex \"context cycle\""}]}]}}`)
 	if CodexHooksNeedManagedUpgrade(currentCity, "/old/city") {
 		t.Fatal("managed Codex hooks already bound to requested city were reported stale")
 	}
@@ -630,7 +630,7 @@ func TestInstallCodexRebindsManagedHooksAndAddsPreCompact(t *testing.T) {
 	if !strings.Contains(got, `"PreCompact"`) {
 		t.Fatalf("managed codex upgrade missing PreCompact:\n%s", got)
 	}
-	if !strings.Contains(got, `gc --city '/new city' hook run --when-managed-session -- handoff --auto --hook-format codex \"context cycle\"`) {
+	if !strings.Contains(got, `gc --city '/new city' handoff --auto --hook-format codex \"context cycle\"`) {
 		t.Fatalf("PreCompact not added for current city:\n%s", got)
 	}
 	if strings.Contains(got, "/old/city") {
@@ -665,7 +665,7 @@ func TestInstallCodexRebindsManagedHooksToCurrentCity(t *testing.T) {
 	if !strings.Contains(got, `gc --city '/new city' prime --hook --hook-format codex`) {
 		t.Fatalf("SessionStart not rebound to current city:\n%s", got)
 	}
-	if !strings.Contains(got, `gc --city '/new city' hook run --when-managed-session -- handoff --auto --hook-format codex \"context cycle\"`) {
+	if !strings.Contains(got, `gc --city '/new city' handoff --auto --hook-format codex \"context cycle\"`) {
 		t.Fatalf("PreCompact not rebound to current city:\n%s", got)
 	}
 	if strings.Contains(got, "/old/city") {
@@ -885,7 +885,7 @@ func TestInstallClaudeUpgradesGeneratedFileWithAllKnownDrift(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readEmbedded: %v", err)
 	}
-	stale := strings.Replace(string(current), `gc hook run --when-managed-session -- handoff --auto \"context cycle\"`, `gc prime --hook`, 1)
+	stale := strings.Replace(string(current), `gc handoff --auto \"context cycle\"`, `gc prime --hook`, 1)
 	stale = strings.Replace(stale, `GC_MANAGED_SESSION_HOOK=1 GC_HOOK_EVENT_NAME=SessionStart gc prime --hook --hook-format codex`, `gc prime --hook --hook-format codex`, 1)
 	stale = strings.Replace(stale, `"matcher": "startup"`, `"matcher": ""`, 1)
 	if stale == string(current) {
@@ -915,8 +915,8 @@ func TestInstallClaudeUpgradesGeneratedFileWithAllKnownDrift(t *testing.T) {
 			return entries[0].Matcher
 		}())
 	}
-	if !strings.Contains(claudeHookCommand(t, hookData, "PreCompact"), `gc hook run --when-managed-session -- handoff --auto "context cycle"`) {
-		t.Fatalf("upgraded all-drift PreCompact hook missing managed-session-selected handoff:\n%s", string(hookData))
+	if !strings.Contains(claudeHookCommand(t, hookData, "PreCompact"), `gc handoff --auto "context cycle"`) {
+		t.Fatalf("upgraded all-drift PreCompact hook missing gc handoff:\n%s", string(hookData))
 	}
 	if string(runtimeData) != string(hookData) {
 		t.Fatalf("runtime Claude settings should mirror upgraded all-drift hook settings:\n%s", string(runtimeData))
@@ -943,7 +943,7 @@ func TestInstallClaudeUpgradesPreCompactPreservingCustomHookEvent(t *testing.T) 
 	// Start from the canonical embedded shape, downgrade PreCompact to the
 	// bare-handoff legacy form, and inject a custom Stop hook event that
 	// is not part of the managed set.
-	stale := strings.Replace(string(current), `gc hook run --when-managed-session -- handoff --auto \"context cycle\"`, `gc handoff \"context cycle\"`, 1)
+	stale := strings.Replace(string(current), `gc handoff --auto \"context cycle\"`, `gc handoff \"context cycle\"`, 1)
 	if stale == string(current) {
 		t.Fatal("PreCompact downgrade did not modify the fixture — check the legacy form pattern")
 	}
@@ -980,8 +980,8 @@ func TestInstallClaudeUpgradesPreCompactPreservingCustomHookEvent(t *testing.T) 
 
 	// The managed PreCompact command must be upgraded to include --auto.
 	preCompactCmd := claudeHookCommand(t, runtime, "PreCompact")
-	if !strings.Contains(preCompactCmd, `gc hook run --when-managed-session -- handoff --auto "context cycle"`) {
-		t.Fatalf("PreCompact command not upgraded to managed-session-selected auto handoff:\n%s", preCompactCmd)
+	if !strings.Contains(preCompactCmd, `gc handoff --auto "context cycle"`) {
+		t.Fatalf("PreCompact command not upgraded to include --auto:\n%s", preCompactCmd)
 	}
 
 	// The custom Stop hook must survive the upgrade verbatim.
@@ -1692,8 +1692,8 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	if !strings.Contains(codexHooksText, `"PreCompact"`) {
 		t.Error("codex hooks should include PreCompact")
 	}
-	if !strings.Contains(codexHooksText, `gc --city '/city' hook run --when-managed-session -- handoff --auto --hook-format codex \"context cycle\"`) {
-		t.Error("codex PreCompact should select a managed session before auto handoff with Codex hook output format")
+	if !strings.Contains(codexHooksText, `gc --city '/city' handoff --auto --hook-format codex \"context cycle\"`) {
+		t.Error("codex PreCompact should use auto handoff with Codex hook output format")
 	}
 	for _, want := range []string{
 		`gc --city '/city' hook run --timeout 15s --timeout-exit-code 0 -- nudge drain --inject --hook-format codex`,
@@ -1757,26 +1757,8 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	if !strings.Contains(copilotHooks, `"preCompact"`) {
 		t.Error("copilot hooks should include preCompact (closes #672 gap 3)")
 	}
-	if !strings.Contains(copilotHooks, `gc hook run --when-managed-session -- handoff --auto \"context cycle\"`) {
-		t.Error("copilot preCompact should select a managed session before auto handoff")
-	}
-	for path, selectedHandoff := range map[string]string{
-		"/work/.codex/hooks.json":            `hook run --when-managed-session -- handoff --auto --hook-format codex`,
-		"/work/.gemini/settings.json":        `hook run --when-managed-session -- handoff --auto --hook-format gemini`,
-		"/work/.github/hooks/gascity.json":   `hook run --when-managed-session -- handoff --auto`,
-		"/work/.cursor/hooks.json":           `hook run --when-managed-session -- handoff --auto`,
-		"/work/.opencode/plugins/gascity.js": `runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle")`,
-		"/work/.mimocode/plugin/gascity.js":  `runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle")`,
-		"/work/.omp/hooks/gc-hook.ts":        `runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`,
-		"/work/.pi/extensions/gc-hooks.js":   `runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`,
-	} {
-		data := string(fs.Files[path])
-		if !strings.Contains(data, selectedHandoff) {
-			t.Errorf("%s pre-compaction hook bypasses managed-session selection; missing %q:\n%s", path, selectedHandoff, data)
-		}
-		if strings.Contains(data, "gc handoff --auto") {
-			t.Errorf("%s still contains a direct pre-compaction handoff command:\n%s", path, data)
-		}
+	if !strings.Contains(copilotHooks, `gc handoff --auto \"context cycle\"`) {
+		t.Error("copilot preCompact should use auto handoff")
 	}
 	antigravityHooks := string(fs.Files["/work/.agents/hooks.json"])
 	for hookName, wantCommand := range map[string]string{
@@ -1796,12 +1778,12 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	}
 	opencodeHooks := string(fs.Files["/work/.opencode/plugins/gascity.js"])
 	for _, want := range []string{
-		"const GC_OPENCODE_HOOK_VERSION = 7",
+		"const GC_OPENCODE_HOOK_VERSION = 6",
 		"pending.child.stdin?.end();",
 		`process.env.GC_BIN || "gc"`,
 		`/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`,
 		`"experimental.session.compacting"`,
-		`runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle")`,
+		`runWithWarning(directory, "handoff", "--auto", "context cycle")`,
 		"output.context.push(handoff)",
 		"logRunFailure",
 		"logRunStderr",
@@ -1826,12 +1808,12 @@ func TestInstallOverlayManagedProviders(t *testing.T) {
 	mimocodeHooks := string(fs.Files["/work/.mimocode/plugin/gascity.js"])
 	for _, want := range []string{
 		"Gas City hooks for MiMo Code.",
-		"const GC_MIMOCODE_HOOK_VERSION = 3",
+		"const GC_MIMOCODE_HOOK_VERSION = 2",
 		`process.env.GC_BIN || "gc"`,
 		"process.env.GC_MIMOCODE_TRANSCRIPT_DIR || defaultTranscriptDir()",
 		`path.join(home, ".local", "share", "gascity", "mimocode-transcripts")`,
 		`"experimental.session.compacting"`,
-		`runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle")`,
+		`runWithWarning(directory, "handoff", "--auto", "context cycle")`,
 		"output.context.push(handoff)",
 		"logRunFailure",
 		"logRunStderr",
@@ -2004,7 +1986,7 @@ func TestInstallPiHookUsesCurrentExtensionAPI(t *testing.T) {
 		"GC_PROVIDER_SESSION_ID",
 		"GC_PROVIDER_SESSION_ID_REQUIRED",
 		`stdio: ["ignore", "pipe", "inherit"]`,
-		`runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`,
+		"gc handoff --auto",
 		"mirrorTempCounter",
 		"fs.rmSync(tmp",
 		"gc-hooks run:",
@@ -2063,7 +2045,7 @@ func TestPiHookNeedsUpgradeComparesParsedVersion(t *testing.T) {
 const GC_PI_HOOK_VERSION = 9;
 pendingPrimeContext = run(["prime", "--hook"], ctx.cwd, hookEnv(ctx, "SessionStart"));
 run(["hook", "--inject"], ctx.cwd);
-runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"], ctx.cwd);
+run(["handoff", "--auto", "context cycle"], ctx.cwd);
 let mirrorTempCounter = 0;
 GC_PROVIDER_SESSION_ID;
 GC_PROVIDER_SESSION_ID_REQUIRED;
@@ -2125,7 +2107,7 @@ export default {
 		t.Fatal("legacy OMP object-export hook was preserved; expected managed upgrade")
 	}
 	for _, want := range []string{
-		"const GC_OMP_HOOK_VERSION = 3",
+		"const GC_OMP_HOOK_VERSION = 2",
 		`export default function gascityOmpExtension(pi: ExtensionAPI)`,
 		`pi.on("session_start"`,
 		`pi.on("session_compact"`,
@@ -2134,7 +2116,6 @@ export default {
 		"GC_PROVIDER_SESSION_ID_REQUIRED",
 		`stdio: ["ignore", "pipe", "inherit"]`,
 		"logRunFailure",
-		`runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`,
 	} {
 		if !strings.Contains(data, want) {
 			t.Errorf("upgraded OMP hook missing marker %q:\n%s", want, data)
@@ -2148,7 +2129,7 @@ export default {
 
 func TestOMPHookNeedsUpgradeComparesParsedVersion(t *testing.T) {
 	current := []byte(`// Gas City hooks for Oh My Pi (OMP).
-const GC_OMP_HOOK_VERSION = 3;
+const GC_OMP_HOOK_VERSION = 2;
 function logRunFailure(args: string[], cwd: string | undefined, err: unknown) {}
 function providerSessionEnv(ctx: { sessionManager?: { getSessionId?: () => string } }): Record<string, string> {}
 export default function gascityOmpExtension(pi: ExtensionAPI) {
@@ -2156,13 +2137,12 @@ export default function gascityOmpExtension(pi: ExtensionAPI) {
   pi.on("session_compact", () => {});
   pi.on("before_agent_start", () => {});
 }
-runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"], ctx.cwd);
 GC_PROVIDER_SESSION_ID;
 GC_PROVIDER_SESSION_ID_REQUIRED;
 stdio: ["ignore", "pipe", "inherit"];
 `)
-	stale := bytes.Replace(current, []byte("GC_OMP_HOOK_VERSION = 3"), []byte("GC_OMP_HOOK_VERSION = 2"), 1)
-	future := bytes.Replace(current, []byte("GC_OMP_HOOK_VERSION = 3"), []byte("GC_OMP_HOOK_VERSION = 4"), 1)
+	stale := bytes.Replace(current, []byte("GC_OMP_HOOK_VERSION = 2"), []byte("GC_OMP_HOOK_VERSION = 1"), 1)
+	future := bytes.Replace(current, []byte("GC_OMP_HOOK_VERSION = 2"), []byte("GC_OMP_HOOK_VERSION = 3"), 1)
 	missingRequiredProvider := bytes.Replace(current, []byte("GC_PROVIDER_SESSION_ID_REQUIRED;\n"), nil, 1)
 
 	if !ompHookNeedsUpgrade(stale) {
@@ -2220,12 +2200,12 @@ export default async function gascityPlugin() {
 		t.Fatal("stale OpenCode managed plugin was preserved; expected managed upgrade")
 	}
 	for _, want := range []string{
-		"const GC_OPENCODE_HOOK_VERSION = 7",
+		"const GC_OPENCODE_HOOK_VERSION = 6",
 		"pending.child.stdin?.end();",
 		`process.env.GC_BIN || "gc"`,
 		`/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`,
 		`"experimental.session.compacting"`,
-		`runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle")`,
+		`runWithWarning(directory, "handoff", "--auto", "context cycle")`,
 		"logRunFailure",
 		"logRunStderr",
 		"GC_PROVIDER_SESSION_ID",
@@ -2243,24 +2223,24 @@ export default async function gascityPlugin() {
 
 func TestOpenCodeHookNeedsUpgradeComparesParsedVersion(t *testing.T) {
 	current := []byte(`// Gas City hooks for OpenCode.
-const GC_OPENCODE_HOOK_VERSION = 7;
+const GC_OPENCODE_HOOK_VERSION = 6;
 const GC_BIN = process.env.GC_BIN || "gc";
 const PATH_PREFIX =
   "/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:";
 function logRunFailure(args, directory, err) {}
 function logRunStderr(stderr) {}
-async function runStrict(directory, ...args) {}
+async function runWithWarning(directory, ...args) {}
 function providerSessionEnv(sessionID) {}
 "experimental.session.compacting";
 logRunStderr(stderr);
-runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle");
+runWithWarning(directory, "handoff", "--auto", "context cycle");
 output.context.push(handoff);
 GC_PROVIDER_SESSION_ID;
 GC_PROVIDER_SESSION_ID_REQUIRED;
 pending.child.stdin?.end();
 `)
-	stale := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 7"), []byte("GC_OPENCODE_HOOK_VERSION = 6"), 1)
-	future := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 7"), []byte("GC_OPENCODE_HOOK_VERSION = 8"), 1)
+	stale := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 6"), []byte("GC_OPENCODE_HOOK_VERSION = 5"), 1)
+	future := bytes.Replace(current, []byte("GC_OPENCODE_HOOK_VERSION = 6"), []byte("GC_OPENCODE_HOOK_VERSION = 7"), 1)
 	missingStderrLog := bytes.Replace(current, []byte("logRunStderr(stderr);\n"), nil, 1)
 	openStdin := bytes.Replace(current, []byte("pending.child.stdin?.end();\n"), nil, 1)
 
@@ -2301,16 +2281,14 @@ func TestInstallOpenCodeHookPreservesUserAuthoredPlugin(t *testing.T) {
 
 func TestMimoCodeHookNeedsUpgradeComparesParsedVersion(t *testing.T) {
 	current := []byte(`// Gas City hooks for MiMo Code.
-const GC_MIMOCODE_HOOK_VERSION = 3;
+const GC_MIMOCODE_HOOK_VERSION = 2;
 const GC_BIN = process.env.GC_BIN || "gc";
-runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle");
-pending.child.stdin?.end();
 `)
 	versionless := []byte(`// Gas City hooks for MiMo Code.
 const GC_BIN = process.env.GC_BIN || "gc";
 `)
-	stale := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 3"), []byte("GC_MIMOCODE_HOOK_VERSION = 2"), 1)
-	future := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 3"), []byte("GC_MIMOCODE_HOOK_VERSION = 4"), 1)
+	stale := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 2"), []byte("GC_MIMOCODE_HOOK_VERSION = 1"), 1)
+	future := bytes.Replace(current, []byte("GC_MIMOCODE_HOOK_VERSION = 2"), []byte("GC_MIMOCODE_HOOK_VERSION = 3"), 1)
 
 	if !mimocodeHookNeedsUpgrade(versionless) {
 		t.Fatal("versionless managed MiMo Code hook did not request upgrade")
@@ -2343,7 +2321,7 @@ export default async function gascityPlugin() {
 	if data == string(legacy) {
 		t.Fatal("stale MiMo Code managed plugin was preserved; expected managed upgrade")
 	}
-	if !strings.Contains(data, "const GC_MIMOCODE_HOOK_VERSION = 3") {
+	if !strings.Contains(data, "const GC_MIMOCODE_HOOK_VERSION = 2") {
 		t.Errorf("upgraded MiMo Code plugin missing version marker:\n%s", data)
 	}
 	backup := string(fs.Files["/work/.mimocode/plugin/gascity.js.bak"])

@@ -200,7 +200,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -490,8 +489,8 @@ func infraMigrationClassList() string {
 
 // openInfraMigrationSource opens the work store the infrastructure beads are
 // copied out of. Overridden by tests.
-var openInfraMigrationSource = func(ctx context.Context, cityPath string) (beads.Store, error) {
-	return openStoreAtForCity(ctx, cityPath, cityPath)
+var openInfraMigrationSource = func(cityPath string) (beads.Store, error) {
+	return openStoreAtForCity(cityPath, cityPath)
 }
 
 // openInfraDestination opens the binding's Beads engine at the component path
@@ -655,7 +654,7 @@ func resolveInfraBindingTarget(cityPath string, cfg *config.City) (infraBindingT
 // destination is a genesis city's empty proven copy and marker, which record
 // that a city with nothing to move has nothing to move. That is the zero-row
 // degenerate of the copy the operator command performs, not a copy of its own.
-func checkInfraClassConvergence(ctx context.Context, cityPath string, cfg *config.City, logPrefix string, stderr io.Writer) infraMigrationReport {
+func checkInfraClassConvergence(cityPath string, cfg *config.City, logPrefix string, stderr io.Writer) infraMigrationReport {
 	target, ok, err := resolveInfraBindingTarget(cityPath, cfg)
 	if err != nil {
 		// The destination did not resolve, so there is no binding to read
@@ -668,7 +667,7 @@ func checkInfraClassConvergence(ctx context.Context, cityPath string, cfg *confi
 	if !ok {
 		return infraMigrationReport{Outcome: infraMigrationNotConfigured}
 	}
-	report := inspectInfraConvergence(ctx, cityPath, target, logPrefix, stderr)
+	report := inspectInfraConvergence(cityPath, target, logPrefix, stderr)
 	report.Target = target
 	report.BindingProvenEmpty, report.BindingProbe = infraBindingHoldsNothing(target)
 	return report
@@ -684,7 +683,7 @@ func checkInfraClassConvergence(ctx context.Context, cityPath string, cfg *confi
 // convergence re-proved; a city without one is either a genesis (nothing to
 // move, so it is admitted and recorded) or a city whose infrastructure state is
 // still in the work store, which is the refusal that names the command.
-func inspectInfraConvergence(ctx context.Context, cityPath string, target infraBindingTarget, logPrefix string, stderr io.Writer) infraMigrationReport {
+func inspectInfraConvergence(cityPath string, target infraBindingTarget, logPrefix string, stderr io.Writer) infraMigrationReport {
 	say := func(outcome infraMigrationOutcome, err error) infraMigrationReport {
 		fmt.Fprintf(stderr, "%s: storage class migration: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 		return infraMigrationReport{Outcome: outcome}
@@ -700,7 +699,7 @@ func inspectInfraConvergence(ctx context.Context, cityPath string, target infraB
 	}
 	switch state {
 	case infraConvergenceMarked:
-		return confirmInfraConvergence(ctx, cityPath, target, logPrefix, stderr)
+		return confirmInfraConvergence(cityPath, target, logPrefix, stderr)
 	case infraConvergenceStale:
 		// The marker's claim about the past still holds, so this is not a city
 		// that never converged and the revert stays withheld by the marker the
@@ -715,7 +714,7 @@ func inspectInfraConvergence(ctx context.Context, cityPath string, target infraB
 	// which is a genesis: the copy would move zero rows, prove equality
 	// vacuously, and record it. Doing exactly that here costs nothing and is
 	// what lets a brand-new city with a [storage] section start.
-	source, err := openInfraMigrationSource(ctx, cityPath)
+	source, err := openInfraMigrationSource(cityPath)
 	if err != nil {
 		return say(infraMigrationUnconverged, fmt.Errorf("opening the work store to census infrastructure beads: %w", err))
 	}
@@ -913,7 +912,7 @@ func infraBindingRootEnumerable(root string) error {
 // Nothing here decides what the operator is told to DO. This function's job is
 // to say what happened and why, on stderr; the revert is decided from the
 // binding afterwards, by infraBindingHoldsNothing.
-func runInfraClassMigration(ctx context.Context, cityPath string, target infraBindingTarget, logPrefix string, stderr io.Writer) infraMigrationReport {
+func runInfraClassMigration(cityPath string, target infraBindingTarget, logPrefix string, stderr io.Writer) infraMigrationReport {
 	say := func(outcome infraMigrationOutcome, err error) infraMigrationReport {
 		fmt.Fprintf(stderr, "%s: %v\n", logPrefix, err) //nolint:errcheck // best-effort stderr
 		return infraMigrationReport{Outcome: outcome}
@@ -946,7 +945,7 @@ func runInfraClassMigration(ctx context.Context, cityPath string, target infraBi
 
 	switch state {
 	case infraConvergenceMarked:
-		return confirmInfraConvergence(ctx, cityPath, target, logPrefix, stderr)
+		return confirmInfraConvergence(cityPath, target, logPrefix, stderr)
 	case infraConvergenceStale:
 		fmt.Fprintf(stderr, "%s: %s claims convergence but %s is gone; re-running the copy\n", //nolint:errcheck // best-effort stderr
 			logPrefix, target.MarkerPath(), target.Database)
@@ -959,7 +958,7 @@ func runInfraClassMigration(ctx context.Context, cityPath string, target infraBi
 		return fail(fmt.Errorf("controller PID %d is live on this city and is still writing infrastructure beads to the work store; the copy cannot be proven against a source under mutation. Stop it (gc stop) and start again", pid))
 	}
 
-	source, err := openInfraMigrationSource(ctx, cityPath)
+	source, err := openInfraMigrationSource(cityPath)
 	if err != nil {
 		return fail(fmt.Errorf("opening work store: %w", err))
 	}
@@ -1082,7 +1081,7 @@ func readInfraConvergenceState(target infraBindingTarget) (infraConvergenceState
 // run degrades — infraMigrationUncheckable, naming the fault — instead of
 // reporting the city unconverged and handing it the revert, which is the one
 // instruction that would abandon everything written since cutover.
-func confirmInfraConvergence(ctx context.Context, cityPath string, target infraBindingTarget, logPrefix string, stderr io.Writer) infraMigrationReport {
+func confirmInfraConvergence(cityPath string, target infraBindingTarget, logPrefix string, stderr io.Writer) infraMigrationReport {
 	proven, recorded, err := readInfraCopyManifest(target)
 	if err != nil {
 		return reportUncheckableConvergence(target, logPrefix, stderr, err)
@@ -1096,7 +1095,7 @@ func confirmInfraConvergence(ctx context.Context, cityPath string, target infraB
 			logPrefix, target.Database, target.ManifestPath())
 		return infraMigrationReport{Outcome: infraMigrationUncheckable}
 	}
-	gap, err := classifyInfraContainmentGap(ctx, cityPath, target, proven)
+	gap, err := classifyInfraContainmentGap(cityPath, target, proven)
 	if err != nil {
 		return reportUncheckableConvergence(target, logPrefix, stderr, err)
 	}
@@ -1156,8 +1155,8 @@ type infraContainmentGap struct {
 // cannot read against the manifest of what the copy was proven to deliver. It
 // opens both stores read-only and creates nothing: a converged city must not be
 // mutated by its own convergence check.
-func classifyInfraContainmentGap(ctx context.Context, cityPath string, target infraBindingTarget, proven map[string]bool) (infraContainmentGap, error) {
-	source, err := openInfraMigrationSource(ctx, cityPath)
+func classifyInfraContainmentGap(cityPath string, target infraBindingTarget, proven map[string]bool) (infraContainmentGap, error) {
+	source, err := openInfraMigrationSource(cityPath)
 	if err != nil {
 		return infraContainmentGap{}, fmt.Errorf("opening work store: %w", err)
 	}

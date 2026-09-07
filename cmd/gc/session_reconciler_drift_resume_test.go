@@ -75,9 +75,10 @@ func TestResetConfiguredNamedSessionForConfigDrift_PreservesSessionKeyOnContinua
 	cfg := &config.City{Agents: []config.Agent{{Name: "mayor"}}}
 	clk := &clock.Fake{Time: time.Date(2026, 5, 13, 16, 23, 30, 0, time.UTC)}
 
-	prepared, err := prepareStartCandidateForCity(context.Background(),
+	prepared, err := prepareStartCandidateForCity(
 		startCandidate{info: env.sessionInfo(got.ID), tp: tp, order: 0},
-		"", "", cfg, env.sp, env.store, clk, io.Discard, nil)
+		"", "", cfg, env.sp, env.store, clk, io.Discard, nil,
+	)
 	if err != nil {
 		t.Fatalf("prepareStartCandidateForCity: %v", err)
 	}

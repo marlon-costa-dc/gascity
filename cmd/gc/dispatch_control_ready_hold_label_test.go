@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -100,7 +99,7 @@ func TestTryControlReadyFromCacheOrFallbackExcludesDispatchHoldLabelsFromCache(t
 	agentCfg := config.Agent{Name: config.ControlDispatcherAgentName, Dir: "gascity"}
 	query := workflowServeControlReadyQuery(agentCfg)
 
-	queue, handled, err := tryControlReadyFromCacheOrFallback(context.Background(), query, cityDir, nil)
+	queue, handled, err := tryControlReadyFromCacheOrFallback(query, cityDir, nil)
 	if err != nil {
 		t.Fatalf("tryControlReadyFromCacheOrFallback: %v", err)
 	}
@@ -154,7 +153,7 @@ printf '[{"id":"ga-fallback-routed","metadata":{"gc.routed_to":"%s"}},{"id":"ga-
 	agentCfg := config.Agent{Name: config.ControlDispatcherAgentName, Dir: "gascity"}
 	query := workflowServeControlReadyQuery(agentCfg)
 
-	queue, handled, err := tryControlReadyFromCacheOrFallback(context.Background(), query, cityDir, nil)
+	queue, handled, err := tryControlReadyFromCacheOrFallback(query, cityDir, nil)
 	if err != nil {
 		t.Fatalf("tryControlReadyFromCacheOrFallback: %v", err)
 	}

@@ -14,7 +14,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -169,7 +168,7 @@ func TestBootGateTakesTheCensus(t *testing.T) {
 	cityPath, cfg := convergedEmptyInfraCity(t)
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("booting a converged city: %v (stderr: %s)", err, stderr.String())
 	}
@@ -197,7 +196,7 @@ func TestBootGateKeepsTheProbeForACityThatMigratedWork(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	routes, err := storageBootGate(context.Background(), cityPath, cfg, "gc start", nil, &stderr)
+	routes, err := storageBootGate(cityPath, cfg, "gc start", nil, &stderr)
 	if err != nil {
 		t.Fatalf("booting a converged city: %v (stderr: %s)", err, stderr.String())
 	}
@@ -226,7 +225,7 @@ func TestStorageStatusCountsTheOpenRelics(t *testing.T) {
 	stubInfraControllerPing(t, 0)
 
 	var stdout, stderr bytes.Buffer
-	code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr)
+	code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr)
 	got := stdout.String()
 	if code != 0 {
 		t.Fatalf("status exited %d on a converged city; a carried-across bead is the migration working, not a fault (stdout: %s, stderr: %s)", code, got, stderr.String())
@@ -246,7 +245,7 @@ func TestStorageStatusReportsNoRelicsOnACleanCutover(t *testing.T) {
 	stubInfraControllerPing(t, 0)
 
 	var stdout, stderr bytes.Buffer
-	if code := doStorageStatus(context.Background(), storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code != 0 {
+	if code := doStorageStatus(storageOperatorRequest{CityPath: cityPath, Cfg: cfg}, &stdout, &stderr); code != 0 {
 		t.Fatalf("status exited %d on a clean converged city (stdout: %s, stderr: %s)", code, stdout.String(), stderr.String())
 	}
 	if got := stdout.String(); !strings.Contains(got, "open relics: 0") {

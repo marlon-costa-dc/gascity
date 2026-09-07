@@ -1982,7 +1982,7 @@ func TestCmdStopSupervisorManagedCityReliesOnSupervisorCleanup(t *testing.T) {
 		t,
 		func(_, _ io.Writer) int { return 0 },
 		func(_, _ io.Writer) int {
-			if err := shutdownBeadsProvider(context.Background(), cityPath); err != nil {
+			if err := shutdownBeadsProvider(cityPath); err != nil {
 				t.Fatalf("shutdownBeadsProvider: %v", err)
 			}
 			return 0
@@ -2016,7 +2016,7 @@ func TestCmdStopSupervisorManagedCityReliesOnSupervisorCleanup(t *testing.T) {
 	}()
 
 	var stdout, stderr bytes.Buffer
-	code := cmdStop(context.Background(), []string{cityPath}, &stdout, &stderr, 0, false)
+	code := cmdStop([]string{cityPath}, &stdout, &stderr, 0, false)
 	if code != 0 {
 		t.Fatalf("cmdStop code = %d, want 0: %s", code, stderr.String())
 	}
@@ -2067,12 +2067,11 @@ func TestReconcileCitiesNameDriftStopsBeadsProvider(t *testing.T) {
 	sp := runtime.NewFake()
 	var cityOut, cityErr bytes.Buffer
 	cr := newTestCityRuntime(t, CityRuntimeParams{
-		Ctx:      context.Background(),
 		CityPath: cityPath,
 		CityName: "old-name",
 		Cfg:      &cfg,
 		SP:       sp,
-		BuildFn: func(context.Context, *config.City, runtime.Provider, beads.Store) DesiredStateResult {
+		BuildFn: func(*config.City, runtime.Provider, beads.Store) DesiredStateResult {
 			return DesiredStateResult{}
 		},
 		Rec:    events.Discard,
@@ -2709,7 +2708,7 @@ func TestStartupSessionComputationsDoNotQueryBeadStore(t *testing.T) {
 	sp := runtime.NewFake()
 	suspended := computeSuspendedNames(&cfg, "bright-lights", "/fake/city")
 	poolSessions := computePoolSessions(&cfg, "bright-lights", "/fake/city", sp)
-	poolDeathHandlers := computePoolDeathHandlers(context.Background(), &cfg, "bright-lights", "/fake/city", sp, nil)
+	poolDeathHandlers := computePoolDeathHandlers(&cfg, "bright-lights", "/fake/city", sp, nil)
 	idleTracker := buildIdleTracker(&cfg, "bright-lights", "/fake/city", sp)
 
 	if len(suspended) == 0 {
@@ -2719,7 +2718,7 @@ func TestStartupSessionComputationsDoNotQueryBeadStore(t *testing.T) {
 		t.Fatalf("computePoolSessions() returned %d entries, want 2", len(poolSessions))
 	}
 	if len(poolDeathHandlers) != 0 && len(poolDeathHandlers) != 2 {
-		t.Fatalf("computePoolDeathHandlers(context.Background(), ) returned %d handlers, want 0 or 2", len(poolDeathHandlers))
+		t.Fatalf("computePoolDeathHandlers() returned %d handlers, want 0 or 2", len(poolDeathHandlers))
 	}
 	if idleTracker == nil {
 		t.Fatal("buildIdleTracker() returned nil, want tracker")

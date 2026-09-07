@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -746,7 +745,7 @@ func TestEnsureInfraClassMigratedProvesEqualityAgainstTheReopenedDatabase(t *tes
 	}
 	source := &unlinkingInfraSource{Store: backing, t: t, database: target.Database}
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) { return source, nil }
+	openInfraMigrationSource = func(string) (beads.Store, error) { return source, nil }
 	t.Cleanup(func() { openInfraMigrationSource = prev })
 
 	var log strings.Builder
@@ -873,7 +872,7 @@ func TestEnsureInfraClassMigratedLeavesAnAllocatorThatCannotCollide(t *testing.T
 	cityPath := t.TempDir()
 	source := gcgSourceStore(t)
 	prev := openInfraMigrationSource
-	openInfraMigrationSource = func(_ context.Context, _ string) (beads.Store, error) { return source, nil }
+	openInfraMigrationSource = func(string) (beads.Store, error) { return source, nil }
 	t.Cleanup(func() { openInfraMigrationSource = prev })
 
 	var highest string

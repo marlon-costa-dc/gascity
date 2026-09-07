@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -290,7 +289,7 @@ func TestAgentSuspendResumeJSONReportsResolvedIdentity(t *testing.T) {
 func TestWaitReadyJSONReportsClosedWaitRetryIdentity(t *testing.T) {
 	clearGCEnv(t)
 	cityPath, waitID := writeManagementJSONWaitCity(t, waitStateCanceled)
-	store, err := openCityStoreAt(context.Background(), cityPath)
+	store, err := openCityStoreAt(cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -441,7 +440,7 @@ func writeManagementJSONWaitCity(t *testing.T, state string) (string, string) {
 	if err := ensurePersistedScopeLocalFileStore(cityPath); err != nil {
 		t.Fatalf("initialize file store: %v", err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityPath)
+	store, err := openCityStoreAt(cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}

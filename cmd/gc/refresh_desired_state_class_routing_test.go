@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"strings"
 	"testing"
@@ -98,7 +97,7 @@ func TestFullBuildWritesDependencyFloorToSessionsClass(t *testing.T) {
 	}
 	cr.buildFnWithSessionBeads = supervisorBuildAgentsFnWithSessionBeads(cityPath, "demo", io.Discard)
 
-	result := cr.buildDesiredState(context.Background(), cr.loadSessionBeadSnapshot(), nil)
+	result := cr.buildDesiredState(cr.loadSessionBeadSnapshot(), nil)
 	floor := false
 	for _, params := range result.State {
 		if params.TemplateName == "gascity/db" && params.DependencyOnly {
@@ -159,7 +158,7 @@ func TestRefreshDesiredStateDefersFreshSessionCreationOnRelocatedCity(t *testing
 	if sessionBeads == nil {
 		t.Fatal("session-bead snapshot is nil; the sessions store never loaded")
 	}
-	refreshed := cr.refreshDesiredState(context.Background(), DesiredStateResult{
+	refreshed := cr.refreshDesiredState(DesiredStateResult{
 		BeaconTime:              time.Now().UTC(),
 		SessionSnapshotComplete: true,
 		SessionOccupancyInfos:   sessionBeads.OpenInfos(),
@@ -218,12 +217,11 @@ func TestRefreshDesiredStateDefersFreshSessionCreationOnSingleStoreCity(t *testi
 	}
 
 	sessionBeads := cr.loadSessionBeadSnapshot()
-	refreshed := cr.refreshDesiredState(context.Background(), DesiredStateResult{
+	refreshed := cr.refreshDesiredState(DesiredStateResult{
 		BeaconTime:              time.Now().UTC(),
 		SessionSnapshotComplete: true,
 		SessionOccupancyInfos:   sessionBeads.OpenInfos(),
 	}, sessionBeads)
-
 	floor := false
 	for _, params := range refreshed.State {
 		if params.TemplateName == "gascity/db" && params.DependencyOnly {

@@ -277,8 +277,8 @@ func TestSessionResumeHintsEnablesMouse(t *testing.T) {
 // city-anchored env vars (GC_CITY, GC_CITY_PATH, GC_CITY_RUNTIME_DIR)
 // because they only forwarded resolved.Env (provider-only). The
 // spawned shell then could not locate the city, so bd, mailboxes, and
-// related tooling failed. Non-conflicting provider-authored env vars are
-// preserved; ambient provider credentials are not copied.
+// related tooling failed. Non-conflicting provider env vars are
+// preserved; this test documents the merge contract.
 func TestResolvedSessionConfigForProviderSeedsCityRuntimeEnv(t *testing.T) {
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "api-anthropic-token")
 	t.Setenv("ANTHROPIC_BASE_URL", "https://process.example.test")
@@ -325,21 +325,15 @@ func TestResolvedSessionConfigForProviderSeedsCityRuntimeEnv(t *testing.T) {
 		t.Errorf("SessionEnv[PROVIDER_TOKEN] = %q, want %q (provider env preserved)", got, "ok")
 	}
 	for key, want := range map[string]string{
-		"ANTHROPIC_BASE_URL": "https://resolved.example.test",
+		"ANTHROPIC_AUTH_TOKEN": "api-anthropic-token",
+		"ANTHROPIC_BASE_URL":   "https://resolved.example.test",
+		"OLLAMA_API_KEY":       "api-ollama-token",
 	} {
 		if got := cfg.Runtime.SessionEnv[key]; got != want {
 			t.Errorf("SessionEnv[%s] = %q, want %q", key, got, want)
 		}
 		if got := cfg.Runtime.Hints.Env[key]; got != want {
 			t.Errorf("Hints.Env[%s] = %q, want %q", key, got, want)
-		}
-	}
-	for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "OLLAMA_API_KEY"} {
-		if got, present := cfg.Runtime.SessionEnv[key]; present {
-			t.Errorf("SessionEnv[%s] = %q present, want absent ambient provider credential", key, got)
-		}
-		if got, present := cfg.Runtime.Hints.Env[key]; present {
-			t.Errorf("Hints.Env[%s] = %q present, want absent ambient provider credential", key, got)
 		}
 	}
 	for _, key := range []string{"GC_RIG", "GC_SESSION_NAME"} {

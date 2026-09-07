@@ -29,8 +29,8 @@ var (
 		return githubmonitor.NewGraphQLClient(token)
 	}
 	resolveGitHubTokenForBackfill = resolveGitHubToken
-	openGitHubPRRepairStore       = func(ctx context.Context, cityPath, scopeRoot string) (beads.Store, error) {
-		return openStoreAtForCity(ctx, scopeRoot, cityPath)
+	openGitHubPRRepairStore       = func(cityPath, scopeRoot string) (beads.Store, error) {
+		return openStoreAtForCity(scopeRoot, cityPath)
 	}
 	// attachGitHubPRRepairWorkflow instantiates the configured repair workflow
 	// on a freshly created repair bead. It is a package var so tests can stub
@@ -130,14 +130,14 @@ need repair: failed checks, merge conflicts, blocked mergeability, or branches
 behind their base. By default clean and pending-only PRs are omitted; pass
 --all to include every observed PR.`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				opts.monitorName = args[0]
 			}
 			if opts.includeClean {
 				opts.actionableOnly = false
 			}
-			if doGitHubPRBackfill(cmd.Context(), opts, stdout, stderr) != 0 {
+			if doGitHubPRBackfill(opts, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -150,7 +150,7 @@ behind their base. By default clean and pending-only PRs are omitted; pass
 	return cmd
 }
 
-func doGitHubPRBackfill(parent context.Context, opts githubPRBackfillOptions, stdout, stderr io.Writer) int {
+func doGitHubPRBackfill(opts githubPRBackfillOptions, stdout, stderr io.Writer) int {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "gc github pr backfill: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -172,7 +172,7 @@ func doGitHubPRBackfill(parent context.Context, opts githubPRBackfillOptions, st
 		fmt.Fprintf(stderr, "gc github pr backfill: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	ctx, cancel := context.WithTimeout(parent, opts.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), opts.timeout)
 	defer cancel()
 
 	token, err := resolveGitHubTokenForBackfill(ctx)
@@ -198,7 +198,7 @@ func doGitHubPRBackfill(parent context.Context, opts githubPRBackfillOptions, st
 			if prResult.Actionable {
 				result.ActionableCount++
 				if opts.createRepairs {
-					outcome, err := ensureGitHubPRRepairBead(ctx, cityPath, cfg, monitor, prResult)
+					outcome, err := ensureGitHubPRRepairBead(cityPath, cfg, monitor, prResult)
 					if err != nil {
 						fmt.Fprintf(stderr, "gc github pr backfill: repair bead for %s/%s#%d: %v\n", prResult.Owner, prResult.Repo, prResult.Number, err) //nolint:errcheck // best-effort stderr
 						return 1
@@ -247,7 +247,7 @@ func doGitHubPRBackfill(parent context.Context, opts githubPRBackfillOptions, st
 	return 0
 }
 
-func ensureGitHubPRRepairBead(ctx context.Context, cityPath string, cfg *config.City, monitor config.GitHubPRMonitor, result githubmonitor.Result) (githubPRRepairOutcome, error) {
+func ensureGitHubPRRepairBead(cityPath string, cfg *config.City, monitor config.GitHubPRMonitor, result githubmonitor.Result) (githubPRRepairOutcome, error) {
 	if !result.Actionable {
 		return githubPRRepairOutcome{}, errors.New("result is not actionable")
 	}
@@ -256,7 +256,7 @@ func ensureGitHubPRRepairBead(ctx context.Context, cityPath string, cfg *config.
 		return githubPRRepairOutcome{}, fmt.Errorf("rig %q not found", monitor.Rig)
 	}
 	scopeRoot := resolveStoreScopeRoot(cityPath, rig.Path)
-	store, err := openGitHubPRRepairStore(ctx, cityPath, scopeRoot)
+	store, err := openGitHubPRRepairStore(cityPath, scopeRoot)
 	if err != nil {
 		return githubPRRepairOutcome{}, err
 	}

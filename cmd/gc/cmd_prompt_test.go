@@ -695,7 +695,7 @@ func TestRunSlinguedSynthRejectsUnknownWriterAgent(t *testing.T) {
 	cityDir := writeCityWithAgent(t, "claude", "mayor")
 	slinger := &fakeSlinger{}
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return beads.NewMemStore(), nil },
+		storeOpener: func(string) (beads.Store, error) { return beads.NewMemStore(), nil },
 		slingCaller: slinger.call,
 		now:         time.Now,
 		waitTick:    10 * time.Millisecond,
@@ -726,7 +726,7 @@ func TestRunSlinguedSynthCreatesBeadStagesMetaAndCallsSling(t *testing.T) {
 	store := beads.NewMemStore()
 	slinger := &fakeSlinger{}
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return store, nil },
+		storeOpener: func(string) (beads.Store, error) { return store, nil },
 		slingCaller: slinger.call,
 		now:         func() time.Time { return time.Date(2026, 5, 12, 9, 0, 0, 0, time.UTC) },
 		waitTick:    10 * time.Millisecond,
@@ -817,7 +817,7 @@ func TestRunSlinguedSynthRefusesToClobberWithoutForce(t *testing.T) {
 	store := beads.NewMemStore()
 	slinger := &fakeSlinger{}
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return store, nil },
+		storeOpener: func(string) (beads.Store, error) { return store, nil },
 		slingCaller: slinger.call,
 		now:         time.Now,
 		waitTick:    10 * time.Millisecond,
@@ -859,7 +859,7 @@ func TestRunSlinguedSynthWaitReturnsWhenBeadCloses(t *testing.T) {
 		}
 	}
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return store, nil },
+		storeOpener: func(string) (beads.Store, error) { return store, nil },
 		slingCaller: closeAfterSling(store),
 		now:         time.Now,
 		waitTick:    5 * time.Millisecond,
@@ -885,7 +885,7 @@ func TestRunSlinguedSynthWaitTimesOut(t *testing.T) {
 	store := beads.NewMemStore()
 	slinger := &fakeSlinger{} // never closes the bead
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return store, nil },
+		storeOpener: func(string) (beads.Store, error) { return store, nil },
 		slingCaller: slinger.call,
 		now:         time.Now,
 		waitTick:    5 * time.Millisecond,
@@ -961,7 +961,7 @@ func TestRunSlinguedSynthRigContextPropagatesIntoBeadMetadata(t *testing.T) {
 	store := beads.NewMemStore()
 	slinger := &fakeSlinger{}
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return store, nil },
+		storeOpener: func(string) (beads.Store, error) { return store, nil },
 		slingCaller: slinger.call,
 		now:         time.Now,
 		waitTick:    10 * time.Millisecond,
@@ -1009,7 +1009,7 @@ func TestRunSlinguedSynthForceAllowsClobber(t *testing.T) {
 	store := beads.NewMemStore()
 	slinger := &fakeSlinger{}
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return store, nil },
+		storeOpener: func(string) (beads.Store, error) { return store, nil },
 		slingCaller: slinger.call,
 		now:         time.Now,
 		waitTick:    10 * time.Millisecond,
@@ -1040,7 +1040,7 @@ func TestRunSlinguedSynthSurfacesSlingCallerError(t *testing.T) {
 	store := beads.NewMemStore()
 	slinger := &fakeSlinger{err: errors.New("sling refused: boom")}
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return store, nil },
+		storeOpener: func(string) (beads.Store, error) { return store, nil },
 		slingCaller: slinger.call,
 		now:         time.Now,
 		waitTick:    10 * time.Millisecond,
@@ -1071,7 +1071,7 @@ func TestRunSlinguedSynthSurfacesStoreCreateError(t *testing.T) {
 	wrapped := &errorOnCreateStore{Store: beads.NewMemStore(), createErr: errors.New("disk full")}
 	slinger := &fakeSlinger{}
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return wrapped, nil },
+		storeOpener: func(string) (beads.Store, error) { return wrapped, nil },
 		slingCaller: slinger.call,
 		now:         time.Now,
 		waitTick:    10 * time.Millisecond,
@@ -1095,7 +1095,7 @@ func TestRunSlinguedSynthSurfacesStoreOpenError(t *testing.T) {
 	cityDir := writeCityWithAgent(t, "claude", "mayor")
 	slinger := &fakeSlinger{}
 	deps := slinguedSynthDeps{
-		storeOpener: func(context.Context, string) (beads.Store, error) { return nil, errors.New("store init failed") },
+		storeOpener: func(string) (beads.Store, error) { return nil, errors.New("store init failed") },
 		slingCaller: slinger.call,
 		now:         time.Now,
 		waitTick:    10 * time.Millisecond,

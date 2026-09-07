@@ -66,9 +66,6 @@ func (c *doltDriftCheck) Run(_ *doctor.CheckContext) *doctor.CheckResult {
 
 	var errors []string
 	var warnings []string
-	if managedPort == "" {
-		errors = append(errors, "managed city has no published managed Dolt runtime state")
-	}
 
 	for i := range c.cfg.Rigs {
 		rig := c.cfg.Rigs[i]

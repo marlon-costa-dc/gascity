@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -347,7 +346,7 @@ func TestPrepareCityForSupervisorPrunesLegacyScripts(t *testing.T) {
 		"app": {filepath.Join(dir, "packs/rig")},
 	}
 
-	if err := prepareCityForSupervisor(context.Background(), cityPath, "bright-lights", &cfg, io.Discard, nil); err != nil {
+	if err := prepareCityForSupervisor(cityPath, "bright-lights", &cfg, io.Discard, nil); err != nil {
 		t.Fatalf("prepareCityForSupervisor: %v", err)
 	}
 

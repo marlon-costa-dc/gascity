@@ -2,7 +2,6 @@ package session_test
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -499,7 +498,7 @@ func TestResolveSessionIDAllowClosed_OpenHitStaysCacheServed(t *testing.T) {
 		},
 	})
 	cache := beads.NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 	backing.listCalls = nil

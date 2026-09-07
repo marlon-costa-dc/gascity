@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -55,7 +54,7 @@ func TestDoPrimeHookWithoutEventNameStaysSilentWhenUnmanaged(t *testing.T) {
 	unmanagedPrimeHookEnv(t)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, true, "", false)
+	code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, "", false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 	}
@@ -73,7 +72,7 @@ func TestDoPrimeHookWithoutEventNameStaysSilentForEveryHookFormat(t *testing.T) 
 			unmanagedPrimeHookEnv(t)
 
 			var stdout, stderr bytes.Buffer
-			code := doPrimeWithHookFormat(context.Background(), nil, &stdout, &stderr, true, format, false)
+			code := doPrimeWithHookFormat(nil, &stdout, &stderr, true, format, false)
 			if code != 0 {
 				t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 			}
@@ -97,7 +96,7 @@ func TestPersistPrimeHookProviderSessionKeyQuietWhenNotAManagedSession(t *testin
 	t.Setenv("GC_PROVIDER_SESSION_ID", "ses_opencode_123")
 
 	var stderr bytes.Buffer
-	persistPrimeHookProviderSessionKey(context.Background(), "", &stderr)
+	persistPrimeHookProviderSessionKey("", &stderr)
 
 	if got := stderr.String(); got != "" {
 		t.Fatalf("an unmanaged session has no session key to persist, so this is\n"+
@@ -116,7 +115,7 @@ func TestPersistPrimeHookProviderSessionKeyStillWarnsForManagedSession(t *testin
 	t.Setenv(managedSessionHookEnv, "1")
 
 	var stderr bytes.Buffer
-	persistPrimeHookProviderSessionKey(context.Background(), "", &stderr)
+	persistPrimeHookProviderSessionKey("", &stderr)
 
 	got := stderr.String()
 	if !strings.Contains(got, "provider session key not persisted") ||
@@ -135,7 +134,7 @@ func TestPersistPrimeHookProviderSessionKeyStillWarnsWithAgentIdentity(t *testin
 	t.Setenv("GC_AGENT", "worker")
 
 	var stderr bytes.Buffer
-	persistPrimeHookProviderSessionKey(context.Background(), "", &stderr)
+	persistPrimeHookProviderSessionKey("", &stderr)
 
 	if got := stderr.String(); !strings.Contains(got, "GC_SESSION_ID is empty") {
 		t.Fatalf("an agent identity proves managed intent; the diagnostic must stay.\ngot: %q", got)
@@ -149,7 +148,7 @@ func TestDoPrimeHookExplicitAgentStillServedWhenUnmanaged(t *testing.T) {
 	unmanagedPrimeHookEnv(t)
 
 	var stdout, stderr bytes.Buffer
-	code := doPrimeWithHookFormat(context.Background(), []string{"mayor"}, &stdout, &stderr, true, "", false)
+	code := doPrimeWithHookFormat([]string{"mayor"}, &stdout, &stderr, true, "", false)
 	if code != 0 {
 		t.Fatalf("doPrimeWithHookFormat() = %d, want 0; stderr=%q", code, stderr.String())
 	}

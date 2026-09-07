@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -47,8 +46,8 @@ Use -f to follow new messages as they arrive.`,
   gc session logs gc-123 --tail 0
   gc session logs s-gc-123 -f`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if cmdSessionLogs(cmd.Context(), args, follow, tail, jsonOutput, stdout, stderr) != 0 {
+		RunE: func(_ *cobra.Command, args []string) error {
+			if cmdSessionLogs(args, follow, tail, jsonOutput, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -62,7 +61,7 @@ Use -f to follow new messages as they arrive.`,
 }
 
 // cmdSessionLogs is the CLI entry point for viewing session logs.
-func cmdSessionLogs(ctx context.Context, args []string, follow bool, tail int, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdSessionLogs(args []string, follow bool, tail int, jsonOutput bool, stdout, stderr io.Writer) int {
 	identifier := args[0]
 
 	cityPath, err := resolveCity()
@@ -78,7 +77,7 @@ func cmdSessionLogs(ctx context.Context, args []string, follow bool, tail int, j
 
 	searchPaths := worker.MergeSearchPaths(cfg.Daemon.ObservePaths)
 
-	store, err := tryOpenCityStore(ctx)
+	store, err := tryOpenCityStore()
 	var (
 		path     string
 		provider string
@@ -86,7 +85,7 @@ func cmdSessionLogs(ctx context.Context, args []string, follow bool, tail int, j
 	)
 	if err == nil && store != nil {
 		var diagnostic string
-		path, provider, ok, diagnostic = resolveStoredSessionLogSource(ctx, cityPath, cfg, cliSessionFrontDoor(store, cfg, cityPath), identifier, searchPaths)
+		path, provider, ok, diagnostic = resolveStoredSessionLogSource(cityPath, cfg, cliSessionFrontDoor(store, cfg, cityPath), identifier, searchPaths)
 		if ok && path == "" && diagnostic != "" {
 			fmt.Fprintf(stderr, "gc session logs: %s\n", diagnostic) //nolint:errcheck // best-effort stderr
 			return 1

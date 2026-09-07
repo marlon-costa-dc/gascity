@@ -540,7 +540,7 @@ func TestSendReloadControlRequestNoChange(t *testing.T) {
 	sp := runtime.NewFake()
 
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		ds := make(map[string]TemplateParams)
 		for _, a := range c.Agents {
@@ -645,7 +645,7 @@ func TestReloadConfigTracedRescansOrdersWhenConfigRevisionUnchanged(t *testing.T
 		cfg:                cfg,
 		sp:                 runtime.NewFake(),
 		dops:               newDrainOps(runtime.NewFake()),
-		od:                 buildOrderDispatcherFromOrderSet(context.Background(), nil, dir, cfg, initialOrders.Orders, events.Discard, &stderr),
+		od:                 buildOrderDispatcherFromOrderSet(nil, dir, cfg, initialOrders.Orders, events.Discard, &stderr),
 		orderSet:           initialOrders.Orders,
 		orderSetSignature:  initialOrders.Signature,
 		orderRescanEnabled: true,
@@ -742,7 +742,7 @@ func TestSendReloadControlRequestInvalidConfig(t *testing.T) {
 	sp := runtime.NewFake()
 
 	var reconcileCount atomic.Int32
-	buildFn := func(_ context.Context, c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
+	buildFn := func(c *config.City, _ runtime.Provider, _ beads.Store) DesiredStateResult {
 		reconcileCount.Add(1)
 		ds := make(map[string]TemplateParams)
 		for _, a := range c.Agents {

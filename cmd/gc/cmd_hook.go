@@ -39,7 +39,7 @@ With --claim: runs the standard startup claim protocol for one work item.
 
 		The agent is determined from $GC_AGENT or a positional argument.`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(c *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			opts := hookCommandOptions{
 				Inject:     inject,
 				HookFormat: hookFormat,
@@ -47,7 +47,7 @@ With --claim: runs the standard startup claim protocol for one work item.
 				DrainAck:   drainAck,
 				JSON:       jsonOut,
 			}
-			if cmdHookWithOptions(c.Context(), args, opts, stdout, stderr) != 0 {
+			if cmdHookWithOptions(args, opts, stdout, stderr) != 0 {
 				return errExit
 			}
 			return nil
@@ -78,9 +78,7 @@ func newHookRunCmd(stdout, stderr io.Writer) *cobra.Command {
 
 This protects provider hook callbacks from wedged data-plane commands. The
 child process is the current gc executable, and <gc args...> are passed to it
-verbatim. With --when-managed-session, the child runs only when the callback
-has a complete Gas City session identity. An unmanaged callback is not selected
-and exits successfully; a partial identity fails before the child starts.`,
+verbatim.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -92,71 +90,17 @@ and exits successfully; a partial identity fails before the child starts.`,
 	}
 	cmd.Flags().DurationVar(&opts.Timeout, "timeout", defaultHookRunTimeout, "hard timeout for the managed hook command")
 	cmd.Flags().IntVar(&opts.TimeoutExitCode, "timeout-exit-code", 124, "exit code to return when the managed hook command times out")
-	cmd.Flags().BoolVar(&opts.WhenManagedSession, "when-managed-session", false, "run only with complete Gas City managed-session context")
 	return cmd
 }
 
 const defaultHookRunTimeout = 15 * time.Second
 
 type hookRunOptions struct {
-	Timeout            time.Duration
-	TimeoutExitCode    int
-	WhenManagedSession bool
+	Timeout         time.Duration
+	TimeoutExitCode int
 }
 
 var hookRunExecutable = os.Executable
-
-type managedSessionHookSelection uint8
-
-const (
-	managedSessionHookAbsent managedSessionHookSelection = iota
-	managedSessionHookPartial
-	managedSessionHookSelected
-)
-
-var managedSessionHookEnvKeys = []string{
-	"GC_SESSION_ID",
-	"GC_SESSION_NAME",
-	"GC_ALIAS",
-	"GC_AGENT",
-	"GC_CITY",
-	"GC_CITY_PATH",
-	"GC_CITY_ROOT",
-}
-
-func selectManagedSessionHook(lookup func(string) string) (managedSessionHookSelection, []string) {
-	valuePresent := func(key string) bool {
-		return strings.TrimSpace(lookup(key)) != ""
-	}
-	anyPresent := false
-	for _, key := range managedSessionHookEnvKeys {
-		if valuePresent(key) {
-			anyPresent = true
-			break
-		}
-	}
-	if !anyPresent {
-		return managedSessionHookAbsent, nil
-	}
-
-	missing := make([]string, 0, 4)
-	if !valuePresent("GC_SESSION_ID") {
-		missing = append(missing, "GC_SESSION_ID")
-	}
-	if !valuePresent("GC_SESSION_NAME") {
-		missing = append(missing, "GC_SESSION_NAME")
-	}
-	if !valuePresent("GC_ALIAS") && !valuePresent("GC_AGENT") {
-		missing = append(missing, "one of GC_ALIAS/GC_AGENT")
-	}
-	if !valuePresent("GC_CITY") && !valuePresent("GC_CITY_PATH") && !valuePresent("GC_CITY_ROOT") {
-		missing = append(missing, "one of GC_CITY/GC_CITY_PATH/GC_CITY_ROOT")
-	}
-	if len(missing) > 0 {
-		return managedSessionHookPartial, missing
-	}
-	return managedSessionHookSelected, nil
-}
 
 func cmdHookRun(args []string, opts hookRunOptions, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -169,24 +113,6 @@ func cmdHookRun(args []string, opts hookRunOptions, stdin io.Reader, stdout, std
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	payload := drainHookStdin(ctx, stdin)
-	if ctx.Err() == context.DeadlineExceeded {
-		fmt.Fprintf(stderr, "gc hook run: command timed out after %s\n", timeout) //nolint:errcheck
-		return opts.TimeoutExitCode
-	}
-	if opts.WhenManagedSession {
-		selection, missing := selectManagedSessionHook(os.Getenv)
-		switch selection {
-		case managedSessionHookAbsent:
-			fmt.Fprintln(stderr, "gc hook run: NOT SELECTED: managed session context absent") //nolint:errcheck
-			return 0
-		case managedSessionHookPartial:
-			fmt.Fprintf(stderr, "gc hook run: partial managed session context: missing %s\n", strings.Join(missing, ", ")) //nolint:errcheck
-			return 1
-		case managedSessionHookSelected:
-			// Continue to the managed child below.
-		}
-	}
 
 	exe, err := hookRunExecutable()
 	if err != nil {
@@ -227,7 +153,7 @@ func cmdHookRun(args []string, opts hookRunOptions, stdin io.Reader, stdout, std
 	// with ctx already expired, so cmd.Run() sees the canceled context and never
 	// spawns the child: gc hook run fails open to the timeout exit code in the
 	// timeout branch below instead of hanging before it spawns.
-	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Stdin = bytes.NewReader(drainHookStdin(ctx, stdin))
 	// Buffer child stdout instead of streaming it straight to the provider so
 	// a wedged command cannot leak partial injectable output before the
 	// fail-open timeout path runs. The buffer is flushed only on a clean or
@@ -314,14 +240,14 @@ type hookCommandOptions struct {
 // $GC_AGENT or a positional argument, loads the city config, and runs
 // the agent's work query.
 func cmdHook(args []string, stdout, stderr io.Writer) int {
-	return cmdHookWithFormat(context.Background(), args, false, "", stdout, stderr)
+	return cmdHookWithFormat(args, false, "", stdout, stderr)
 }
 
-func cmdHookWithFormat(ctx context.Context, args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int {
-	return cmdHookWithOptions(ctx, args, hookCommandOptions{Inject: inject, HookFormat: hookFormat}, stdout, stderr)
+func cmdHookWithFormat(args []string, inject bool, hookFormat string, stdout, stderr io.Writer) int {
+	return cmdHookWithOptions(args, hookCommandOptions{Inject: inject, HookFormat: hookFormat}, stdout, stderr)
 }
 
-func cmdHookWithOptions(ctx context.Context, args []string, opts hookCommandOptions, stdout, stderr io.Writer) int {
+func cmdHookWithOptions(args []string, opts hookCommandOptions, stdout, stderr io.Writer) int {
 	if opts.Inject {
 		return 0
 	}
@@ -394,7 +320,7 @@ func cmdHookWithOptions(ctx context.Context, args []string, opts hookCommandOpti
 		if marker := hookClaimNonTurnMarker(os.Environ()); marker != "" {
 			return writeHookClaimNonTurnDrain(marker, hookClaimOptions{JSON: opts.JSON}, stdout, stderr)
 		}
-		if code, handled := fenceHookClaimSession(ctx, cityPath, cfg, strings.TrimSpace(os.Getenv("GC_SESSION_ID")), opts, stdout, stderr); handled {
+		if code, handled := fenceHookClaimSession(cityPath, cfg, strings.TrimSpace(os.Getenv("GC_SESSION_ID")), opts, stdout, stderr); handled {
 			return code
 		}
 	}
@@ -467,9 +393,9 @@ func cmdHookWithOptions(ctx context.Context, args []string, opts hookCommandOpti
 		agentForQuery = hookSessionAgentForQuery()
 		sessionForQuery = os.Getenv("GC_SESSION_NAME")
 	} else {
-		sessionForQuery = cliSessionName(ctx, cityPath, cityName, resolvedAgentName, cfg.Workspace.SessionTemplate)
+		sessionForQuery = cliSessionName(cityPath, cityName, resolvedAgentName, cfg.Workspace.SessionTemplate)
 	}
-	overrides, err := hookQueryEnv(ctx, cityPath, cfg, &a)
+	overrides, err := hookQueryEnv(cityPath, cfg, &a)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc hook: building work query env: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -490,7 +416,7 @@ func cmdHookWithOptions(ctx context.Context, args []string, opts hookCommandOpti
 	queryEnv := mergeRuntimeEnv(os.Environ(), overrides)
 	failureTemplate, emitFailureEvent := hookWorkQueryFailureTemplate(len(args) > 0, sessionTemplateContext, a.QualifiedName())
 
-	stores := hookWorkQueryStores(ctx, cityPath, cfg, &a, agentForQuery, workDir, queryEnv, overrides)
+	stores := hookWorkQueryStores(cityPath, cfg, &a, agentForQuery, workDir, queryEnv, overrides)
 	// On a split city the ready tiers of workQuery are already city-wide, so
 	// running the whole query once per store re-asks the same question R+1 times
 	// and re-opens every leg each time. Pin the city-wide read to the primary
@@ -552,7 +478,7 @@ func cmdHookWithOptions(ctx context.Context, args []string, opts hookCommandOpti
 			DrainAck:           opts.DrainAck,
 			JSON:               opts.JSON,
 		}
-		return claimHookWork(ctx, cityPath, workQuery, workDir, queryEnv, stores, claimOpts, emitQueryFailure, stdout, stderr)
+		return claimHookWork(cityPath, workQuery, workDir, queryEnv, stores, claimOpts, emitQueryFailure, stdout, stderr)
 	}
 	// The discovery door is fenced too: a draining seat must not be handed its
 	// preassigned continuation sibling by the packs' post-close `gc hook`.
@@ -598,15 +524,15 @@ const (
 // no instance token), an eligible session, or a transient session-store fault all
 // return handled=false so the normal claim path runs — the fence never turns an
 // infrastructure hiccup or an in-progress start into a false refusal.
-func fenceHookClaimSession(ctx context.Context, cityPath string, cfg *config.City, sessionID string, opts hookCommandOptions, stdout, stderr io.Writer) (int, bool) {
+func fenceHookClaimSession(cityPath string, cfg *config.City, sessionID string, opts hookCommandOptions, stdout, stderr io.Writer) (int, bool) {
 	instanceToken := strings.TrimSpace(os.Getenv("GC_INSTANCE_TOKEN"))
 	if sessionID == "" || instanceToken == "" {
 		return 0, false
 	}
-	switch verdict, reason := classifyHookClaimSession(ctx, cityPath, cfg, sessionID, instanceToken); verdict {
+	switch verdict, reason := classifyHookClaimSession(cityPath, cfg, sessionID, instanceToken); verdict {
 	case hookClaimSessionStale:
 		fmt.Fprintf(stderr, "gc hook --claim: refusing stale session %s: %s\n", sessionID, reason) //nolint:errcheck
-		return writeHookClaimStaleSessionDrain(ctx, opts, stdout, stderr), true
+		return writeHookClaimStaleSessionDrain(opts, stdout, stderr), true
 	case hookClaimSessionStoreUnavailable:
 		// Fail open: let the claim path run and surface/escalate its own store
 		// error rather than reporting a false stale session. Name the fault
@@ -626,8 +552,8 @@ func fenceHookClaimSession(ctx context.Context, cityPath string, cfg *config.Cit
 // hookClaimSessionStoreUnavailable (transient, fails open), so an infrastructure
 // hiccup is not mislabeled as staleness AND a vanished session is not laundered
 // into an infrastructure hiccup that lets a stale runtime reach the claim path.
-func classifyHookClaimSession(ctx context.Context, cityPath string, cfg *config.City, sessionID, instanceToken string) (hookClaimSessionVerdict, string) {
-	store, err := openCityStoreAt(ctx, cityPath)
+func classifyHookClaimSession(cityPath string, cfg *config.City, sessionID, instanceToken string) (hookClaimSessionVerdict, string) {
+	store, err := openCityStoreAt(cityPath)
 	if err != nil {
 		return hookClaimSessionStoreUnavailable, fmt.Sprintf("opening session store: %v", err)
 	}
@@ -697,7 +623,7 @@ func hookClaimSessionEligibility(info session.Info, instanceToken string) (hookC
 // one, so the binding is reached through the ops rather than through a leg. On a
 // city that relocates nothing the route is nil and the ops value is the one this
 // function has always passed.
-func claimHookWork(ctx context.Context, cityPath, workQuery, workDir string, queryEnv []string, stores []hookStore, claimOpts hookClaimOptions, emitFailure func(command string, err error), stdout, stderr io.Writer) int {
+func claimHookWork(cityPath, workQuery, workDir string, queryEnv []string, stores []hookStore, claimOpts hookClaimOptions, emitFailure func(command string, err error), stdout, stderr io.Writer) int {
 	// The city relocates a class and its front door could not be projected.
 	// Claiming through the work store anyway would write ownership into a
 	// ledger that does not hold the bead, which is the wrong-answer lane this
@@ -710,7 +636,7 @@ func claimHookWork(ctx context.Context, cityPath, workQuery, workDir string, que
 		return 1
 	}
 	ops := classRoutedHookClaimOps(hookClaimOps{}, route)
-	return claimHookWorkWithRunner(ctx, workQuery, workDir, queryEnv, stores, claimOpts, ops, shellWorkQueryWithEnv, emitFailure, stdout, stderr)
+	return claimHookWorkWithRunner(workQuery, workDir, queryEnv, stores, claimOpts, ops, shellWorkQueryWithEnv, emitFailure, stdout, stderr)
 }
 
 // claimHookWorkWithRunner is claimHookWork with the work-query runner and claim
@@ -736,7 +662,7 @@ func claimHookWork(ctx context.Context, cityPath, workQuery, workDir string, que
 // the whole fan-out so it can prove "no WORK store holds this bead" before it
 // writes ownership into the binding (claim_class_route.go). Nil on a city that
 // relocates nothing.
-func claimHookWorkWithRunner(ctx context.Context, workQuery, workDir string, queryEnv []string, stores []hookStore, claimOpts hookClaimOptions, ops hookClaimOps, run hookStoreRunner, emitFailure func(command string, err error), stdout, stderr io.Writer) int {
+func claimHookWorkWithRunner(workQuery, workDir string, queryEnv []string, stores []hookStore, claimOpts hookClaimOptions, ops hookClaimOps, run hookStoreRunner, emitFailure func(command string, err error), stdout, stderr io.Writer) int {
 	ops.applyDefaults()
 	ops.ClassRoute.observeWorkLegs(stores)
 	// primary is the agent's own store (the first entry). It is captured once
@@ -754,7 +680,7 @@ func claimHookWorkWithRunner(ctx context.Context, workQuery, workDir string, que
 	// report claims_errored instead of laundering a write failure into no_work.
 	claimsErrored := false
 	for len(remaining) > 0 {
-		discovered, selected, err := selectStoreWithWork(workQuery, remaining, primary, run)
+		discovered, selected, err := selectStoreWithWorkRetrying(workQuery, remaining, primary, run)
 		if err != nil {
 			emitFailure(workQuery, err)
 			fmt.Fprintf(stderr, "gc hook --claim: %v\n", err) //nolint:errcheck // best-effort stderr
@@ -789,7 +715,7 @@ func claimHookWorkWithRunner(ctx context.Context, workQuery, workDir string, que
 		}
 		storeOps := ops
 		storeOps.Runner = func(string, string) (string, error) { return claimOutput, nil }
-		res := tryHookClaim(ctx, workQuery, storeDir, &storeOpts, &storeOps, stdout, stderr)
+		res := tryHookClaim(workQuery, storeDir, &storeOpts, &storeOps, stdout, stderr)
 		if res.terminal {
 			return res.code
 		}
@@ -804,14 +730,32 @@ func claimHookWorkWithRunner(ctx context.Context, workQuery, workDir string, que
 		// signal to the shared drain.
 		remaining = removeHookStore(remaining, claimStore)
 	}
-	return writeHookClaimNoWork(ctx, claimOpts, ops, claimsErrored, workDir, stdout, stderr)
+	return writeHookClaimNoWork(claimOpts, ops, claimsErrored, workDir, stdout, stderr)
 }
 
-// selectStoreWithWork executes the federated work-query selection once. The
-// first read failure is causal; hook shutdown must not hide it behind retry
-// pacing while the supervisor is already trying to stop.
-func selectStoreWithWork(workQuery string, stores []hookStore, primary hookStore, run hookStoreRunner) (string, hookStore, error) {
-	return bestStoreWithWork(workQuery, stores, primary, run)
+// Claim-read retry pacing. A work-query ERROR is a failed read, and the failures
+// this bounds are transport-shaped: a contended SQLite leg, a store mid-write, a
+// binding whose engine is briefly refusing. Those clear in seconds, and the
+// alternative — exiting 1 and parking a seat the controller minted demand for
+// until the 90s backstop re-drives it — is strictly worse. Emptiness is NOT
+// retried: an empty read is an answer, and a seat that lost the sibling race must
+// drain promptly. Package vars follow hookWorkQueryTimeout's convention so tests
+// drive the loop without sleeping.
+var (
+	hookClaimQueryRetryAttempts = 3
+	hookClaimQueryRetryInterval = 5 * time.Second
+)
+
+// selectStoreWithWorkRetrying is bestStoreWithWork with a bounded retry around
+// the ERROR case only. It returns the first successful selection, or the last
+// error once the budget is spent.
+func selectStoreWithWorkRetrying(workQuery string, stores []hookStore, primary hookStore, run hookStoreRunner) (string, hookStore, error) {
+	out, selected, err := bestStoreWithWork(workQuery, stores, primary, run)
+	for attempt := 0; err != nil && attempt < hookClaimQueryRetryAttempts; attempt++ {
+		time.Sleep(hookClaimQueryRetryInterval)
+		out, selected, err = bestStoreWithWork(workQuery, stores, primary, run)
+	}
+	return out, selected, err
 }
 
 func hookClaimPrimaryRouteTarget(a *config.Agent) string {
@@ -918,8 +862,8 @@ func hookWorkQueryFailureTemplate(explicitTarget, sessionTemplateContext bool, r
 // It includes scope metadata (store root/scope/prefix) plus any rig-scoped
 // runtime overrides so hook queries observe the same routing contract as the
 // controller probes.
-func hookQueryEnv(ctx context.Context, cityPath string, cfg *config.City, a *config.Agent) (map[string]string, error) {
-	env, err := controllerWorkQueryEnv(ctx, cityPath, cfg, a)
+func hookQueryEnv(cityPath string, cfg *config.City, a *config.Agent) (map[string]string, error) {
+	env, err := controllerWorkQueryEnv(cityPath, cfg, a)
 	if err != nil {
 		return nil, err
 	}

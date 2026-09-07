@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -32,7 +31,6 @@ args = ["notes-mcp"]
 
 	buildParams := func(sessionProvider string) *agentBuildParams {
 		return &agentBuildParams{
-			ctx:             context.Background(),
 			city:            cityCfg,
 			cityName:        "city",
 			cityPath:        cityPath,
@@ -158,7 +156,6 @@ args = ["notes-mcp"]
 			ProcessNames: []string{"gc"},
 		}
 		params := &agentBuildParams{
-			ctx:             context.Background(),
 			city:            cfg,
 			cityName:        "city",
 			cityPath:        cityPath,

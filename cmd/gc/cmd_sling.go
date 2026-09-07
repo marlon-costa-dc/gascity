@@ -105,7 +105,7 @@ Examples:
   gc sling mayor code-review --formula      # instantiate formula, route its root
   echo "fix login" | gc sling mayor --stdin # read bead text from stdin`,
 		Args: cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			argError := func(message string) error {
 				if jsonOutput {
 					return exitForCode(writeJSONError(stdout, stderr, "invalid_arguments", message, 1))
@@ -134,9 +134,9 @@ Examples:
 			}
 			code := 0
 			if jsonOutput {
-				code = cmdSlingWithJSON(cmd.Context(), args, formula, nudge, force, title, vars, merge, noConvoy, owned, reassign, onFormula, noFormula, fromStdin, dryRun, scopeKind, scopeRef, true, stdout, stderr)
+				code = cmdSlingWithJSON(args, formula, nudge, force, title, vars, merge, noConvoy, owned, reassign, onFormula, noFormula, fromStdin, dryRun, scopeKind, scopeRef, true, stdout, stderr)
 			} else {
-				code = cmdSling(cmd.Context(), args, formula, nudge, force, title, vars, merge, noConvoy, owned, reassign, onFormula, noFormula, fromStdin, dryRun, scopeKind, scopeRef, stdout, stderr)
+				code = cmdSling(args, formula, nudge, force, title, vars, merge, noConvoy, owned, reassign, onFormula, noFormula, fromStdin, dryRun, scopeKind, scopeRef, stdout, stderr)
 			}
 			return exitForCode(code)
 		},
@@ -220,11 +220,11 @@ func SetSlingTargetIndexForTest(fn func(n int) int) (restore func()) {
 // cmdSlingWithJSON so it can be tested in isolation (deterministically via the
 // slingTargetIndex seam). On failure it returns a non-empty (errCode, errMsg)
 // pair for the caller's fail() path and leaves target empty.
-func inferSling1ArgTarget(ctx context.Context, cfg *config.City, cityPath, beadOrFormula string, isFormula bool) (target string, sourceBead existingSlingSourceBead, errCode, errMsg string) {
+func inferSling1ArgTarget(cfg *config.City, cityPath, beadOrFormula string, isFormula bool) (target string, sourceBead existingSlingSourceBead, errCode, errMsg string) {
 	if isFormula {
 		return "", sourceBead, "invalid_arguments", "gc sling: --formula requires explicit target"
 	}
-	sourceBead, err := probeExistingSlingSourceBead(ctx, cfg, cityPath, beadOrFormula)
+	sourceBead, err := probeExistingSlingSourceBead(cfg, cityPath, beadOrFormula)
 	if err != nil {
 		return "", sourceBead, "source_bead_probe_failed", fmt.Sprintf("gc sling: %v", err)
 	}
@@ -282,15 +282,15 @@ func readSlingStdinBead() (title, description, errCode, errMsg string) {
 // bead's own store when it already exists, else the store resolved from the
 // target agent/bead. Store-touching pre-core orchestration extracted from
 // cmdSlingWithJSON. On failure it returns a non-empty (errCode, errMsg) pair.
-func openSlingStore(ctx context.Context, cfg *config.City, cityPath, beadOrFormula string, sourceBead existingSlingSourceBead, a config.Agent) (storeDir string, store beads.Store, errCode, errMsg string) {
+func openSlingStore(cfg *config.City, cityPath, beadOrFormula string, sourceBead existingSlingSourceBead, a config.Agent) (storeDir string, store beads.Store, errCode, errMsg string) {
 	if sourceBead.exists {
-		s, err := openAuthoritativeStoreAtForCity(ctx, sourceBead.storeDir, cityPath)
+		s, err := openAuthoritativeStoreAtForCity(sourceBead.storeDir, cityPath)
 		if err != nil {
 			return "", nil, "store_open_failed", fmt.Sprintf("gc sling: opening store %s: %v", sourceBead.storeDir, err)
 		}
 		return sourceBead.storeDir, s, "", ""
 	}
-	storeDir, store, err := openSlingStoreForSource(ctx, cfg, cityPath, beadOrFormula, a)
+	storeDir, store, err := openSlingStoreForSource(cfg, cityPath, beadOrFormula, a)
 	if err != nil {
 		return "", nil, "store_open_failed", fmt.Sprintf("gc sling: %v", err)
 	}
@@ -344,7 +344,7 @@ func applySlingInlineBead(cfg *config.City, beadOrFormula string, isFormula, dry
 // store-touching pre-core target resolution into one independently-testable unit
 // (the 1-arg path via inferSling1ArgTarget). On failure it returns a non-empty
 // (errCode, errMsg) pair for the caller's fail() path.
-func resolveSlingTargetAndBead(ctx context.Context, cfg *config.City, cityPath string, args []string, fromStdin, isFormula bool, stdinTitle string) (target, beadOrFormula string, sourceBead existingSlingSourceBead, errCode, errMsg string) {
+func resolveSlingTargetAndBead(cfg *config.City, cityPath string, args []string, fromStdin, isFormula bool, stdinTitle string) (target, beadOrFormula string, sourceBead existingSlingSourceBead, errCode, errMsg string) {
 	switch {
 	case fromStdin:
 		return args[0], stdinTitle, sourceBead, "", ""
@@ -352,7 +352,7 @@ func resolveSlingTargetAndBead(ctx context.Context, cfg *config.City, cityPath s
 		target, beadOrFormula = args[0], args[1]
 		if !isFormula {
 			var err error
-			if sourceBead, err = probeExistingSlingSourceBead(ctx, cfg, cityPath, beadOrFormula); err != nil {
+			if sourceBead, err = probeExistingSlingSourceBead(cfg, cityPath, beadOrFormula); err != nil {
 				return "", "", sourceBead, "source_bead_probe_failed", fmt.Sprintf("gc sling: %v", err)
 			}
 		}
@@ -361,17 +361,17 @@ func resolveSlingTargetAndBead(ctx context.Context, cfg *config.City, cityPath s
 		// 1-arg: bead ID only — resolve the target from the rig's
 		// default_sling_target(s), deterministically via the slingTargetIndex seam.
 		beadOrFormula = args[0]
-		target, sourceBead, errCode, errMsg = inferSling1ArgTarget(ctx, cfg, cityPath, beadOrFormula, isFormula)
+		target, sourceBead, errCode, errMsg = inferSling1ArgTarget(cfg, cityPath, beadOrFormula, isFormula)
 		return target, beadOrFormula, sourceBead, errCode, errMsg
 	}
 }
 
 // cmdSling is the CLI entry point for gc sling.
-func cmdSling(ctx context.Context, args []string, isFormula, doNudge, force bool, title string, vars []string, merge string, noConvoy, owned, reassign bool, onFormula string, noFormula, fromStdin, dryRun bool, scopeKind, scopeRef string, stdout, stderr io.Writer) int {
-	return cmdSlingWithJSON(ctx, args, isFormula, doNudge, force, title, vars, merge, noConvoy, owned, reassign, onFormula, noFormula, fromStdin, dryRun, scopeKind, scopeRef, false, stdout, stderr)
+func cmdSling(args []string, isFormula, doNudge, force bool, title string, vars []string, merge string, noConvoy, owned, reassign bool, onFormula string, noFormula, fromStdin, dryRun bool, scopeKind, scopeRef string, stdout, stderr io.Writer) int {
+	return cmdSlingWithJSON(args, isFormula, doNudge, force, title, vars, merge, noConvoy, owned, reassign, onFormula, noFormula, fromStdin, dryRun, scopeKind, scopeRef, false, stdout, stderr)
 }
 
-func cmdSlingWithJSON(ctx context.Context, args []string, isFormula, doNudge, force bool, title string, vars []string, merge string, noConvoy, owned, reassign bool, onFormula string, noFormula, fromStdin, dryRun bool, scopeKind, scopeRef string, jsonOutput bool, stdout, stderr io.Writer) int {
+func cmdSlingWithJSON(args []string, isFormula, doNudge, force bool, title string, vars []string, merge string, noConvoy, owned, reassign bool, onFormula string, noFormula, fromStdin, dryRun bool, scopeKind, scopeRef string, jsonOutput bool, stdout, stderr io.Writer) int {
 	humanStdout := stdout
 	if jsonOutput {
 		humanStdout = io.Discard
@@ -421,7 +421,7 @@ func cmdSlingWithJSON(ctx context.Context, args []string, isFormula, doNudge, fo
 	applyFeatureFlags(cfg)
 	cityName := loadedCityName(cfg, cityPath)
 
-	target, beadOrFormula, sourceBead, errCode, errMsg := resolveSlingTargetAndBead(ctx, cfg, cityPath, args, fromStdin, isFormula, stdinTitle)
+	target, beadOrFormula, sourceBead, errCode, errMsg := resolveSlingTargetAndBead(cfg, cityPath, args, fromStdin, isFormula, stdinTitle)
 	if errCode != "" {
 		return fail(errCode, errMsg)
 	}
@@ -441,17 +441,17 @@ func cmdSlingWithJSON(ctx context.Context, args []string, isFormula, doNudge, fo
 		return 1
 	}
 
-	sp, err := newSessionProvider(ctx)
+	sp, err := newSessionProvider()
 	if err != nil {
 		return fail("session_provider_failed", fmt.Sprintf("gc sling: %v", err))
 	}
 
-	storeDir, store, errCode, errMsg := openSlingStore(ctx, cfg, cityPath, beadOrFormula, sourceBead, a)
+	storeDir, store, errCode, errMsg := openSlingStore(cfg, cityPath, beadOrFormula, sourceBead, a)
 	if errCode != "" {
 		return fail(errCode, errMsg)
 	}
 	storeRef := workflowStoreRefForDir(storeDir, cityPath, cityName, cfg)
-	storeEnv, err := slingStoreEnvWithError(ctx, cfg, cityPath, storeDir)
+	storeEnv, err := slingStoreEnvWithError(cfg, cityPath, storeDir)
 	if err != nil {
 		fmt.Fprintf(stderr, "gc sling: building store env: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
@@ -506,13 +506,13 @@ func cmdSlingWithJSON(ctx context.Context, args []string, isFormula, doNudge, fo
 		Store:              store,
 		GraphStore:         resolveGraphStore(cliStorageRoutes(cityPath), store, cfg, cityPath, eventRecorder),
 		Events:             eventRecorder,
-		ExecutionWorkStore: executionEmitStore(ctx, store, cityPath),
+		ExecutionWorkStore: executionEmitStore(store, cityPath),
 		StoreRef:           storeRef,
 		SourceWorkflowStores: func() ([]sling.SourceWorkflowStore, error) {
 			stores, skips, err := openSourceWorkflowStoresWithProvider(cfg, cityPath, "", func(scopeRoot string) string {
 				return authoritativeBeadsProviderForScope(scopeRoot, cityPath)
 			}, func(dir string) (beads.Store, error) {
-				return openAuthoritativeStoreAtForCity(ctx, dir, cityPath)
+				return openAuthoritativeStoreAtForCity(dir, cityPath)
 			})
 			unscannedSkips, selectedRecovered := unscannedSourceWorkflowStoreSkips(cfg, cityPath, storeRef, skips)
 			if err != nil && !selectedRecovered {
@@ -547,14 +547,14 @@ func cmdSlingWithJSON(ctx context.Context, args []string, isFormula, doNudge, fo
 		},
 	}
 
-	return doSlingBatchWithJSON(ctx, opts, deps, store, jsonOutput, humanStdout, stdout, stderr)
+	return doSlingBatchWithJSON(opts, deps, store, jsonOutput, humanStdout, stdout, stderr)
 }
 
 func loadSlingCityConfig(cityPath string) (*config.City, *config.Provenance, error) {
 	return loadCityConfigWithBuiltinPacks(cityPath, extraConfigFiles...)
 }
 
-func slingStoreEnvWithError(ctx context.Context, cfg *config.City, cityPath, storeDir string) (map[string]string, error) {
+func slingStoreEnvWithError(cfg *config.City, cityPath, storeDir string) (map[string]string, error) {
 	storeEnv := map[string]string{}
 	switch provider := authoritativeBeadsProviderForScope(storeDir, cityPath); {
 	case provider == "file":
@@ -565,12 +565,12 @@ func slingStoreEnvWithError(ctx context.Context, cfg *config.City, cityPath, sto
 	default:
 		var err error
 		if !samePath(storeDir, cityPath) {
-			storeEnv, err = bdRuntimeEnvForRigWithError(ctx, cityPath, cfg, storeDir)
+			storeEnv, err = bdRuntimeEnvForRigWithError(cityPath, cfg, storeDir)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			storeEnv, err = bdRuntimeEnvWithError(ctx, cityPath)
+			storeEnv, err = bdRuntimeEnvWithError(cityPath)
 			if err != nil {
 				return nil, err
 			}
@@ -632,9 +632,9 @@ func resolveSlingStoreRoot(cfg *config.City, cityPath, beadOrFormula string, a c
 	return storeDir
 }
 
-func openSlingStoreForSource(ctx context.Context, cfg *config.City, cityPath, beadOrFormula string, a config.Agent) (string, beads.Store, error) {
+func openSlingStoreForSource(cfg *config.City, cityPath, beadOrFormula string, a config.Agent) (string, beads.Store, error) {
 	storeDir := resolveSlingStoreRoot(cfg, cityPath, beadOrFormula, a)
-	store, err := openAuthoritativeStoreAtForCity(ctx, storeDir, cityPath)
+	store, err := openAuthoritativeStoreAtForCity(storeDir, cityPath)
 	if err != nil {
 		return "", nil, fmt.Errorf("opening store %s: %w", storeDir, err)
 	}
@@ -648,12 +648,12 @@ type existingSlingSourceBead struct {
 	prefix   string
 }
 
-func probeExistingSlingSourceBead(ctx context.Context, cfg *config.City, cityPath, beadID string) (existingSlingSourceBead, error) {
+func probeExistingSlingSourceBead(cfg *config.City, cityPath, beadID string) (existingSlingSourceBead, error) {
 	storeDir, prefix, ok := slingSourceStoreRootForCandidate(cfg, cityPath, beadID)
 	if !ok {
 		return existingSlingSourceBead{}, nil
 	}
-	store, err := openAuthoritativeStoreAtForCity(ctx, storeDir, cityPath)
+	store, err := openAuthoritativeStoreAtForCity(storeDir, cityPath)
 	if err != nil {
 		return existingSlingSourceBead{}, fmt.Errorf("opening store %s: %w", storeDir, err)
 	}
@@ -698,7 +698,7 @@ func populateSlingDepsCallbacks(deps *slingDeps) {
 	deps.Router = cliBeadRouter{deps: deps}
 }
 
-func cliDirectSessionResolver(ctx context.Context, store beads.Store, cityName, cityPath string, cfg *config.City, target, rigContext string) (string, bool, error) {
+func cliDirectSessionResolver(store beads.Store, cityName, cityPath string, cfg *config.City, target, rigContext string) (string, bool, error) {
 	if cfg == nil {
 		return "", false, nil
 	}
@@ -716,7 +716,7 @@ func cliDirectSessionResolver(ctx context.Context, store beads.Store, cityName, 
 	if !ok {
 		return "", false, nil
 	}
-	id, err := resolveSessionIDMaterializingNamed(ctx, cityPath, cfg, store, spec.Identity)
+	id, err := resolveSessionIDMaterializingNamed(cityPath, cfg, store, spec.Identity)
 	if err != nil {
 		return "", false, err
 	}
@@ -916,13 +916,14 @@ func printBatchSlingResult(result sling.SlingResult, stdout, stderr io.Writer) {
 }
 
 // doSling creates a Sling instance and dispatches to the right intent method.
-func doSling(ctx context.Context, opts slingOpts, deps slingDeps, querier BeadQuerier, stdout, stderr io.Writer) int {
+func doSling(opts slingOpts, deps slingDeps, querier BeadQuerier, stdout, stderr io.Writer) int {
 	populateSlingDepsCallbacks(&deps)
 	sl, newErr := sling.New(deps)
 	if newErr != nil {
 		fmt.Fprintln(stderr, newErr) //nolint:errcheck
 		return 1
 	}
+	_ = context.Background() // ctx available for future intent API use
 
 	// Validate scope requires a formula.
 	if opts.ScopeKind != "" && !opts.IsFormula && opts.OnFormula == "" &&
@@ -959,23 +960,24 @@ func doSling(ctx context.Context, opts slingOpts, deps slingDeps, querier BeadQu
 		return dryRunSingle(opts, deps, querier, stdout, stderr)
 	}
 	if result.NudgeAgent != nil {
-		doSlingNudge(ctx, result.NudgeAgent, deps.CityName, deps.CityPath, deps.Cfg, deps.SP, deps.Store, stdout, stderr)
+		doSlingNudge(result.NudgeAgent, deps.CityName, deps.CityPath, deps.Cfg, deps.SP, deps.Store, stdout, stderr)
 	}
 	return 0
 }
 
 // doSlingBatch creates a Sling instance and dispatches batch or single.
-func doSlingBatch(ctx context.Context, opts slingOpts, deps slingDeps, querier BeadChildQuerier, stdout, stderr io.Writer) int {
-	return doSlingBatchWithJSON(ctx, opts, deps, querier, false, stdout, stdout, stderr)
+func doSlingBatch(opts slingOpts, deps slingDeps, querier BeadChildQuerier, stdout, stderr io.Writer) int {
+	return doSlingBatchWithJSON(opts, deps, querier, false, stdout, stdout, stderr)
 }
 
-func doSlingBatchWithJSON(ctx context.Context, opts slingOpts, deps slingDeps, querier BeadChildQuerier, jsonOutput bool, humanStdout, jsonStdout, stderr io.Writer) int {
+func doSlingBatchWithJSON(opts slingOpts, deps slingDeps, querier BeadChildQuerier, jsonOutput bool, humanStdout, jsonStdout, stderr io.Writer) int {
 	populateSlingDepsCallbacks(&deps)
 	sl, newErr := sling.New(deps)
 	if newErr != nil {
 		fmt.Fprintln(stderr, newErr) //nolint:errcheck
 		return 1
 	}
+	_ = context.Background() // ctx available for future intent API use
 
 	// For formula/on-formula batch, delegate to the old DoSlingBatch
 	// which handles per-child formula attachment internally.
@@ -1064,7 +1066,7 @@ func doSlingBatchWithJSON(ctx context.Context, opts slingOpts, deps slingDeps, q
 		return dryRunSingle(opts, deps, querier, humanStdout, stderr)
 	}
 	if result.NudgeAgent != nil {
-		doSlingNudge(ctx, result.NudgeAgent, deps.CityName, deps.CityPath, deps.Cfg, deps.SP, deps.Store, humanStdout, stderr)
+		doSlingNudge(result.NudgeAgent, deps.CityName, deps.CityPath, deps.Cfg, deps.SP, deps.Store, humanStdout, stderr)
 	}
 	// Success only (never dry-run or error): surface a dashboard deep link
 	// when one resolves. Resolution failure degrades silently to no link.
@@ -1327,11 +1329,11 @@ type graphStepTarget struct {
 	fromAssignee bool
 }
 
-func resolveGraphStepBinding(ctx context.Context, stepID string, stepByID map[string]*formula.RecipeStep, stepAlias map[string]string, depsByStep map[string][]string, cache map[string]graphRouteBinding, resolving map[string]bool, fallback graphRouteBinding, rigContext string, store beads.Store, cityName, cityPath string, cfg *config.City) (graphRouteBinding, error) {
-	return resolveGraphStepBindingWithVars(ctx, stepID, stepByID, stepAlias, depsByStep, cache, resolving, nil, fallback, rigContext, store, cityName, cityPath, cfg)
+func resolveGraphStepBinding(stepID string, stepByID map[string]*formula.RecipeStep, stepAlias map[string]string, depsByStep map[string][]string, cache map[string]graphRouteBinding, resolving map[string]bool, fallback graphRouteBinding, rigContext string, store beads.Store, cityName, cityPath string, cfg *config.City) (graphRouteBinding, error) {
+	return resolveGraphStepBindingWithVars(stepID, stepByID, stepAlias, depsByStep, cache, resolving, nil, fallback, rigContext, store, cityName, cityPath, cfg)
 }
 
-func resolveGraphStepBindingWithVars(ctx context.Context, stepID string, stepByID map[string]*formula.RecipeStep, stepAlias map[string]string, depsByStep map[string][]string, cache map[string]graphRouteBinding, resolving map[string]bool, routeVars map[string]string, fallback graphRouteBinding, rigContext string, store beads.Store, cityName, cityPath string, cfg *config.City) (graphRouteBinding, error) {
+func resolveGraphStepBindingWithVars(stepID string, stepByID map[string]*formula.RecipeStep, stepAlias map[string]string, depsByStep map[string][]string, cache map[string]graphRouteBinding, resolving map[string]bool, routeVars map[string]string, fallback graphRouteBinding, rigContext string, store beads.Store, cityName, cityPath string, cfg *config.City) (graphRouteBinding, error) {
 	if aliased, ok := stepAlias[stepID]; ok {
 		stepID = aliased
 	}
@@ -1354,7 +1356,7 @@ func resolveGraphStepBindingWithVars(ctx context.Context, stepID string, stepByI
 		case "scope-check":
 			controlTarget := strings.TrimSpace(step.Metadata[beadmeta.ControlForMetadataKey])
 			if controlTarget != "" {
-				binding, err := resolveGraphStepBindingWithVars(ctx, controlTarget, stepByID, stepAlias, depsByStep, cache, resolving, routeVars, fallback, rigContext, store, cityName, cityPath, cfg)
+				binding, err := resolveGraphStepBindingWithVars(controlTarget, stepByID, stepAlias, depsByStep, cache, resolving, routeVars, fallback, rigContext, store, cityName, cityPath, cfg)
 				if err != nil {
 					return graphRouteBinding{}, err
 				}
@@ -1364,7 +1366,7 @@ func resolveGraphStepBindingWithVars(ctx context.Context, stepID string, stepByI
 		case "fanout":
 			controlTarget := strings.TrimSpace(step.Metadata[beadmeta.ControlForMetadataKey])
 			if controlTarget != "" {
-				binding, err := resolveGraphStepBindingWithVars(ctx, controlTarget, stepByID, stepAlias, depsByStep, cache, resolving, routeVars, fallback, rigContext, store, cityName, cityPath, cfg)
+				binding, err := resolveGraphStepBindingWithVars(controlTarget, stepByID, stepAlias, depsByStep, cache, resolving, routeVars, fallback, rigContext, store, cityName, cityPath, cfg)
 				if err != nil {
 					return graphRouteBinding{}, err
 				}
@@ -1393,7 +1395,7 @@ func resolveGraphStepBindingWithVars(ctx context.Context, stepID string, stepByI
 				subjectID = depsByStep[step.ID][0]
 			}
 			if subjectID != "" {
-				binding, err := resolveGraphStepBindingWithVars(ctx, subjectID, stepByID, stepAlias, depsByStep, cache, resolving, routeVars, fallback, rigContext, store, cityName, cityPath, cfg)
+				binding, err := resolveGraphStepBindingWithVars(subjectID, stepByID, stepAlias, depsByStep, cache, resolving, routeVars, fallback, rigContext, store, cityName, cityPath, cfg)
 				if err != nil {
 					return graphRouteBinding{}, err
 				}
@@ -1407,7 +1409,7 @@ func resolveGraphStepBindingWithVars(ctx context.Context, stepID string, stepByI
 				if depID == "" {
 					continue
 				}
-				binding, err := resolveGraphStepBindingWithVars(ctx, depID, stepByID, stepAlias, depsByStep, cache, resolving, routeVars, fallback, rigContext, store, cityName, cityPath, cfg)
+				binding, err := resolveGraphStepBindingWithVars(depID, stepByID, stepAlias, depsByStep, cache, resolving, routeVars, fallback, rigContext, store, cityName, cityPath, cfg)
 				if err != nil {
 					return graphRouteBinding{}, err
 				}
@@ -1433,7 +1435,7 @@ func resolveGraphStepBindingWithVars(ctx context.Context, stepID string, stepByI
 		return graphRouteBinding{}, fmt.Errorf("formulas v2 routing for %s requires config", stepID)
 	}
 	if target.fromAssignee {
-		binding, ok, err := graphroute.ResolveGraphDirectSessionBinding(ctx, store, cityName, cfg, target.value, rigContext, cliGraphrouteDeps(cityPath))
+		binding, ok, err := graphroute.ResolveGraphDirectSessionBinding(store, cityName, cfg, target.value, rigContext, cliGraphrouteDeps(cityPath))
 		if err != nil {
 			return graphRouteBinding{}, fmt.Errorf("step %s: %w", stepID, err)
 		}
@@ -1500,7 +1502,7 @@ func checkBeadState(q BeadQuerier, beadID string, a config.Agent) beadCheckResul
 // For multi-session configs, nudges the first running instance. If the target is not
 // running, pokes the controller to trigger an immediate reconciler tick
 // so WakeWork can wake the session without waiting for the next patrol.
-func doSlingNudge(ctx context.Context, a *config.Agent, cityName, cityPath string, cfg *config.City,
+func doSlingNudge(a *config.Agent, cityName, cityPath string, cfg *config.City,
 	sp runtime.Provider, store beads.Store, stdout, stderr io.Writer,
 ) {
 	st := cfg.Workspace.SessionTemplate
@@ -1527,7 +1529,7 @@ func doSlingNudge(ctx context.Context, a *config.Agent, cityName, cityPath strin
 				}
 				member := resolvePoolNudgeMember(cfg, a, ref.qualifiedInstance)
 				target := buildSlingNudgeTarget(member, cityName, cityPath, cfg, sessStore, ref.sessionName)
-				deliverSlingNudge(ctx, target, sp, rawStore, cityPath, stdout, stderr)
+				deliverSlingNudge(target, sp, rawStore, cityPath, stdout, stderr)
 				return true
 			}
 			return false
@@ -1537,7 +1539,7 @@ func doSlingNudge(ctx context.Context, a *config.Agent, cityName, cityPath strin
 		}
 		if cityPath != "" {
 			if _, statErr := os.Stat(filepath.Join(cityPath, "city.toml")); statErr == nil {
-				if cityStore, err := slingOpenCityStore(ctx, cityPath); err == nil && cityStore != nil && tryNudgeStore(cityStore) {
+				if cityStore, err := slingOpenCityStore(cityPath); err == nil && cityStore != nil && tryNudgeStore(cityStore) {
 					return
 				}
 			}
@@ -1557,7 +1559,7 @@ func doSlingNudge(ctx context.Context, a *config.Agent, cityName, cityPath strin
 	sessStore := cliSessionStore(store, cfg, cityPath)
 	sn := lookupSessionNameOrLegacy(sessStore, cityName, a.QualifiedName(), st)
 	target := buildSlingNudgeTarget(*a, cityName, cityPath, cfg, sessStore, sn)
-	deliverSlingNudge(ctx, target, sp, store, cityPath, stdout, stderr)
+	deliverSlingNudge(target, sp, store, cityPath, stdout, stderr)
 }
 
 // resolvePoolNudgeMember resolves the config identity to nudge for a live pool
@@ -1636,7 +1638,7 @@ func buildSlingNudgeTarget(agent config.Agent, cityName, cityPath string, cfg *c
 	})
 }
 
-func deliverSlingNudge(ctx context.Context, target nudgeTarget, sp runtime.Provider, store beads.Store, cityPath string, stdout, stderr io.Writer) {
+func deliverSlingNudge(target nudgeTarget, sp runtime.Provider, store beads.Store, cityPath string, stdout, stderr io.Writer) {
 	const msg = "Work slung. Check your hook."
 	// Session observation/handle and the last-nudge-delivered stamp route to the
 	// session coordination-class store (derived from the target's cfg+cityPath); the
@@ -1650,14 +1652,14 @@ func deliverSlingNudge(ctx context.Context, target nudgeTarget, sp runtime.Provi
 	if running {
 		handle, err := workerHandleForNudgeTarget(target, sessStore, sp)
 		if err == nil {
-			result, nudgeErr := handle.Nudge(ctx, worker.NudgeRequest{
+			result, nudgeErr := handle.Nudge(context.Background(), worker.NudgeRequest{
 				Text:     msg,
 				Delivery: worker.NudgeDeliveryWaitIdle,
 				Source:   "sling",
 				Wake:     worker.NudgeWakeLiveOnly,
 			})
 			if nudgeErr == nil && result.Delivered {
-				telemetry.RecordNudge(ctx, target.agent.QualifiedName(), nil)
+				telemetry.RecordNudge(context.Background(), target.agent.QualifiedName(), nil)
 				var sessFront *session.Store
 				if store != nil {
 					sessFront = cliSessionFrontDoor(store, target.cfg, target.cityPath)
@@ -1669,8 +1671,8 @@ func deliverSlingNudge(ctx context.Context, target nudgeTarget, sp runtime.Provi
 		}
 	}
 
-	if err := enqueueQueuedNudgeWithStore(ctx, target.cityPath, cliNudgesStore(store, target.cfg, target.cityPath), newQueuedNudgeWithOptions(target.agent.QualifiedName(), msg, "sling", now, queuedNudgeOptionsFromTarget(target))); err != nil {
-		telemetry.RecordNudge(ctx, target.agent.QualifiedName(), err)
+	if err := enqueueQueuedNudgeWithStore(target.cityPath, cliNudgesStore(store, target.cfg, target.cityPath), newQueuedNudgeWithOptions(target.agent.QualifiedName(), msg, "sling", now, queuedNudgeOptionsFromTarget(target))); err != nil {
+		telemetry.RecordNudge(context.Background(), target.agent.QualifiedName(), err)
 		fmt.Fprintf(stderr, "warning: bead routed but nudge failed: %v\n", err) //nolint:errcheck // best-effort
 		return
 	}

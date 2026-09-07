@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -56,7 +55,7 @@ func TestCmdInit_NoArgsNonTerminalRefuses(t *testing.T) {
 	t.Chdir(dir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitWithOptions(context.Background(), nil, "", "", &stdout, &stderr, true)
+	code := cmdInitWithOptions(nil, "", "", &stdout, &stderr, true)
 
 	if code == 0 {
 		t.Fatalf("cmdInitWithOptions code = 0; want non-zero. stdout=%q stderr=%q", stdout.String(), stderr.String())
@@ -88,7 +87,7 @@ func TestCmdInit_ExplicitPathNonTerminalStillWorks(t *testing.T) {
 
 	target := filepath.Join(t.TempDir(), "bright-lights")
 	var stdout, stderr bytes.Buffer
-	code := cmdInitWithOptions(context.Background(), []string{target}, "codex", "", &stdout, &stderr, true)
+	code := cmdInitWithOptions([]string{target}, "codex", "", &stdout, &stderr, true)
 
 	if code != 0 {
 		t.Fatalf("cmdInitWithOptions code = %d, want 0. stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -119,7 +118,7 @@ func TestCmdInit_NoArgsTerminalUnchanged(t *testing.T) {
 	t.Chdir(dir)
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitWithOptions(context.Background(), nil, "codex", "", &stdout, &stderr, true)
+	code := cmdInitWithOptions(nil, "codex", "", &stdout, &stderr, true)
 
 	if code != 0 {
 		t.Fatalf("cmdInitWithOptions code = %d, want 0. stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -137,7 +136,7 @@ func TestCmdInitFromFile_NoArgsNonTerminalRefuses(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromFileWithOptionsInternal(context.Background(), "nonexistent.toml", nil, "", &stdout, &stderr, true, false, false)
+	code := cmdInitFromFileWithOptionsInternal("nonexistent.toml", nil, "", &stdout, &stderr, true, false, false)
 
 	if code == 0 {
 		t.Fatalf("cmdInitFromFileWithOptionsInternal code = 0; want non-zero. stdout=%q stderr=%q", stdout.String(), stderr.String())
@@ -156,7 +155,7 @@ func TestCmdInitFromDir_NoArgsNonTerminalRefuses(t *testing.T) {
 	srcDir := t.TempDir()
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromDirWithOptionsInternal(context.Background(), srcDir, nil, "", &stdout, &stderr, true, false, hostedDoltInitOptions{})
+	code := cmdInitFromDirWithOptionsInternal(srcDir, nil, "", &stdout, &stderr, true, false, hostedDoltInitOptions{})
 
 	if code == 0 {
 		t.Fatalf("cmdInitFromDirWithOptionsInternal code = 0; want non-zero. stdout=%q stderr=%q", stdout.String(), stderr.String())

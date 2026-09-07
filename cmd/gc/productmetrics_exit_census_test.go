@@ -123,11 +123,10 @@ type sessionProviderFactoryShape struct {
 
 var canonicalSessionProviderFactories = map[string]sessionProviderFactoryShape{
 	"newSessionProvider": {
-		parameters: "context.Context",
-		results:    "runtime.Provider,error",
+		results: "runtime.Provider,error",
 	},
 	"newSessionProviderForCity": {
-		parameters: "context.Context,*config.City,string",
+		parameters: "*config.City,string",
 		results:    "runtime.Provider,error",
 	},
 	"newSessionProviderFromContext": {
@@ -135,11 +134,11 @@ var canonicalSessionProviderFactories = map[string]sessionProviderFactoryShape{
 		results:    "runtime.Provider,error",
 	},
 	"newStatusSessionProviderForCity": {
-		parameters: "context.Context,*config.City,string",
+		parameters: "*config.City,string",
 		results:    "runtime.Provider,error",
 	},
 	"newStatusSessionProviderForCityWithSnapshot": {
-		parameters: "context.Context,*config.City,string,*sessionBeadSnapshot",
+		parameters: "*config.City,string,*sessionBeadSnapshot",
 		results:    "runtime.Provider,error",
 	},
 }
@@ -248,11 +247,7 @@ func sessionProviderOrExit() {}
 	}
 	violations = append(violations, retired...)
 	wants := []string{
-		`newSessionProvider parameters = "", want "context.Context"`,
 		`newSessionProvider results = "runtime.Provider", want "runtime.Provider,error"`,
-		`newSessionProviderForCity parameters = "*config.City,string", want "context.Context,*config.City,string"`,
-		`newStatusSessionProviderForCity parameters = "*config.City,string", want "context.Context,*config.City,string"`,
-		`newStatusSessionProviderForCityWithSnapshot parameters = "*config.City,string,*sessionBeadSnapshot", want "context.Context,*config.City,string,*sessionBeadSnapshot"`,
 		"other.go:sessionProviderOrExit compatibility declaration still exists",
 	}
 	for _, want := range wants {

@@ -55,7 +55,7 @@ func TestOpenStoreResultAtForCityThreadsConditionalWrites(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cityDir, "city.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := openStoreResultAtForCity(context.Background(), cityDir, cityDir)
+	result, err := openStoreResultAtForCity(cityDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreResultAtForCity: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestOpenStoreResultWithConfigSkipsLoad(t *testing.T) {
 	}
 
 	before := loadCityConfigCalls.Load()
-	if _, err := openStoreResultAtForCityWithConfig(context.Background(), cityDir, cityDir, cfg, gate.ModeUnset, false, false); err != nil {
+	if _, err := openStoreResultAtForCityWithConfig(cityDir, cityDir, cfg, gate.ModeUnset, false, false); err != nil {
 		t.Fatalf("openStoreResultAtForCityWithConfig(cfg): %v", err)
 	}
 	if grew := loadCityConfigCalls.Load() - before; grew != 0 {
@@ -93,7 +93,7 @@ func TestOpenStoreResultWithConfigSkipsLoad(t *testing.T) {
 	}
 
 	before = loadCityConfigCalls.Load()
-	if _, err := openStoreResultAtForCityWithConfig(context.Background(), cityDir, cityDir, nil, gate.ModeUnset, false, false); err != nil {
+	if _, err := openStoreResultAtForCityWithConfig(cityDir, cityDir, nil, gate.ModeUnset, false, false); err != nil {
 		t.Fatalf("openStoreResultAtForCityWithConfig(nil): %v", err)
 	}
 	if grew := loadCityConfigCalls.Load() - before; grew != 1 {
@@ -121,7 +121,7 @@ func TestOpenStoreResultWithConfigSkipsLoad_ExecProvider(t *testing.T) {
 	}
 
 	before := loadCityConfigCalls.Load()
-	if _, err := openStoreResultAtForCityWithConfig(context.Background(), cityDir, cityDir, cfg, gate.ModeUnset, false, false); err != nil {
+	if _, err := openStoreResultAtForCityWithConfig(cityDir, cityDir, cfg, gate.ModeUnset, false, false); err != nil {
 		t.Fatalf("openStoreResultAtForCityWithConfig(cfg): %v", err)
 	}
 	if grew := loadCityConfigCalls.Load() - before; grew != 0 {
@@ -129,7 +129,7 @@ func TestOpenStoreResultWithConfigSkipsLoad_ExecProvider(t *testing.T) {
 	}
 
 	before = loadCityConfigCalls.Load()
-	if _, err := openStoreResultAtForCityWithConfig(context.Background(), cityDir, cityDir, nil, gate.ModeUnset, false, false); err != nil {
+	if _, err := openStoreResultAtForCityWithConfig(cityDir, cityDir, nil, gate.ModeUnset, false, false); err != nil {
 		t.Fatalf("openStoreResultAtForCityWithConfig(nil): %v", err)
 	}
 	if grew := loadCityConfigCalls.Load() - before; grew != 1 {
@@ -151,7 +151,7 @@ func TestOpenStoreResultNilConfigMatchesLegacy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := openStoreResultAtForCityWithAuthority(context.Background(), cityDir, cityDir, gate.ModeUnset, false, false)
+	result, err := openStoreResultAtForCityWithAuthority(cityDir, cityDir, gate.ModeUnset, false, false)
 	if err != nil {
 		t.Fatalf("openStoreResultAtForCityWithAuthority: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestOpenStoreResultNilConfigMatchesLegacy(t *testing.T) {
 	}
 
 	before := loadCityConfigCalls.Load()
-	if _, err := openStoreResultAtForCityWithAuthority(context.Background(), cityDir, cityDir, gate.ModeUnset, false, false); err != nil {
+	if _, err := openStoreResultAtForCityWithAuthority(cityDir, cityDir, gate.ModeUnset, false, false); err != nil {
 		t.Fatalf("openStoreResultAtForCityWithAuthority (second call): %v", err)
 	}
 	if grew := loadCityConfigCalls.Load() - before; grew != 1 {
@@ -193,7 +193,7 @@ func TestOpenRigStoreThreadsConditionalWrites(t *testing.T) {
 	if err := os.MkdirAll(rigPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	store := cs.openRigStore(context.Background(), "file", "r1", rigPath, "ga", cfg)
+	store := cs.openRigStore("file", "r1", rigPath, "ga", cfg)
 	writer, diag, resolveErr := beads.ResolveConditionalWriter(store)
 	if resolveErr != nil || diag != nil {
 		t.Fatalf("resolve = diag %v err %v, want the rig store's writer under require", diag, resolveErr)

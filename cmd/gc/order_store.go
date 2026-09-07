@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,13 +94,13 @@ func (s orderTrackingSweepScopedStore) orderTrackingSweepKey() string {
 	return s.key
 }
 
-func openCityOrderStore(ctx context.Context, stderr io.Writer, cmdName string) (beads.OrdersStore, int) {
+func openCityOrderStore(stderr io.Writer, cmdName string) (beads.OrdersStore, int) {
 	cityPath, err := resolveCity()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", cmdName, err) //nolint:errcheck // best-effort stderr
 		return beads.OrdersStore{}, 1
 	}
-	store, err := openStoreAtForCity(ctx, cityPath, cityPath)
+	store, err := openStoreAtForCity(cityPath, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", cmdName, err)                   //nolint:errcheck // best-effort stderr
 		fmt.Fprintln(stderr, "hint: run \"gc doctor\" for diagnostics") //nolint:errcheck // best-effort stderr
@@ -110,13 +109,13 @@ func openCityOrderStore(ctx context.Context, stderr io.Writer, cmdName string) (
 	return beads.OrdersStore{Store: store}, 0
 }
 
-func openOrderStoreForOrder(ctx context.Context, cityPath string, cfg *config.City, a orders.Order, stderr io.Writer, cmdName string) (beads.OrdersStore, int) {
+func openOrderStoreForOrder(cityPath string, cfg *config.City, a orders.Order, stderr io.Writer, cmdName string) (beads.OrdersStore, int) {
 	target, err := resolveOrderStoreTarget(cityPath, cfg, a)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", cmdName, err) //nolint:errcheck // best-effort stderr
 		return beads.OrdersStore{}, 1
 	}
-	store, err := openStoreAtForCity(ctx, target.ScopeRoot, cityPath)
+	store, err := openStoreAtForCity(target.ScopeRoot, cityPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", cmdName, err)                   //nolint:errcheck // best-effort stderr
 		fmt.Fprintln(stderr, "hint: run \"gc doctor\" for diagnostics") //nolint:errcheck // best-effort stderr
@@ -173,16 +172,16 @@ func orderStoreTargetKey(target execStoreTarget) string {
 	return target.ScopeKind + "\x00" + filepath.Clean(target.ScopeRoot)
 }
 
-func orderExecEnvWithError(ctx context.Context, cityPath string, cfg *config.City, target execStoreTarget, a orders.Order, vars map[string]string) ([]string, error) {
+func orderExecEnvWithError(cityPath string, cfg *config.City, target execStoreTarget, a orders.Order, vars map[string]string) ([]string, error) {
 	if err := validateOrderExecEnvOverrides(a); err != nil {
 		return nil, err
 	}
 	var env map[string]string
 	var err error
 	if target.ScopeKind == "rig" {
-		env, err = bdRuntimeEnvForRigWithError(ctx, cityPath, cfg, target.ScopeRoot)
+		env, err = bdRuntimeEnvForRigWithError(cityPath, cfg, target.ScopeRoot)
 	} else {
-		env, err = bdRuntimeEnvWithError(ctx, cityPath)
+		env, err = bdRuntimeEnvWithError(cityPath)
 		env["BEADS_DIR"] = filepath.Join(target.ScopeRoot, ".beads")
 	}
 	if err != nil {
@@ -252,7 +251,7 @@ func isReservedOrderExecEnvKey(key string) bool {
 	return orders.IsReservedExecEnvKey(key)
 }
 
-func orderTriggerOptions(ctx context.Context, cityPath string, cfg *config.City, a orders.Order) (orders.TriggerOptions, error) {
+func orderTriggerOptions(cityPath string, cfg *config.City, a orders.Order) (orders.TriggerOptions, error) {
 	if a.Trigger != "condition" || strings.TrimSpace(cityPath) == "" {
 		return orders.TriggerOptions{}, nil
 	}
@@ -260,14 +259,14 @@ func orderTriggerOptions(ctx context.Context, cityPath string, cfg *config.City,
 	if err != nil {
 		return orders.TriggerOptions{}, err
 	}
-	return orderTriggerOptionsForTarget(ctx, cityPath, cfg, target, a)
+	return orderTriggerOptionsForTarget(cityPath, cfg, target, a)
 }
 
-func orderTriggerOptionsForTarget(ctx context.Context, cityPath string, cfg *config.City, target execStoreTarget, a orders.Order) (orders.TriggerOptions, error) {
+func orderTriggerOptionsForTarget(cityPath string, cfg *config.City, target execStoreTarget, a orders.Order) (orders.TriggerOptions, error) {
 	if a.Trigger != "condition" || strings.TrimSpace(cityPath) == "" {
 		return orders.TriggerOptions{}, nil
 	}
-	env, err := orderExecEnvWithError(ctx, cityPath, cfg, target, a, nil)
+	env, err := orderExecEnvWithError(cityPath, cfg, target, a, nil)
 	if err != nil {
 		return orders.TriggerOptions{}, err
 	}
@@ -540,14 +539,14 @@ func validDoltRuntimeStateForLayout(state doltRuntimeState, layout managedDoltRu
 	return owned
 }
 
-func cachedOrderStoresResolver(ctx context.Context, cityPath string, cfg *config.City) orderStoresResolver {
+func cachedOrderStoresResolver(cityPath string, cfg *config.City) orderStoresResolver {
 	stores := make(map[string]beads.Store)
 	openCached := func(target execStoreTarget) (beads.Store, error) {
 		key := orderStoreTargetKey(target)
 		if store, ok := stores[key]; ok {
 			return store, nil
 		}
-		store, err := openStoreAtForCity(ctx, target.ScopeRoot, cityPath)
+		store, err := openStoreAtForCity(target.ScopeRoot, cityPath)
 		if err != nil {
 			return nil, err
 		}
@@ -610,7 +609,7 @@ func orderTrackingSweepTargetsForConfig(cityPath string, cfg *config.City) []ord
 // the tracking stores and forgets the wisp store gets a sweep that reports
 // wispClosed: 0 on a split city and exits 0 — the silent no-op this pairing
 // exists to make un-writable.
-func orderTrackingSweepStoresForConfigTargets(ctx context.Context, cityPath string, cfg *config.City, requiredTargets map[string][]string) ([]beads.Store, beads.Store, error) {
+func orderTrackingSweepStoresForConfigTargets(cityPath string, cfg *config.City, requiredTargets map[string][]string) ([]beads.Store, beads.Store, error) {
 	targets := orderTrackingSweepTargetsForConfig(cityPath, cfg)
 	if len(requiredTargets) > 0 {
 		filtered := targets[:0]
@@ -622,7 +621,7 @@ func orderTrackingSweepStoresForConfigTargets(ctx context.Context, cityPath stri
 		targets = filtered
 	}
 	stores, err := orderTrackingSweepStoresFromTargets(targets, func(sweepTarget orderTrackingSweepTarget) (beads.Store, error) {
-		return openStoreAtForCity(ctx, sweepTarget.target.ScopeRoot, cityPath)
+		return openStoreAtForCity(sweepTarget.target.ScopeRoot, cityPath)
 	})
 	stores = appendOrdersSweepStore(stores, relocatedOrdersClassStore(cityPath, cfg))
 	return stores, orderWispSweepStore(cityPath, cfg), err
@@ -770,7 +769,7 @@ func orderTrackingSweepStoresFromTargets(targets []orderTrackingSweepTarget, ope
 // store once and reuses it. The returned resolver is safe for concurrent use:
 // the order-firing doctor check fans its per-order lookups out across
 // goroutines, and an unguarded cache map would be a data race there.
-func cachedOrderHistoryStoresResolver(ctx context.Context, cityPath string, cfg *config.City, stderr io.Writer) orderStoresResolver {
+func cachedOrderHistoryStoresResolver(cityPath string, cfg *config.City, stderr io.Writer) orderStoresResolver {
 	var mu sync.Mutex
 	stores := make(map[string]beads.Store)
 	openCached := func(target execStoreTarget) (beads.Store, error) {
@@ -780,7 +779,7 @@ func cachedOrderHistoryStoresResolver(ctx context.Context, cityPath string, cfg 
 		if store, ok := stores[key]; ok {
 			return store, nil
 		}
-		store, err := openStoreAtForCity(ctx, target.ScopeRoot, cityPath)
+		store, err := openStoreAtForCity(target.ScopeRoot, cityPath)
 		if err != nil {
 			return nil, err
 		}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +26,7 @@ func TestConvoyCreate(t *testing.T) {
 	store := beads.NewMemStore()
 
 	var stdout, stderr bytes.Buffer
-	code := doConvoyCreate(context.Background(), store, events.Discard, []string{"deploy v2.0"}, &stdout, &stderr)
+	code := doConvoyCreate(store, events.Discard, []string{"deploy v2.0"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doConvoyCreate = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -58,7 +57,7 @@ func TestConvoyCreateWithIssues(t *testing.T) {
 	_, _ = store.Create(beads.Bead{Title: "fix logging"})                // gc-3
 
 	var stdout, stderr bytes.Buffer
-	code := doConvoyCreate(context.Background(), store, events.Discard, []string{"security fixes", "gc-2", "gc-3"}, &stdout, &stderr)
+	code := doConvoyCreate(store, events.Discard, []string{"security fixes", "gc-2", "gc-3"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doConvoyCreate = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -82,9 +81,8 @@ func TestConvoyCreateJSON(t *testing.T) {
 	issue, _ := store.Create(beads.Bead{Title: "fix auth"})
 
 	var stdout, stderr bytes.Buffer
-	code := doConvoyCreateWithOptionsJSON(context.Background(), store, nil, "", events.Discard,
+	code := doConvoyCreateWithOptionsJSON(store, nil, "", events.Discard,
 		[]string{"security fixes", issue.ID}, convoyCreateOptions{}, true, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("doConvoyCreateWithOptionsJSON = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -107,7 +105,7 @@ func TestConvoyCreateMissingName(t *testing.T) {
 	store := beads.NewMemStore()
 
 	var stderr bytes.Buffer
-	code := doConvoyCreate(context.Background(), store, events.Discard, nil, &bytes.Buffer{}, &stderr)
+	code := doConvoyCreate(store, events.Discard, nil, &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("doConvoyCreate = %d, want 1", code)
 	}
@@ -120,7 +118,7 @@ func TestConvoyCreateBadIssueID(t *testing.T) {
 	store := beads.NewMemStore()
 
 	var stderr bytes.Buffer
-	code := doConvoyCreate(context.Background(), store, events.Discard, []string{"batch", "gc-999"}, &bytes.Buffer{}, &stderr)
+	code := doConvoyCreate(store, events.Discard, []string{"batch", "gc-999"}, &bytes.Buffer{}, &stderr)
 	if code != 1 {
 		t.Errorf("doConvoyCreate = %d, want 1", code)
 	}
@@ -140,9 +138,8 @@ func TestConvoyCreateMultiRig(t *testing.T) {
 
 	// Test 1: single-store mode (cfg=nil) — all beads in same store.
 	var stdout, stderr bytes.Buffer
-	code := doConvoyCreateWithOptions(context.Background(), cityStore, events.Discard,
+	code := doConvoyCreateWithOptions(cityStore, events.Discard,
 		[]string{"cross-rig batch", child1.ID, child2.ID}, convoyCreateOptions{}, &stdout, &stderr)
-
 	// Should fail because children are in rigStore, not cityStore.
 	if code != 1 {
 		t.Fatalf("expected failure (children not in city store), got code %d", code)
@@ -153,9 +150,8 @@ func TestConvoyCreateMultiRig(t *testing.T) {
 	stderr.Reset()
 	child3, _ := cityStore.Create(beads.Bead{Title: "city task"})
 	child4, _ := cityStore.Create(beads.Bead{Title: "city task 2"})
-	code = doConvoyCreateWithOptions(context.Background(), cityStore, events.Discard,
+	code = doConvoyCreateWithOptions(cityStore, events.Discard,
 		[]string{"same-store batch", child3.ID, child4.ID}, convoyCreateOptions{}, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("same-store convoy failed: %s", stderr.String())
 	}
@@ -224,9 +220,8 @@ func TestConvoyCreateRigChildrenShareStore(t *testing.T) {
 	c3, _ := store.Create(beads.Bead{Title: "Haskell hello"})
 
 	var stdout, stderr bytes.Buffer
-	code := doConvoyCreateWithOptions(context.Background(), store, events.Discard,
+	code := doConvoyCreateWithOptions(store, events.Discard,
 		[]string{"Hello World Variants", c1.ID, c2.ID, c3.ID}, convoyCreateOptions{}, &stdout, &stderr)
-
 	if code != 0 {
 		t.Fatalf("convoy create failed: %s", stderr.String())
 	}
@@ -576,7 +571,7 @@ func TestConvoyListAndStatusJSONCommands(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cityDir, "city.toml"), []byte("[workspace]\nname = \"test-city\"\n"), 0o644); err != nil {
 		t.Fatalf("write city.toml: %v", err)
 	}
-	store, err := openCityStoreAt(context.Background(), cityDir)
+	store, err := openCityStoreAt(cityDir)
 	if err != nil {
 		t.Fatalf("openCityStoreAt: %v", err)
 	}
@@ -1818,7 +1813,7 @@ func TestConvoyCreateWithFields(t *testing.T) {
 	fields := ConvoyFields{Owner: "mayor", Merge: "mr"}
 
 	var stdout, stderr bytes.Buffer
-	code := doConvoyCreateWithOptions(context.Background(), store, events.Discard, []string{"deploy"}, convoyCreateOptions{Fields: fields}, &stdout, &stderr)
+	code := doConvoyCreateWithOptions(store, events.Discard, []string{"deploy"}, convoyCreateOptions{Fields: fields}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doConvoyCreateWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -1844,7 +1839,7 @@ func TestConvoyCreateWithOptionsOwnedAndTarget(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doConvoyCreateWithOptions(context.Background(), store, events.Discard, []string{"deploy"}, opts, &stdout, &stderr)
+	code := doConvoyCreateWithOptions(store, events.Discard, []string{"deploy"}, opts, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doConvoyCreateWithOptions = %d, want 0; stderr: %s", code, stderr.String())
 	}
@@ -2088,7 +2083,7 @@ func TestRouteConvoyList_SixRowMatrix(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := routeConvoyList(context.Background(), cityPath, c, tc.nilReason, false, &stdout, &stderr)
+			code := routeConvoyList(cityPath, c, tc.nilReason, false, &stdout, &stderr)
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
 			}
@@ -2186,7 +2181,7 @@ func TestRouteConvoyStatus_SixRowMatrix(t *testing.T) {
 			// no real bd store on disk; tests assert exit=1 and route log
 			// for those rows, focusing on the routing branch rather than
 			// the fallback output itself.
-			code := routeConvoyStatus(context.Background(), cityPath, "gc-1", c, tc.nilReason, false, &stdout, &stderr)
+			code := routeConvoyStatus(cityPath, "gc-1", c, tc.nilReason, false, &stdout, &stderr)
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
 			}
@@ -2273,7 +2268,7 @@ func TestRouteConvoyCheckAlwaysFallsBackForLiveMutation(t *testing.T) {
 			}
 
 			var stdout, stderr bytes.Buffer
-			code := routeConvoyCheck(context.Background(), cityPath, c, tc.nilReason, false, &stdout, &stderr)
+			code := routeConvoyCheck(cityPath, c, tc.nilReason, false, &stdout, &stderr)
 			if code != tc.wantExit {
 				t.Fatalf("exit = %d, want %d; stderr=%q stdout=%q", code, tc.wantExit, stderr.String(), stdout.String())
 			}
@@ -2299,7 +2294,7 @@ func TestRouteConvoyCheckUsesLiveStoreForAutoCloseDecision(t *testing.T) {
 	cityPath := writeConvoyTestCity(t)
 	t.Setenv("GC_DEBUG", "1")
 
-	store, err := openCityStoreAt(context.Background(), cityPath)
+	store, err := openCityStoreAt(cityPath)
 	if err != nil {
 		t.Fatalf("openCityStoreAt(): %v", err)
 	}
@@ -2337,7 +2332,7 @@ func TestRouteConvoyCheckUsesLiveStoreForAutoCloseDecision(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	code := routeConvoyCheck(context.Background(), cityPath, c, "", false, &stdout, &stderr)
+	code := routeConvoyCheck(cityPath, c, "", false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("routeConvoyCheck = %d, want 0; stderr=%q stdout=%q", code, stderr.String(), stdout.String())
 	}
@@ -2395,7 +2390,7 @@ func TestRouteConvoyList_StaleBannerOver30s(t *testing.T) {
 	c := api.NewCityScopedClient(srv.URL, "test-city")
 
 	var stdout, stderr bytes.Buffer
-	if code := routeConvoyList(context.Background(), cityPath, c, "", false, &stdout, &stderr); code != 0 {
+	if code := routeConvoyList(cityPath, c, "", false, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	// Zero-convoy list prints "No open convoys" and returns early without
@@ -2423,7 +2418,7 @@ func TestRouteConvoyStatus_StaleBannerOver30s(t *testing.T) {
 
 	cityPath := writeConvoyTestCity(t)
 	var stdout, stderr bytes.Buffer
-	if code := routeConvoyStatus(context.Background(), cityPath, "gc-1", c, "", false, &stdout, &stderr); code != 0 {
+	if code := routeConvoyStatus(cityPath, "gc-1", c, "", false, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr=%q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "cache age: 45s") {
@@ -2450,7 +2445,7 @@ func TestRouteConvoyStatus_WorkflowConvoyFallsBack(t *testing.T) {
 	cityPath := writeConvoyTestCity(t)
 	t.Setenv("GC_DEBUG", "1")
 	var stdout, stderr bytes.Buffer
-	_ = routeConvoyStatus(context.Background(), cityPath, "gc-wf-1", c, "", false, &stdout, &stderr)
+	_ = routeConvoyStatus(cityPath, "gc-wf-1", c, "", false, &stdout, &stderr)
 	if !strings.Contains(stderr.String(), "route=fallback reason=workflow-convoy") {
 		t.Errorf("stderr missing workflow-convoy route log:\n%s", stderr.String())
 	}
@@ -2476,7 +2471,7 @@ func TestRouteConvoyStatus_RemoteWorkflowConvoyNoLocalFallback(t *testing.T) {
 	cityPath := writeConvoyTestCity(t)
 	t.Setenv("GC_DEBUG", "1")
 	var stdout, stderr bytes.Buffer
-	code := routeConvoyStatus(context.Background(), cityPath, "gc-wf-1", c, "", false, &stdout, &stderr)
+	code := routeConvoyStatus(cityPath, "gc-wf-1", c, "", false, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("remote workflow-convoy status must not exit 0 (local fallback happened):\nstdout=%s\nstderr=%s", stdout.String(), stderr.String())
 	}

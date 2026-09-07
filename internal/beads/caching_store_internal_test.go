@@ -437,7 +437,7 @@ func TestCachingStoreHandlesCachedListUsesActiveSnapshotAfterPrimeActive(t *test
 		release: make(chan struct{}),
 	}
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -488,7 +488,7 @@ func TestCachingStoreHandlesCachedReadUsesActiveSnapshotDuringRunningFullPrimeAf
 		t.Cleanup(releasePrime)
 
 		cache := NewCachingStoreForTest(backing, nil)
-		if err := cache.PrimeActive(context.Background()); err != nil {
+		if err := cache.PrimeActive(); err != nil {
 			t.Fatalf("PrimeActive: %v", err)
 		}
 
@@ -757,7 +757,7 @@ func TestCachingStoreListWispsUsesCacheByDefault(t *testing.T) {
 	}
 
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -859,7 +859,7 @@ func TestCachingStoreListBothTiersUsesCachedWispsByDefault(t *testing.T) {
 	}
 
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1563,7 +1563,7 @@ func TestCachingStoreSparseUpdatedEventFallsBackWhenCompleteCoverageIsMissingDep
 		t.Fatalf("Create: %v", err)
 	}
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1598,7 +1598,7 @@ func TestCachingStoreNoOpUpdatedEventSequencesDependencyCoverageInvalidation(t *
 		t.Fatalf("Create: %v", err)
 	}
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -1652,7 +1652,7 @@ func TestCachingStoreNoOpUpdatedEventPreservesCachedMetadataMap(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -2060,7 +2060,7 @@ func TestCachingStorePrimeActiveUsesPartialResultRows(t *testing.T) {
 	}
 
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -2198,7 +2198,7 @@ func TestCachingStorePrimeActivePartialFallsBackForActiveList(t *testing.T) {
 	backing.partialRows = []Bead{survivor}
 
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -2367,7 +2367,7 @@ func TestCachingStoreRunReconciliationDegradesPartialCache(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	cache := NewCachingStoreForTest(backing, nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -3024,7 +3024,7 @@ func TestCachingStoreBdPrimeActiveUsesListDependenciesFromTheListJSON(t *testing
 		return []byte(`[]`), nil
 	}
 	cache := NewCachingStoreForTest(NewBdStore("/city", runner), nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -3407,7 +3407,7 @@ func TestCachingStoreBdPrimeActiveUsesReadyProjectionForBD105(t *testing.T) {
 		return []byte(`[]`), nil
 	}
 	cache := NewCachingStoreForTest(NewBdStore("/city", runner), nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 
@@ -3781,7 +3781,7 @@ func TestCachingStoreBdPrimeActiveToleratesMissingReadyProjectionRowsBD105(t *te
 		return []byte(`[]`), nil
 	}
 	cache := NewCachingStoreForTest(NewBdStore("/city", runner), nil)
-	if err := cache.PrimeActive(context.Background()); err != nil {
+	if err := cache.PrimeActive(); err != nil {
 		t.Fatalf("PrimeActive: %v", err)
 	}
 

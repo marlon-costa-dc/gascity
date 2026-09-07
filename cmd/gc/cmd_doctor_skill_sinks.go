@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"path/filepath"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -40,9 +39,9 @@ func doctorSkillStaticSinks(cityPath string, cfg *config.City) []string {
 // hq-38je found broken. Laziness keeps the session store out of doctor
 // check construction; a store failure yields no live sinks rather than
 // failing the whole check (the static sinks still scan).
-func doctorLiveSessionSinks(ctx context.Context, cityPath string, cfg *config.City) func() []string {
+func doctorLiveSessionSinks(cityPath string, cfg *config.City) func() []string {
 	return func() []string {
-		store, err := openSessionProviderStore(ctx, cityPath)
+		store, err := openSessionProviderStore(cityPath)
 		if err != nil {
 			return nil
 		}

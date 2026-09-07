@@ -58,7 +58,7 @@ func (rt *serviceRuntime) BeadStore(rig string) beads.Store {
 		if candidate.Name != rig {
 			continue
 		}
-		store, err := openStoreAtForCity(rt.cr.ctx, candidate.Path, rt.cr.cityPath)
+		store, err := openStoreAtForCity(candidate.Path, rt.cr.cityPath)
 		if err != nil {
 			return nil
 		}

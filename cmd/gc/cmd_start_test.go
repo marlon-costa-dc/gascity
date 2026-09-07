@@ -78,7 +78,7 @@ func TestPassthroughEnvOmitsUnset(t *testing.T) {
 
 // The controller token is GC_-prefixed, so the sweep above would otherwise read
 // the controller's real token out of os.Environ() and write it straight back
-// over the empty value providerProcessPassthroughEnvForResolvedProvider(nil) pinned.
+// over the empty value providerProcessPassthroughEnv() pinned.
 //
 // Withholding means PRESENT AND EMPTY, not absent: this map is an overlay on an
 // environment the session already inherits, so an absent key leaves the
@@ -624,8 +624,8 @@ func TestStandaloneBuildAgentsFnWithSessionBeads_UsesRigStoresForAssignedWork(t 
 		},
 	}
 
-	buildFn := standaloneBuildAgentsFnWithSessionBeads(context.Background(), "city", "/tmp/city", time.Now().UTC(), io.Discard)
-	result := buildFn(context.Background(), cfg, runtime.NewFake(), cityStore, map[string]beads.Store{"repo": rigStore}, nil, nil)
+	buildFn := standaloneBuildAgentsFnWithSessionBeads("city", "/tmp/city", time.Now().UTC(), io.Discard)
+	result := buildFn(cfg, runtime.NewFake(), cityStore, map[string]beads.Store{"repo": rigStore}, nil, nil)
 	if len(result.AssignedWorkBeads) != 1 {
 		t.Fatalf("AssignedWorkBeads len = %d, want 1 (%#v)", len(result.AssignedWorkBeads), result.AssignedWorkBeads)
 	}
@@ -756,13 +756,10 @@ func TestPassthroughEnvDoltConnectionVars(t *testing.T) {
 
 	got := passthroughEnv()
 
-	for _, key := range []string{"GC_DOLT_HOST", "GC_DOLT_PORT", "GC_DOLT_USER"} {
+	for _, key := range []string{"GC_DOLT_HOST", "GC_DOLT_PORT", "GC_DOLT_USER", "GC_DOLT_PASSWORD"} {
 		if _, ok := got[key]; !ok {
 			t.Errorf("passthroughEnv() missing %s", key)
 		}
-	}
-	if got, ok := got["GC_DOLT_PASSWORD"]; ok {
-		t.Errorf("passthroughEnv()[GC_DOLT_PASSWORD] = %q present, want absent sensitive credential", got)
 	}
 	if got["GC_DOLT_HOST"] != "dolt.gc.svc.cluster.local" {
 		t.Errorf("GC_DOLT_HOST = %q, want %q", got["GC_DOLT_HOST"], "dolt.gc.svc.cluster.local")
@@ -787,7 +784,7 @@ func TestPassthroughEnvOmitsUnsetDoltVars(t *testing.T) {
 	}
 }
 
-func TestPassthroughEnvIncludesClaudeProcessContextAndOmitsProviderCredentials(t *testing.T) {
+func TestPassthroughEnvIncludesClaudeAuthContext(t *testing.T) {
 	t.Setenv("HOME", "/tmp/gc-home")
 	t.Setenv("USER", "gcuser")
 	t.Setenv("LOGNAME", "gcuser")
@@ -809,37 +806,31 @@ func TestPassthroughEnvIncludesClaudeProcessContextAndOmitsProviderCredentials(t
 	got := passthroughEnv()
 
 	for key, want := range map[string]string{
-		"HOME":                       "/tmp/gc-home",
-		"USER":                       "gcuser",
-		"LOGNAME":                    "gcuser",
-		"XDG_CONFIG_HOME":            "/tmp/gc-home/.config",
-		"XDG_STATE_HOME":             "/tmp/gc-home/.local/state",
-		"CLAUDE_CONFIG_DIR":          "/tmp/gc-home/.claude",
-		"CLAUDE_CODE_SUBAGENT_MODEL": "kimi-k2.5",
-		"CLAUDE_CODE_EFFORT_LEVEL":   "auto",
+		"HOME":                                     "/tmp/gc-home",
+		"USER":                                     "gcuser",
+		"LOGNAME":                                  "gcuser",
+		"XDG_CONFIG_HOME":                          "/tmp/gc-home/.config",
+		"XDG_STATE_HOME":                           "/tmp/gc-home/.local/state",
+		"CLAUDE_CONFIG_DIR":                        "/tmp/gc-home/.claude",
+		"CLAUDE_CODE_OAUTH_TOKEN":                  "oauth-token",
+		"ANTHROPIC_API_KEY":                        "sk-ant-123",
+		"ANTHROPIC_AUTH_TOKEN":                     "anth-auth-token",
+		"ANTHROPIC_BASE_URL":                       "https://ollama.com",
+		"ANTHROPIC_DEFAULT_HAIKU_MODEL":            "kimi-k2.5",
+		"ANTHROPIC_DEFAULT_SONNET_MODEL":           "kimi-k2.5",
+		"ANTHROPIC_DEFAULT_OPUS_MODEL":             "kimi-k2.5",
+		"CLAUDE_CODE_SUBAGENT_MODEL":               "kimi-k2.5",
+		"CLAUDE_CODE_EFFORT_LEVEL":                 "auto",
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+		"OLLAMA_API_KEY":                           "ollama-token",
 	} {
 		if got[key] != want {
 			t.Errorf("passthroughEnv()[%s] = %q, want %q", key, got[key], want)
 		}
 	}
-	for _, key := range []string{
-		"CLAUDE_CODE_OAUTH_TOKEN",
-		"ANTHROPIC_API_KEY",
-		"ANTHROPIC_AUTH_TOKEN",
-		"ANTHROPIC_BASE_URL",
-		"ANTHROPIC_DEFAULT_HAIKU_MODEL",
-		"ANTHROPIC_DEFAULT_SONNET_MODEL",
-		"ANTHROPIC_DEFAULT_OPUS_MODEL",
-		"OLLAMA_API_KEY",
-	} {
-		if got, ok := got[key]; ok {
-			t.Errorf("passthroughEnv()[%s] = %q present, want absent provider credential/config passthrough", key, got)
-		}
-	}
 }
 
-func TestPassthroughEnvOmitsProviderCredentialEnv(t *testing.T) {
+func TestPassthroughEnvIncludesProviderCredentialEnv(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-123")
 	t.Setenv("OPENAI_API_KEY", "sk-openai-123")
 	t.Setenv("OPENAI_BASE_URL", "https://openai.example.test")
@@ -854,22 +845,24 @@ func TestPassthroughEnvOmitsProviderCredentialEnv(t *testing.T) {
 
 	got := passthroughEnv()
 
-	for _, key := range []string{
-		"ANTHROPIC_API_KEY",
-		"OPENAI_API_KEY",
-		"OPENAI_BASE_URL",
-		"GEMINI_API_KEY",
-		"GOOGLE_API_KEY",
-		"GOOGLE_APPLICATION_CREDENTIALS",
-		"GOOGLE_CLOUD_PROJECT",
-		"DEEPSEEK_API_KEY",
-		"OLLAMA_HOST",
-		"AWS_ACCESS_KEY_ID",
-		"AWS_PAGER",
+	for key, want := range map[string]string{
+		"ANTHROPIC_API_KEY":              "sk-ant-123",
+		"OPENAI_API_KEY":                 "sk-openai-123",
+		"OPENAI_BASE_URL":                "https://openai.example.test",
+		"GEMINI_API_KEY":                 "gemini-123",
+		"GOOGLE_API_KEY":                 "google-123",
+		"GOOGLE_APPLICATION_CREDENTIALS": "/tmp/google-credentials.json",
+		"GOOGLE_CLOUD_PROJECT":           "gc-project",
+		"DEEPSEEK_API_KEY":               "ds-123",
+		"OLLAMA_HOST":                    "http://localhost:11434",
+		"AWS_ACCESS_KEY_ID":              "AKIA123",
 	} {
-		if got, ok := got[key]; ok {
-			t.Errorf("passthroughEnv()[%s] = %q present, want absent provider credential/config passthrough", key, got)
+		if got[key] != want {
+			t.Errorf("passthroughEnv()[%s] = %q, want %q", key, got[key], want)
 		}
+	}
+	if _, ok := got["AWS_PAGER"]; ok {
+		t.Errorf("passthroughEnv() should not include broad AWS runtime state")
 	}
 }
 
@@ -1314,7 +1307,6 @@ func TestResolveTemplateAddsKimiHookConfigArgWhenHooksInstalled(t *testing.T) {
 				OptionDefaults:    tt.optionDefaults,
 			}
 			bp := &agentBuildParams{
-				ctx:        context.Background(),
 				cityName:   "city",
 				cityPath:   cityDir,
 				workspace:  &config.Workspace{Provider: "kimi"},
@@ -1478,7 +1470,6 @@ func TestResolveTemplateFPExtra_StableAcrossBaseAndInstance(t *testing.T) {
 
 	makeParams := func() *agentBuildParams {
 		return &agentBuildParams{
-			ctx:       context.Background(),
 			cityName:  "city",
 			cityPath:  cityPath,
 			workspace: &config.Workspace{Provider: "claude"},
@@ -1585,7 +1576,7 @@ func TestAgentBuildParams_FPExtraStableAcrossCatalogTransients(t *testing.T) {
 	}
 
 	// Tick N: catalog loads fully.
-	bpGood := newAgentBuildParams(context.Background(), "city", cityPath, cfgGood, nil, time.Unix(0, 0), nil, io.Discard)
+	bpGood := newAgentBuildParams("city", cityPath, cfgGood, nil, time.Unix(0, 0), nil, io.Discard)
 	bpGood.lookPath = func(string) (string, error) { return "/bin/echo", nil }
 	tpN, err := resolveTemplate(bpGood, agent, agent.QualifiedName(), buildFingerprintExtra(agent))
 	if err != nil {
@@ -1598,7 +1589,7 @@ func TestAgentBuildParams_FPExtraStableAcrossCatalogTransients(t *testing.T) {
 	// Tick N+1: catalog discovery fails from a transient filesystem error.
 	// The cache must kick in.
 	replaceWithSelfSymlink(t, emptyImportLink)
-	bpDegraded := newAgentBuildParams(context.Background(), "city", cityPath, cfgGood, nil, time.Unix(0, 0), nil, io.Discard)
+	bpDegraded := newAgentBuildParams("city", cityPath, cfgGood, nil, time.Unix(0, 0), nil, io.Discard)
 	bpDegraded.lookPath = func(string) (string, error) { return "/bin/echo", nil }
 	tpN1, err := resolveTemplate(bpDegraded, agent, agent.QualifiedName(), buildFingerprintExtra(agent))
 	if err != nil {
@@ -1659,7 +1650,7 @@ func TestNewAgentBuildParams_CachesLastGoodCatalog(t *testing.T) {
 		}},
 	}
 	// First call: real load succeeds and caches the catalog.
-	bpGood := newAgentBuildParams(context.Background(), "city", cityPath, cfgGood, nil, time.Unix(0, 0), nil, io.Discard)
+	bpGood := newAgentBuildParams("city", cityPath, cfgGood, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpGood.skillCatalog == nil {
 		t.Fatalf("baseline: skillCatalog is nil despite successful load")
 	}
@@ -1672,7 +1663,7 @@ func TestNewAgentBuildParams_CachesLastGoodCatalog(t *testing.T) {
 	// transient filesystem error. The cache must kick in and restore the
 	// catalog so FingerprintExtra stays byte-identical across ticks.
 	replaceWithSelfSymlink(t, emptyImportLink)
-	bpDegraded := newAgentBuildParams(context.Background(), "city", cityPath, cfgGood, nil, time.Unix(0, 0), nil, io.Discard)
+	bpDegraded := newAgentBuildParams("city", cityPath, cfgGood, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpDegraded.skillCatalog == nil {
 		t.Fatalf("cache miss: skillCatalog is nil after LoadCityCatalog failure — the last-good catalog cache is not kicking in; this is the config-drift drain-storm reproducer")
 	}
@@ -1697,18 +1688,18 @@ func TestNewAgentBuildParams_SharedCatalogErrorReusesLastGoodCatalogAcrossRepeat
 			PackName:    "helper",
 		}},
 	}
-	bpGood := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpGood := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpGood.skillCatalog == nil || len(bpGood.skillCatalog.Entries) == 0 {
 		t.Fatalf("baseline: expected non-empty imported catalog, got %+v", bpGood.skillCatalog)
 	}
 
 	replaceWithSelfSymlink(t, importLink)
-	bpGrace := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpGrace := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpGrace.skillCatalog == nil || len(bpGrace.skillCatalog.Entries) == 0 {
 		t.Fatalf("first repeated root failure should reuse cached catalog, got %+v", bpGrace.skillCatalog)
 	}
 
-	bpRepeated := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpRepeated := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpRepeated.skillCatalog == nil || len(bpRepeated.skillCatalog.Entries) == 0 {
 		t.Fatalf("second repeated root failure should still reuse cached catalog, got %+v", bpRepeated.skillCatalog)
 	}
@@ -1727,7 +1718,7 @@ func TestNewAgentBuildParams_EmptyCatalogClearsLastGoodCatalog(t *testing.T) {
 	}
 
 	cfg := &config.City{PackSkillsDir: filepath.Join(cityPath, "skills")}
-	bpGood := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpGood := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpGood.skillCatalog == nil || len(bpGood.skillCatalog.Entries) == 0 {
 		t.Fatalf("baseline: expected non-empty catalog, got %+v", bpGood.skillCatalog)
 	}
@@ -1735,7 +1726,7 @@ func TestNewAgentBuildParams_EmptyCatalogClearsLastGoodCatalog(t *testing.T) {
 	if err := os.RemoveAll(skillDir); err != nil {
 		t.Fatal(err)
 	}
-	bpEmpty := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpEmpty := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpEmpty.skillCatalog == nil {
 		t.Fatal("empty successful catalog should be represented as an empty catalog, not nil")
 	}
@@ -1762,7 +1753,7 @@ func TestNewAgentBuildParams_EmptyBootstrapCatalogReusesLastGoodCatalogOnceThenC
 	}
 
 	cfg := &config.City{}
-	bpGood := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpGood := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpGood.skillCatalog == nil || len(bpGood.skillCatalog.Entries) == 0 {
 		t.Fatalf("baseline: expected non-empty bootstrap-backed catalog, got %+v", bpGood.skillCatalog)
 	}
@@ -1770,7 +1761,7 @@ func TestNewAgentBuildParams_EmptyBootstrapCatalogReusesLastGoodCatalogOnceThenC
 	if err := os.RemoveAll(filepath.Join(cacheDir, "skills")); err != nil {
 		t.Fatal(err)
 	}
-	bpEmpty := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpEmpty := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpEmpty.skillCatalog == nil {
 		t.Fatal("missing bootstrap skills dir should reuse cached catalog, got nil")
 	}
@@ -1778,7 +1769,7 @@ func TestNewAgentBuildParams_EmptyBootstrapCatalogReusesLastGoodCatalogOnceThenC
 		t.Fatalf("bootstrap empty-success should reuse cached catalog: got %d entries want %d", got, len(bpGood.skillCatalog.Entries))
 	}
 
-	bpCleared := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpCleared := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpCleared.skillCatalog == nil {
 		t.Fatal("second bootstrap empty-success should clear to an empty catalog, not nil")
 	}
@@ -1805,7 +1796,7 @@ func TestNewAgentBuildParams_ImplicitImportReadFailureReusesLastGoodCatalog(t *t
 	}
 
 	cfg := &config.City{}
-	bpGood := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpGood := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpGood.skillCatalog == nil || len(bpGood.skillCatalog.Entries) == 0 {
 		t.Fatalf("baseline: expected non-empty bootstrap-backed catalog, got %+v", bpGood.skillCatalog)
 	}
@@ -1817,7 +1808,7 @@ func TestNewAgentBuildParams_ImplicitImportReadFailureReusesLastGoodCatalog(t *t
 		t.Fatal(err)
 	}
 
-	bpError := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpError := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpError.skillCatalog == nil {
 		t.Fatal("implicit-import read failure should reuse cached catalog, got nil")
 	}
@@ -1848,13 +1839,13 @@ func TestNewAgentBuildParams_BootstrapCommitChangeReusesCacheOnceThenClears(t *t
 
 	writeImplicit(commitA)
 	cfg := &config.City{}
-	bpGood := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpGood := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpGood.skillCatalog == nil || len(bpGood.skillCatalog.Entries) == 0 {
 		t.Fatalf("baseline: expected non-empty bootstrap-backed catalog, got %+v", bpGood.skillCatalog)
 	}
 
 	writeImplicit(bootstrapName + "-commit-b")
-	bpGrace := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpGrace := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpGrace.skillCatalog == nil {
 		t.Fatal("bootstrap commit change should grace once with cached catalog, got nil")
 	}
@@ -1862,7 +1853,7 @@ func TestNewAgentBuildParams_BootstrapCommitChangeReusesCacheOnceThenClears(t *t
 		t.Fatalf("bootstrap commit change grace tick should reuse cached catalog: got %d entries want %d", got, len(bpGood.skillCatalog.Entries))
 	}
 
-	bpCleared := newAgentBuildParams(context.Background(), "city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
+	bpCleared := newAgentBuildParams("city", cityPath, cfg, nil, time.Unix(0, 0), nil, io.Discard)
 	if bpCleared.skillCatalog == nil {
 		t.Fatal("second bootstrap commit-change tick should clear to an empty catalog, not nil")
 	}
@@ -1926,7 +1917,6 @@ func TestResolveTemplateFPExtra_NotEmptyForPoolAgent(t *testing.T) {
 
 	makeParams := func(sessionProvider string, skills *materialize.CityCatalog) *agentBuildParams {
 		return &agentBuildParams{
-			ctx:       context.Background(),
 			cityName:  "city",
 			cityPath:  cityPath,
 			workspace: &config.Workspace{Provider: "claude"},
@@ -2064,7 +2054,7 @@ func TestDoStart_FlagValidationRunsBeforeDriftCheck(t *testing.T) {
 	t.Cleanup(func() { supervisorAliveHook = oldAlive })
 
 	var stdout, stderr bytes.Buffer
-	code := doStartWithNameOverride(context.Background(), []string{cityDir}, false, &stdout, &stderr, "")
+	code := doStartWithNameOverride([]string{cityDir}, false, &stdout, &stderr, "")
 
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1", code)
@@ -2167,7 +2157,7 @@ func TestStartStandaloneBuildsSessionProviderFromResolvedCityConfig(t *testing.T
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := doStartStandalone(context.Background(), []string{cityPath}, false, &stdout, &stderr); code != 0 {
+	if code := doStartStandalone([]string{cityPath}, false, &stdout, &stderr); code != 0 {
 		t.Fatalf("doStartStandalone exit = %d, want 0\nstdout:\n%s\nstderr:\n%s",
 			code, stdout.String(), stderr.String())
 	}

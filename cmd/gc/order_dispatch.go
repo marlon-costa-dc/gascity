@@ -386,18 +386,18 @@ type orderTrackingSummary struct {
 // Scans both city-level and per-rig orders. Rig orders get their Rig
 // field stamped so they use independent scoped labels. routes is the caller's
 // resolved storage binding; nil is the identity routing of a single-store city.
-func buildOrderDispatcher(ctx context.Context, routes *storageRoutes, cityPath string, cfg *config.City, rec events.Recorder, stderr io.Writer) orderDispatcher { //nolint:unparam // routes is nil in current callers but is the storage binding a production caller must pass
-	od, _ := buildOrderDispatcherWithSnapshot(ctx, routes, cityPath, cfg, rec, stderr, "gc start: order scan")
+func buildOrderDispatcher(routes *storageRoutes, cityPath string, cfg *config.City, rec events.Recorder, stderr io.Writer) orderDispatcher { //nolint:unparam // routes is nil in current callers but is the storage binding a production caller must pass
+	od, _ := buildOrderDispatcherWithSnapshot(routes, cityPath, cfg, rec, stderr, "gc start: order scan")
 	return od
 }
 
-func buildOrderDispatcherWithSnapshot(ctx context.Context, routes *storageRoutes, cityPath string, cfg *config.City, rec events.Recorder, stderr io.Writer, cmdName string) (orderDispatcher, orderSetSnapshot) {
+func buildOrderDispatcherWithSnapshot(routes *storageRoutes, cityPath string, cfg *config.City, rec events.Recorder, stderr io.Writer, cmdName string) (orderDispatcher, orderSetSnapshot) {
 	snapshot, err := scanOrderSetSnapshotFS(fsys.OSFS{}, cityPath, cfg, stderr, cmdName)
 	if err != nil {
 		logDispatchError(stderr, "%s: %v", cmdName, err)
 		return nil, orderSetSnapshot{}
 	}
-	return buildOrderDispatcherFromOrderSet(ctx, routes, cityPath, cfg, snapshot.Orders, rec, stderr), snapshot
+	return buildOrderDispatcherFromOrderSet(routes, cityPath, cfg, snapshot.Orders, rec, stderr), snapshot
 }
 
 func scanOrderSetSnapshotFS(fs fsys.FS, cityPath string, cfg *config.City, stderr io.Writer, cmdName string) (orderSetSnapshot, error) {
@@ -446,7 +446,7 @@ func orderSetSignature(aa []orders.Order) string {
 	return fmt.Sprintf("%x", sum[:])
 }
 
-func buildOrderDispatcherFromOrderSet(ctx context.Context, routes *storageRoutes, cityPath string, cfg *config.City, allAA []orders.Order, rec events.Recorder, stderr io.Writer) orderDispatcher {
+func buildOrderDispatcherFromOrderSet(routes *storageRoutes, cityPath string, cfg *config.City, allAA []orders.Order, rec events.Recorder, stderr io.Writer) orderDispatcher {
 	if cfg == nil {
 		cfg = &config.City{}
 	}
@@ -464,7 +464,7 @@ func buildOrderDispatcherFromOrderSet(ctx context.Context, routes *storageRoutes
 		return nil
 	}
 
-	return newMemoryOrderDispatcher(ctx, routes, auto, cityPath, cfg, rec, stderr)
+	return newMemoryOrderDispatcher(routes, auto, cityPath, cfg, rec, stderr)
 }
 
 // newMemoryOrderDispatcher builds a memoryOrderDispatcher over a resolved order
@@ -474,7 +474,7 @@ func buildOrderDispatcherFromOrderSet(ctx context.Context, routes *storageRoutes
 // routes is the storage binding the caller already opened, so a dispatched wisp
 // materializes in the same graph store the rest of the process reads; nil is
 // the identity routing of a single-store city.
-func newMemoryOrderDispatcher(parent context.Context, routes *storageRoutes, aa []orders.Order, cityPath string, cfg *config.City, rec events.Recorder, stderr io.Writer) *memoryOrderDispatcher {
+func newMemoryOrderDispatcher(routes *storageRoutes, aa []orders.Order, cityPath string, cfg *config.City, rec events.Recorder, stderr io.Writer) *memoryOrderDispatcher {
 	if cfg == nil {
 		cfg = &config.City{}
 	}
@@ -490,7 +490,7 @@ func newMemoryOrderDispatcher(parent context.Context, routes *storageRoutes, aa 
 		maxDispatchesPerTick = *cfg.Orders.MaxDispatchesPerTick
 	}
 
-	dispatchCtx, dispatchCancel := context.WithCancel(parent)
+	dispatchCtx, dispatchCancel := context.WithCancel(context.Background())
 	return &memoryOrderDispatcher{
 		aa: aa,
 		storeFn: func(target execStoreTarget) (beads.Store, error) {
@@ -498,7 +498,7 @@ func newMemoryOrderDispatcher(parent context.Context, routes *storageRoutes, aa 
 			// CityRuntime.replaceOrderDispatcher) instead of re-parsing
 			// city.toml and all pack includes on every dispatch tick for
 			// every scope target (ga-237xpr).
-			return openStoreAtForCityWithConfig(dispatchCtx, target.ScopeRoot, cityPath, cfg)
+			return openStoreAtForCityWithConfig(target.ScopeRoot, cityPath, cfg)
 		},
 		storageRoutes:        routes,
 		ep:                   ep,
@@ -735,7 +735,7 @@ func (m *memoryOrderDispatcher) dispatch(ctx context.Context, cityPath string, n
 			target: target, store: store, storeKey: storeKey,
 			gateStores: storesForGate, gateStoreKeys: storeKeysForGate,
 		}
-		cand.triggerOpts, cand.triggerErr = orderTriggerOptionsForTarget(ctx, cityPath, m.cfg, target, a)
+		cand.triggerOpts, cand.triggerErr = orderTriggerOptionsForTarget(cityPath, m.cfg, target, a)
 		// Thread the dispatch tick's context into the condition check so a
 		// shutdown, reload, or canceled tick interrupts a slow check promptly
 		// instead of waiting out its (now operator-configurable) check_timeout.
@@ -1783,7 +1783,7 @@ func (m *memoryOrderDispatcher) dispatchExec(ctx context.Context, front *orders.
 		}
 	}
 
-	env, err := orderExecEnvWithError(ctx, cityPath, m.cfg, target, a, vars)
+	env, err := orderExecEnvWithError(cityPath, m.cfg, target, a, vars)
 	var output []byte
 	var execErrMsg string
 	if err != nil {
@@ -1902,7 +1902,7 @@ func poolOrderRouteVisibilityWarning(a orders.Order, recipe *formula.Recipe) str
 // The resolved store target is authoritative: order pool/step targets describe
 // execution, while target.ScopeRoot describes the store that will own every
 // graph bead and therefore which control dispatcher can claim its controls.
-func applyOrderRecipeRouting(ctx context.Context, recipe *formula.Recipe, pool string, vars map[string]string, target execStoreTarget, store beads.Store, cityName, cityPath string, cfg *config.City) error {
+func applyOrderRecipeRouting(recipe *formula.Recipe, pool string, vars map[string]string, target execStoreTarget, store beads.Store, cityName, cityPath string, cfg *config.City) error {
 	if recipe == nil {
 		return fmt.Errorf("order recipe is nil")
 	}
@@ -1910,7 +1910,7 @@ func applyOrderRecipeRouting(ctx context.Context, recipe *formula.Recipe, pool s
 		if strings.TrimSpace(pool) == "" {
 			return nil
 		}
-		return applyGraphRouting(ctx, recipe, nil, pool, vars, "", "", "", store, cityName, cityPath, cfg)
+		return applyGraphRouting(recipe, nil, pool, vars, "", "", "", store, cityName, cityPath, cfg)
 	}
 	if cfg == nil {
 		return fmt.Errorf("formulas v2 order routing requires city config")
@@ -1929,7 +1929,7 @@ func applyOrderRecipeRouting(ctx context.Context, recipe *formula.Recipe, pool s
 		}
 	}
 	if strings.TrimSpace(pool) != "" {
-		return applyGraphRouting(ctx, recipe, nil, pool, vars, scopeKind, scopeRef, storeRef, store, cityName, cityPath, cfg)
+		return applyGraphRouting(recipe, nil, pool, vars, scopeKind, scopeRef, storeRef, store, cityName, cityPath, cfg)
 	}
 
 	// With no order-level pool, every executable worker step must carry its own
@@ -1946,7 +1946,6 @@ func applyOrderRecipeRouting(ctx context.Context, recipe *formula.Recipe, pool s
 		}
 	}
 	return graphroute.DecorateGraphWorkflowRecipeWithDefaultBinding(
-		ctx,
 		recipe,
 		routeVars,
 		"",
@@ -2242,7 +2241,7 @@ func (m *memoryOrderDispatcher) dispatchWisp(ctx context.Context, store beads.St
 
 	// Route before instantiation. A routing failure must not leave an
 	// unreachable graph in the store while reporting the order as completed.
-	if err := applyOrderRecipeRouting(ctx, recipe, pool, vars, target, graphStore, m.cityName, cityPath, m.cfg); err != nil {
+	if err := applyOrderRecipeRouting(recipe, pool, vars, target, graphStore, m.cityName, cityPath, m.cfg); err != nil {
 		logDispatchError(m.stderr, "gc: order %s: routing decoration failed: %v", scoped, err)
 		m.rec.Record(events.Event{
 			Type:    events.OrderFailed,
@@ -2280,7 +2279,7 @@ func (m *memoryOrderDispatcher) dispatchWisp(ctx context.Context, store beads.St
 		// ledger it does not live in. The tracked launch beads themselves may
 		// be resident in a per-rig store, so the work leg routes launch reads
 		// to the owning convoy store.
-		if err := executionevent.EmitCurrent(m.rec, beads.GraphStore{Store: graphStore}, beads.WorkStore{Store: executionEmitStore(ctx, store, cityPath)}, rootID, "order-dispatch"); err != nil {
+		if err := executionevent.EmitCurrent(m.rec, beads.GraphStore{Store: graphStore}, beads.WorkStore{Store: executionEmitStore(store, cityPath)}, rootID, "order-dispatch"); err != nil {
 			logDispatchError(m.stderr, "gc: order %s: projecting execution facts for %s: %v", scoped, rootID, err)
 		}
 	}

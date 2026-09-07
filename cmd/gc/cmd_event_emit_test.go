@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -176,7 +175,7 @@ func TestEventPayloadForEmitFallsBackToStoreBead(t *testing.T) {
 	if err := ensurePersistedScopeLocalFileStore(dir); err != nil {
 		t.Fatalf("ensurePersistedScopeLocalFileStore: %v", err)
 	}
-	store, err := openStoreAtForCity(context.Background(), dir, dir)
+	store, err := openStoreAtForCity(dir, dir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity: %v", err)
 	}
@@ -188,7 +187,7 @@ func TestEventPayloadForEmitFallsBackToStoreBead(t *testing.T) {
 	t.Chdir(dir)
 	t.Setenv("GC_CITY_PATH", dir)
 	var stderr bytes.Buffer
-	payload := eventPayloadForEmit(context.Background(), `{"bead":}`, created.ID, &stderr)
+	payload := eventPayloadForEmit(`{"bead":}`, created.ID, &stderr)
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want none", stderr.String())
 	}
@@ -240,7 +239,7 @@ prefix = "fe"
 	if err := ensurePersistedScopeLocalFileStore(rigDir); err != nil {
 		t.Fatalf("ensurePersistedScopeLocalFileStore(rig): %v", err)
 	}
-	rigStore, err := openStoreAtForCity(context.Background(), rigDir, cityDir)
+	rigStore, err := openStoreAtForCity(rigDir, cityDir)
 	if err != nil {
 		t.Fatalf("openStoreAtForCity(rig): %v", err)
 	}
@@ -254,7 +253,7 @@ prefix = "fe"
 	t.Chdir(t.TempDir())
 
 	var stderr bytes.Buffer
-	payload := eventPayloadForEmit(context.Background(), `{"bead":}`, created.ID, &stderr)
+	payload := eventPayloadForEmit(`{"bead":}`, created.ID, &stderr)
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want none", stderr.String())
 	}

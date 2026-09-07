@@ -4,7 +4,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,7 +85,7 @@ func TestRigAddRefusesNonPersistentPath(t *testing.T) {
 	rigPath := ephemeralRigPath(t, cityPath)
 
 	var stdout, stderr bytes.Buffer
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("doRigAdd accepted a non-persistent rig path; stdout: %s", stdout.String())
 	}
@@ -120,7 +119,7 @@ func TestRigAddAcceptsPathOnTheCityDevice(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("doRigAdd refused a city-rooted rig path: %s", stderr.String())
 	}
@@ -139,7 +138,7 @@ func TestRigAddAllowEphemeralOptsIn(t *testing.T) {
 	rigPath := ephemeralRigPath(t, cityPath)
 
 	var stdout, stderr bytes.Buffer
-	code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr,
+	code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr,
 		withAllowEphemeralPath(true))
 	if code != 0 {
 		t.Fatalf("--allow-ephemeral still refused: %s", stderr.String())
@@ -166,7 +165,7 @@ func TestStartBootsCityWithAllowedEphemeralRig(t *testing.T) {
 	rigPath := ephemeralRigPath(t, cityPath)
 
 	var stdout, stderr bytes.Buffer
-	if code := doRigAdd(context.Background(), fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr,
+	if code := doRigAdd(fsys.OSFS{}, cityPath, rigPath, nil, "", "", "", false, false, &stdout, &stderr,
 		withAllowEphemeralPath(true)); code != 0 {
 		t.Fatalf("gc rig add --allow-ephemeral failed: %s", stderr.String())
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -98,7 +97,7 @@ func TestDoInitFromFileRestoresLegacyIdentityWhenSiteBindingWriteFails(t *testin
 	fs := &failSiteBindingRenameFS{target: filepath.Join(cityPath, ".gc", "site.toml")}
 
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fs, srcToml, cityPath, "machine-alias", &stdout, &stderr, true, false)
+	code := cmdInitFromTOMLFileWithOptions(fs, srcToml, cityPath, "machine-alias", &stdout, &stderr, true, false)
 	if code == 0 {
 		t.Fatalf("cmdInitFromTOMLFileWithOptions = %d, want failure", code)
 	}
@@ -134,7 +133,7 @@ func TestDoInitFromDirRestoresLegacyIdentityWhenSiteBindingWriteFails(t *testing
 	fs := &failSiteBindingRenameFS{target: filepath.Join(cityPath, ".gc", "site.toml")}
 
 	var stdout, stderr bytes.Buffer
-	code := doInitFromDirWithOptionsFS(context.Background(), fs, srcDir, cityPath, "machine-alias", &stdout, &stderr, true)
+	code := doInitFromDirWithOptionsFS(fs, srcDir, cityPath, "machine-alias", &stdout, &stderr, true)
 	if code == 0 {
 		t.Fatalf("doInitFromDirWithOptionsFS = %d, want failure", code)
 	}
@@ -224,7 +223,7 @@ path = %q
 	cityPath := filepath.Join(t.TempDir(), "city")
 	fs := &recordingFS{failRenameTarget: filepath.Join(cityPath, ".gc", "site.toml")}
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fs, srcToml, cityPath, "", &stdout, &stderr, true, false)
+	code := cmdInitFromTOMLFileWithOptions(fs, srcToml, cityPath, "", &stdout, &stderr, true, false)
 	if code == 0 {
 		t.Fatal("cmdInitFromTOMLFileWithOptions = 0, want injected site binding failure")
 	}
@@ -268,7 +267,7 @@ path = %q
 	cityPath := filepath.Join(t.TempDir(), "city")
 	fs := &recordingFS{failRenameTarget: filepath.Join(cityPath, ".gc", "site.toml")}
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fs, srcToml, cityPath, "", &stdout, &stderr, true, false)
+	code := cmdInitFromTOMLFileWithOptions(fs, srcToml, cityPath, "", &stdout, &stderr, true, false)
 	if code == 0 {
 		t.Fatal("cmdInitFromTOMLFileWithOptions = 0, want injected site binding failure")
 	}
@@ -312,7 +311,7 @@ path = %q
 
 	cityPath := filepath.Join(t.TempDir(), "city")
 	var stdout, stderr bytes.Buffer
-	code := cmdInitFromTOMLFileWithOptions(context.Background(), fsys.OSFS{}, srcToml, cityPath, "", &stdout, &stderr, true, false)
+	code := cmdInitFromTOMLFileWithOptions(fsys.OSFS{}, srcToml, cityPath, "", &stdout, &stderr, true, false)
 	if code != 0 {
 		t.Fatalf("cmdInitFromTOMLFileWithOptions = %d, want success; stderr=%s", code, stderr.String())
 	}
