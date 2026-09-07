@@ -815,6 +815,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		SkipCityDoltCheck:    skipRigDoltChecks || (!scopeUsesManagedBdStoreContract(warmupCityPath, warmupCityPath) && !workspaceNeedsCityDoltCheck(warmupCityPath, cfg)),
 		SkipManagedDoltCheck: managedDoltOpsCheckSkip(warmupCityPath, cfg, nil),
 		SkipRigDoltChecks:    skipRigDoltChecks,
+		SkipStorePreflight:   true,
 	})
 	warmupOpts := warmup.WarmupOpts{
 		Checks: warmupChecks,
@@ -1067,7 +1068,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		poolDesired = make(map[string]int)
 	}
 	mergeNamedSessionDemand(poolDesired, dsResult.NamedSessionDemand, cfg)
-	awakeAssignedWorkBeads, awakeAssignedStoreRefs := filterAssignedWorkBeadsForSessionWake(cfg, cityPath, oneShotStore, openInfos, dsResult.AssignedWorkBeads, dsResult.AssignedWorkStoreRefs)
+	awakeAssignedWorkBeads, awakeAssignedStoreRefs, awakeAssignedStores := filterAssignedWorkBeadsForSessionWakeWithStores(cfg, cityPath, oneShotStore, openInfos, dsResult.AssignedWorkBeads, dsResult.AssignedWorkStoreRefs, dsResult.AssignedWorkStores)
 	reconcileSessionBeadsAtPathWithNamedDemand(
 		sigCtx, cityPath, sessionBeads.OpenForReconcile(), sessionBeads, ds, cfgNames, cfg, sp, sessStore,
 		nil, awakeAssignedWorkBeads, rigStores, nil, dt, nil, poolDesired,
@@ -1078,6 +1079,7 @@ func doStartStandalone(args []string, controllerMode bool, stdout, stderr io.Wri
 		nil, clock.Real{}, recorder, cfg.Session.StartupTimeoutDuration(), 0,
 		stdout, stderr,
 		withReadyAssignedFlags(readyAssignedFlagsForBeads(dsResult.ReadyAssigned, awakeAssignedWorkBeads, awakeAssignedStoreRefs)),
+		withAssignedWorkStores(awakeAssignedStores),
 	)
 
 	// Post-reconcile sync: update bead state to reflect post-start reality.
@@ -1425,9 +1427,14 @@ func sessionSetupContextForAgent(cityPath, cityName, qualifiedName string, a *co
 	}
 }
 
-func resolveConfiguredWorkDir(cityPath, cityName, qualifiedName string, a *config.Agent, rigs []config.Rig) (string, error) {
+// resolveConfiguredWorkDirPath resolves an agent's working directory without
+// creating it. Pure computations — metadata patch building, dry-run previews,
+// display — must use this variant so that resolving a path never mutates the
+// filesystem (gc-r9fx). Session-start paths that need the directory to exist
+// use resolveConfiguredWorkDir.
+func resolveConfiguredWorkDirPath(cityPath, cityName, qualifiedName string, a *config.Agent, rigs []config.Rig) (string, error) {
 	if a == nil {
-		return resolveAgentDir(cityPath, "")
+		return resolveAgentDirPath(cityPath, ""), nil
 	}
 	if strings.TrimSpace(qualifiedName) == "" {
 		qualifiedName = a.QualifiedName()
@@ -1444,7 +1451,21 @@ func resolveConfiguredWorkDir(cityPath, cityName, qualifiedName string, a *confi
 	if err := workdirutil.ValidateAncestorWorktreesNotStale(workDir); err != nil {
 		return "", err
 	}
-	return resolveAgentDir(cityPath, workDir)
+	return resolveAgentDirPath(cityPath, workDir), nil
+}
+
+// resolveConfiguredWorkDir resolves an agent's working directory and creates
+// it. Only session-start paths may call this; pure computations use
+// resolveConfiguredWorkDirPath.
+func resolveConfiguredWorkDir(cityPath, cityName, qualifiedName string, a *config.Agent, rigs []config.Rig) (string, error) {
+	dir, err := resolveConfiguredWorkDirPath(cityPath, cityName, qualifiedName, a, rigs)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("creating agent dir %q: %w", dir, err)
+	}
+	return dir, nil
 }
 
 // configuredRigName returns the rig associated with an agent, preferring the
