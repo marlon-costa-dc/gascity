@@ -65,7 +65,7 @@ are done. If the result action is `work`, use `bead_id` as the work bead.
    ```
 9. If more work exists, go to step 2. If not, re-check briefly (see below).
 
-**Always set both `gc.outcome` and `gc.work_outcome` in the same `bd update`
+**Always set both `gc.outcome` and `gc.work_outcome` in the same `gc bd update`
 call with `--status closed`.** `gc.outcome` is the control-plane result
 (pass/fail/skipped/canceled) that the retry classifier consults; `gc.work_outcome`
 is the work-record disposition (shipped/no-op/blocked/abandoned) that the close
