@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,12 +20,14 @@ func isTestBinary() bool {
 	if len(os.Args) == 0 {
 		return false
 	}
-	return strings.HasSuffix(filepath.Base(os.Args[0]), ".test")
+	return strings.HasSuffix(os.Args[0], ".test") ||
+		strings.Contains(os.Args[0], ".test")
 }
 
 // Config holds machine-wide supervisor configuration loaded from
 // ~/.gc/supervisor.toml (or $GC_HOME/supervisor.toml).
 type Config struct {
+	Credentials CredentialsConfig `toml:"credentials,omitempty"`
 	Supervisor  Section           `toml:"supervisor"`
 	Publication PublicationConfig `toml:"publication,omitempty"`
 	Events      EventsSection     `toml:"events,omitempty"`
@@ -56,6 +59,21 @@ type Section struct {
 	// open. See config.APIConfig for the key format and full semantics.
 	ReadAuthVerifyKey string `toml:"read_auth_verify_key,omitempty"`
 	ReadAuthRequired  bool   `toml:"read_auth_required,omitempty"`
+}
+
+// CredentialsConfig declares encrypted service credentials the supervisor may
+// read from systemd's CREDENTIALS_DIRECTORY.
+type CredentialsConfig struct {
+	Encrypted []EncryptedCredential `toml:"encrypted,omitempty"`
+}
+
+// EncryptedCredential maps a non-secret systemd credential ID/path pair to one
+// environment variable for explicitly selected provider processes.
+type EncryptedCredential struct {
+	ID        string   `toml:"id"`
+	Path      string   `toml:"path"`
+	Env       string   `toml:"env"`
+	Providers []string `toml:"providers"`
 }
 
 // PublicationConfig holds machine-wide publication policy for workspace
@@ -209,7 +227,107 @@ func LoadConfig(path string) (Config, error) {
 	if err := toml.Unmarshal(data, &cfg); err != nil {
 		return cfg, err
 	}
+	if err := cfg.Credentials.normalizeAndValidate(); err != nil {
+		return cfg, err
+	}
 	return cfg, nil
+}
+
+func (c *CredentialsConfig) normalizeAndValidate() error {
+	if c == nil {
+		return nil
+	}
+	ids := make(map[string]int)
+	envs := make(map[string]int)
+	for i := range c.Encrypted {
+		cred := &c.Encrypted[i]
+		cred.ID = strings.TrimSpace(cred.ID)
+		cred.Path = strings.TrimSpace(cred.Path)
+		cred.Env = strings.TrimSpace(cred.Env)
+		for j := range cred.Providers {
+			cred.Providers[j] = strings.TrimSpace(cred.Providers[j])
+		}
+		sort.Strings(cred.Providers)
+
+		if !validCredentialID(cred.ID) {
+			return fmt.Errorf("credentials.encrypted[%d].id must be a non-empty systemd credential id using only letters, digits, '_', '.', or '-'", i)
+		}
+		if !filepath.IsAbs(cred.Path) || strings.ContainsAny(cred.Path, "\x00\r\n") {
+			return fmt.Errorf("credentials.encrypted[%d].path for id %q must be an absolute path without control characters", i, cred.ID)
+		}
+		if !validEnvName(cred.Env) {
+			return fmt.Errorf("credentials.encrypted[%d].env for id %q must be a valid environment variable name", i, cred.ID)
+		}
+		if prev, ok := envs[cred.Env]; ok {
+			return fmt.Errorf("credentials.encrypted[%d].env %q duplicates credentials.encrypted[%d]", i, cred.Env, prev)
+		}
+		envs[cred.Env] = i
+		if len(cred.Providers) == 0 {
+			return fmt.Errorf("credentials.encrypted[%d].providers for id %q must name at least one provider", i, cred.ID)
+		}
+		seenProvider := make(map[string]bool, len(cred.Providers))
+		for _, provider := range cred.Providers {
+			if !validProviderCredentialSelector(provider) {
+				return fmt.Errorf("credentials.encrypted[%d].providers contains an invalid provider selector for id %q", i, cred.ID)
+			}
+			if seenProvider[provider] {
+				return fmt.Errorf("credentials.encrypted[%d].providers contains duplicate provider %q for id %q", i, provider, cred.ID)
+			}
+			seenProvider[provider] = true
+		}
+		if prev, ok := ids[cred.ID]; ok {
+			return fmt.Errorf("credentials.encrypted[%d].id %q duplicates credentials.encrypted[%d]", i, cred.ID, prev)
+		}
+		ids[cred.ID] = i
+	}
+	return nil
+}
+
+func validCredentialID(id string) bool {
+	if id == "" || id == "." || id == ".." {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'A' && r <= 'Z':
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '_' || r == '.' || r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func validEnvName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i, r := range name {
+		switch {
+		case r >= 'A' && r <= 'Z':
+		case r >= 'a' && r <= 'z':
+			if i == 0 {
+				return false
+			}
+		case r >= '0' && r <= '9':
+			if i == 0 {
+				return false
+			}
+		case r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func validProviderCredentialSelector(provider string) bool {
+	if provider == "" || strings.ContainsAny(provider, "\x00\r\n\t =") {
+		return false
+	}
+	return true
 }
 
 // DefaultHome returns the default GC home directory (~/.gc). Respects

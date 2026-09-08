@@ -1444,7 +1444,6 @@ gc dolt-cleanup [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--exact-target` | string |  | remove only the named orphan database (bypasses stale-prefix scan; still subject to rig-protection, live-session, and identifier guards) |
 | `--force` | bool |  | actually drop, purge, and kill orphaned resources (default: dry-run) |
 | `--json` | bool |  | emit JSON envelope (gc.dolt.cleanup.v1) |
 | `--max-orphan-dbs` | int |  | with --force, refuse cleanup when live stale database count exceeds this limit |
@@ -2002,9 +2001,7 @@ Runs a managed gc hook command in a child process with a hard timeout.
 
 This protects provider hook callbacks from wedged data-plane commands. The
 child process is the current gc executable, and &lt;gc args...&gt; are passed to it
-verbatim. With --when-managed-session, the child runs only when the callback
-has a complete Gas City session identity. An unmanaged callback is not selected
-and exits successfully; a partial identity fails before the child starts.
+verbatim.
 
 ```
 gc hook run -- <gc args...> [flags]
@@ -2014,7 +2011,6 @@ gc hook run -- <gc args...> [flags]
 |------|------|---------|-------------|
 | `--timeout` | duration | `15s` | hard timeout for the managed hook command |
 | `--timeout-exit-code` | int | `124` | exit code to return when the managed hook command times out |
-| `--when-managed-session` | bool |  | run only with complete Gas City managed-session context |
 
 ## gc import
 

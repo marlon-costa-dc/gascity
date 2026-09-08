@@ -93,6 +93,7 @@ func TestProductMetricsServiceChildEnvAgentScriptBDIsUnaffected(t *testing.T) {
 func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 	const (
 		hostileAmbientExplicitValue = "hostile-ambient-explicit-value"
+		hostileSecretsValue         = "hostile-secrets-value"
 		hostileLaunchctlValue       = "hostile-launchctl-value"
 	)
 	hostileValues := []string{
@@ -112,7 +113,7 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			hostileSources:   true,
 		},
 		{
-			name:            "unset fixed value is added",
+			name:            "unset opt-out is added",
 			explicitEnvKeys: []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"},
 		},
 	}
@@ -129,7 +130,6 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			}
 			t.Setenv("BD_DISABLE_METRICS", "keep-beads-setting")
 			t.Setenv("OTEL_SERVICE_NAME", "keep-otel-setting")
-
 			launchctlGCProbes := 0
 			previousLaunchctlGetenv := supervisorLaunchctlGetenv
 			supervisorLaunchctlGetenv = func(key string) string {
@@ -154,6 +154,12 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			if launchctlGCProbes != 0 {
 				t.Fatalf("launchctl getenv probes for fixed service key %s = %d, want 0", execenv.UsageMetricsDisableEnv, launchctlGCProbes)
 			}
+			counts := make(map[string]int)
+			values := make(map[string]string)
+			for _, item := range data.ExtraEnv {
+				counts[item.Name]++
+				values[item.Name] = item.Value
+			}
 			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
 				if !slices.Contains(data.InheritedEnv, key) {
 					t.Fatalf("supervisor InheritedEnv missing explicit name %s: %#v", key, data.InheritedEnv)
@@ -174,16 +180,21 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("render systemd supervisor service: %v", err)
 			}
+			// Explicit non-credential selections are name-only: their values
+			// live in the user-manager environment, never in the unit file.
+			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
+				if !strings.Contains(systemdContent, "PassEnvironment="+key) {
+					t.Fatalf("systemd unit missing PassEnvironment=%s:\n%s", key, systemdContent)
+				}
+				if strings.Contains(systemdContent, "Environment="+key+"=") {
+					t.Fatalf("systemd unit serialized a value for explicit key %s:\n%s", key, systemdContent)
+				}
+			}
 			assertGeneratedSupervisorEnvironment(t, "systemd", systemdContent, map[string]string{
 				execenv.UsageMetricsDisableEnv: execenv.UsageMetricsDisableValue,
 			}, func(key, value string) string {
 				return "Environment=" + systemdEnv(key, value)
 			})
-			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
-				if !strings.Contains(systemdContent, "PassEnvironment="+key) {
-					t.Fatalf("systemd service missing inherited name %s:\n%s", key, systemdContent)
-				}
-			}
 			wantExecStart := "ExecStart=" + supervisorSystemdQuotePath(data.GCPath) + " supervisor run"
 			if !strings.Contains(systemdContent, wantExecStart) {
 				t.Fatalf("systemd service missing unchanged %q:\n%s", wantExecStart, systemdContent)
@@ -198,19 +209,22 @@ func TestProductMetricsServiceChildEnvGeneratedSupervisorFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("render launchd supervisor service: %v", err)
 			}
+			// launchd delivers explicit selections only through the manager
+			// environment ('launchctl setenv'); the plist never lists them and
+			// install fails loud when their values are not set there.
 			assertGeneratedSupervisorEnvironment(t, "launchd", launchdContent, map[string]string{
 				execenv.UsageMetricsDisableEnv: execenv.UsageMetricsDisableValue,
 			}, func(key, value string) string {
 				return "<key>" + xmlEscape(key) + "</key>\n        <string>" + xmlEscape(value) + "</string>"
 			})
+			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
+				if strings.Contains(launchdContent, "<key>"+xmlEscape(key)+"</key>") {
+					t.Fatalf("launchd plist serialized explicit selection %s; install must fail loud instead:\n%s", key, launchdContent)
+				}
+			}
 			for _, argument := range []string{data.GCPath, "supervisor", "run"} {
 				if !strings.Contains(launchdContent, "<string>"+xmlEscape(argument)+"</string>") {
 					t.Fatalf("launchd service missing unchanged program argument %q:\n%s", argument, launchdContent)
-				}
-			}
-			for _, key := range []string{"BD_DISABLE_METRICS", "OTEL_SERVICE_NAME"} {
-				if strings.Contains(launchdContent, key) {
-					t.Fatalf("launchd service serialized inherited name %s:\n%s", key, launchdContent)
 				}
 			}
 			for _, hostileValue := range hostileValues {

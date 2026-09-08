@@ -26,11 +26,6 @@ import (
 // setIssueRowVersion is a no-op: the 1.2.2 line has no CAS token to stamp.
 func setIssueRowVersion(_ *beadslib.Issue, _ int64) {}
 
-// issueRowVersion reports 0, the zero CAS token. Callers compare it against a
-// caller-supplied expected revision; conditional writes are unavailable in this
-// build (ConditionalWriterFor returns false), so no comparison reaches here.
-func issueRowVersion(_ *beadslib.Issue) int64 { return 0 }
-
 // getReadyWorkForOpenStatuses queries each open-class backing status in turn,
 // because WorkFilter on this library line carries a single Status rather than a
 // set. Results are concatenated in status order; the caller de-duplicates by ID

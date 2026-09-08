@@ -340,7 +340,7 @@ func TestBundledPiHookUsesCurrentExtensionAPI(t *testing.T) {
 		"GC_PROVIDER_SESSION_ID",
 		"GC_PROVIDER_SESSION_ID_REQUIRED",
 		`stdio: ["ignore", "pipe", "inherit"]`,
-		`runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"]`,
+		"gc handoff --auto",
 		"mirrorTempCounter",
 		"fs.rmSync(tmp",
 		"gc-hooks run:",

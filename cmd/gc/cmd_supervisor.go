@@ -1346,6 +1346,10 @@ func runSupervisor(stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "gc supervisor: config: %v\n", err) //nolint:errcheck
 		return 1
 	}
+	if err := activateSupervisorCredentials(supCfg.Credentials); err != nil {
+		fmt.Fprintf(stderr, "gc supervisor: credentials: %v\n", err) //nolint:errcheck
+		return 1
+	}
 
 	reg := supervisor.NewRegistry(supervisor.RegistryPath())
 	if err := cleanupSupervisorWorkspaceServicesForSupervisorStart(supervisor.DefaultHome()); err != nil {

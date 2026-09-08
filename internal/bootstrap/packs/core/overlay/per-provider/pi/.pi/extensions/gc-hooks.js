@@ -9,7 +9,7 @@
 //
 // Events:
 //   session_start    → gc prime --hook (load context side effects)
-//   session_compact  → selected auto handoff + gc prime --hook
+//   session_compact  → gc handoff --auto via hook run --when-managed-session + gc prime --hook
 //   before_agent_start → gc hook --inject + queued nudges + unread mail
 
 const { execFileSync } = require("node:child_process");
@@ -189,7 +189,7 @@ module.exports = function gascityPiExtension(pi) {
 
   pi.on("session_compact", (_event, ctx) => {
     run(["prime", "--hook"], ctx.cwd, hookEnv(ctx, "PreCompact"));
-    run(["handoff", "--auto", "context cycle"], ctx.cwd);
+    runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"], ctx.cwd);
     mirrorTranscript(ctx);
   });
 

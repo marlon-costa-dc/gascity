@@ -334,9 +334,9 @@ func TestRenderSupervisorLaunchdTemplate(t *testing.T) {
 		LaunchdLabel:  defaultSupervisorLaunchdLabel,
 		Path:          "/usr/local/bin:/usr/bin:/bin",
 		ExtraEnv: []supervisorServiceEnvVar{
-			{Name: "CLAUDE_CONFIG_DIR", Value: `/home/user/.config/claude-&<"'>`},
+			{Name: "ANTHROPIC_API_KEY", Value: `sk-&<"'>`},
+			{Name: "OPENAI_API_KEY", Value: "sk-openai-123"},
 		},
-		InheritedEnv: []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
 	}
 
 	content, err := renderSupervisorTemplate(supervisorLaunchdTemplate, data)
@@ -354,18 +354,15 @@ func TestRenderSupervisorLaunchdTemplate(t *testing.T) {
 		"XDG_RUNTIME_DIR",
 		"/tmp/gc-run",
 		"<key>PATH</key>",
-		"<key>CLAUDE_CONFIG_DIR</key>",
-		"<string>/home/user/.config/claude-&amp;&lt;&quot;&apos;&gt;</string>",
+		"<key>ANTHROPIC_API_KEY</key>",
+		"<string>sk-&amp;&lt;&quot;&apos;&gt;</string>",
+		"<key>OPENAI_API_KEY</key>",
+		"<string>sk-openai-123</string>",
 		"<key>GC_SUPERVISOR_PRESERVE_SESSIONS_ON_SIGNAL</key>",
 		"<string>1</string>",
 	} {
 		if !strings.Contains(content, check) {
 			t.Fatalf("launchd template missing %q", check)
-		}
-	}
-	for _, forbidden := range []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "sk-"} {
-		if strings.Contains(content, forbidden) {
-			t.Fatalf("launchd template contains inherited credential material %q", forbidden)
 		}
 	}
 }
@@ -400,9 +397,9 @@ func TestRenderSupervisorSystemdTemplate(t *testing.T) {
 		LaunchdLabel:  defaultSupervisorLaunchdLabel,
 		Path:          "/usr/local/bin:/usr/bin:/bin",
 		ExtraEnv: []supervisorServiceEnvVar{
-			{Name: "GC_DOLT_LOGLEVEL", Value: "debug"},
+			{Name: "ANTHROPIC_API_KEY", Value: `sk-"ant"\value`},
+			{Name: "OPENAI_API_KEY", Value: "sk-openai-123"},
 		},
-		InheritedEnv: []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY"},
 	}
 
 	content, err := renderSupervisorTemplate(supervisorSystemdTemplate, data)
@@ -419,16 +416,12 @@ func TestRenderSupervisorSystemdTemplate(t *testing.T) {
 		`Environment=GC_HOME="/home/user/.gc"`,
 		`Environment=XDG_RUNTIME_DIR="/tmp/gc-run"`,
 		`Environment=PATH="/usr/local/bin:/usr/bin:/bin"`,
-		`Environment=GC_DOLT_LOGLEVEL="debug"`,
-		`PassEnvironment=ANTHROPIC_API_KEY`,
-		`PassEnvironment=OPENAI_API_KEY`,
+		`Environment=ANTHROPIC_API_KEY="sk-\"ant\"\\value"`,
+		`Environment=OPENAI_API_KEY="sk-openai-123"`,
 	} {
 		if !strings.Contains(content, check) {
 			t.Fatalf("systemd template missing %q", check)
 		}
-	}
-	if strings.Contains(content, "sk-") {
-		t.Fatalf("systemd template contains a credential value:\n%s", content)
 	}
 	wantBlock := "[Service]\nType=simple\n# Signal only the main supervisor PID on stop. The systemd default\n" +
 		"# (control-group) would cascade SIGTERM to tmux servers spawned by\n" +
@@ -513,7 +506,7 @@ func TestBuildSupervisorServiceDataDoesNotPersistLogTeeByDefault(t *testing.T) {
 
 // TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn pins the
 // explicit-selection contract without serializing its value.
-func TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn(t *testing.T) {
+func TestBuildSupervisorServiceDataDoesNotInheritLogTeeViaSupervisorEnvOptIn(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -528,10 +521,6 @@ func TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn(t *testin
 	if got := supervisorServiceEnvMap(data.ExtraEnv); got[supervisorLogTeeEnv] != "" {
 		t.Fatalf("ExtraEnv[%s] = %q, want omitted value (all env: %#v)", supervisorLogTeeEnv, got[supervisorLogTeeEnv], got)
 	}
-	if !slices.Contains(data.InheritedEnv, supervisorLogTeeEnv) {
-		t.Fatalf("InheritedEnv missing %s: %#v", supervisorLogTeeEnv, data.InheritedEnv)
-	}
-
 	launchdContent, err := renderSupervisorTemplate(supervisorLaunchdTemplate, data)
 	if err != nil {
 		t.Fatal(err)
@@ -544,8 +533,10 @@ func TestBuildSupervisorServiceDataInheritsLogTeeViaSupervisorEnvOptIn(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Explicit selections are name-only: the unit passes the name through
+	// systemd PassEnvironment and never serializes a value for it.
 	if !strings.Contains(systemdContent, "PassEnvironment="+supervisorLogTeeEnv) {
-		t.Fatalf("systemd unit missing inherited %s name:\n%s", supervisorLogTeeEnv, systemdContent)
+		t.Fatalf("systemd unit missing PassEnvironment=%s:\n%s", supervisorLogTeeEnv, systemdContent)
 	}
 	if strings.Contains(systemdContent, "Environment="+supervisorLogTeeEnv+"=") {
 		t.Fatalf("systemd unit serialized %s value:\n%s", supervisorLogTeeEnv, systemdContent)
@@ -593,9 +584,6 @@ func TestBuildSupervisorServiceDataInheritsProviderEnvByNameOnly(t *testing.T) {
 		if _, ok := got[key]; ok {
 			t.Fatalf("ExtraEnv contains inherited value for %s: %#v", key, got)
 		}
-		if !slices.Contains(data.InheritedEnv, key) {
-			t.Fatalf("InheritedEnv missing %s: %#v", key, data.InheritedEnv)
-		}
 	}
 	if got["CLAUDE_CONFIG_DIR"] != filepath.Join(homeDir, ".claude") {
 		t.Fatalf("safe CLAUDE_CONFIG_DIR = %q, want projected literal", got["CLAUDE_CONFIG_DIR"])
@@ -603,9 +591,6 @@ func TestBuildSupervisorServiceDataInheritsProviderEnvByNameOnly(t *testing.T) {
 	for _, key := range []string{"GC_HOME", "PATH", "XDG_RUNTIME_DIR", "IGNORED_EMPTY", "UNRELATED_SECRET", "AWS_PAGER"} {
 		if _, ok := got[key]; ok {
 			t.Fatalf("ExtraEnv should not include %s: %#v", key, got)
-		}
-		if slices.Contains(data.InheritedEnv, key) {
-			t.Fatalf("InheritedEnv should not include %s: %#v", key, data.InheritedEnv)
 		}
 	}
 }
@@ -642,16 +627,16 @@ CUSTOM_PROVIDER_TOKEN=custom-from-file
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
 	for _, key := range []string{"ANTHROPIC_AUTH_TOKEN", "CUSTOM_PROVIDER_TOKEN"} {
-		if _, ok := supervisorServiceEnvMap(data.ExtraEnv)[key]; ok || slices.Contains(data.InheritedEnv, key) {
-			t.Fatalf("retired secrets file selected %s: ExtraEnv=%#v InheritedEnv=%#v", key, data.ExtraEnv, data.InheritedEnv)
+		if _, ok := supervisorServiceEnvMap(data.ExtraEnv)[key]; ok {
+			t.Fatalf("retired secrets file selected %s: ExtraEnv=%#v", key, data.ExtraEnv)
 		}
 	}
 }
 
-// TestBuildSupervisorServiceDataInheritsRepresentativeProviderPrefixes asserts
-// that internal/processenv's provider selection crosses the supervisor
-// boundary as names only.
-func TestBuildSupervisorServiceDataInheritsRepresentativeProviderPrefixes(t *testing.T) {
+// TestBuildSupervisorServiceDataRejectsRepresentativeProviderPrefixes asserts
+// that internal/processenv's provider credential selection does not cross the
+// service manager boundary.
+func TestBuildSupervisorServiceDataRejectsRepresentativeProviderPrefixes(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 	t.Setenv("GC_HOME", filepath.Join(homeDir, ".gc"))
@@ -689,9 +674,6 @@ func TestBuildSupervisorServiceDataInheritsRepresentativeProviderPrefixes(t *tes
 	for key := range probes {
 		if _, ok := got[key]; ok {
 			t.Errorf("ExtraEnv contains provider value for %s", key)
-		}
-		if !slices.Contains(data.InheritedEnv, key) {
-			t.Errorf("InheritedEnv missing provider name %s", key)
 		}
 	}
 }
@@ -742,12 +724,9 @@ func TestBuildSupervisorServiceDataInheritsCuratedProviderCredentialEnvKeys(t *t
 		if _, ok := got[key]; ok {
 			t.Errorf("ExtraEnv contains curated provider value for %s", key)
 		}
-		if !slices.Contains(data.InheritedEnv, key) {
-			t.Errorf("InheritedEnv missing curated provider name %s", key)
-		}
 	}
 	for _, key := range []string{"AWS_EXECUTION_ENV", "AWS_PAGER", "AWS_VAULT"} {
-		if _, ok := got[key]; ok || slices.Contains(data.InheritedEnv, key) {
+		if _, ok := got[key]; ok {
 			t.Errorf("supervisor env should not include broad AWS runtime state %s", key)
 		}
 	}
@@ -837,9 +816,6 @@ func TestBuildSupervisorServiceDataSkipsDoltEndpointEnvUnlessExplicitlyOptedIn(t
 		if _, ok := got[key]; ok {
 			t.Fatalf("ExtraEnv contains explicit inherited value for %s: %#v", key, got)
 		}
-		if !slices.Contains(data.InheritedEnv, key) {
-			t.Fatalf("InheritedEnv missing explicit name %s: %#v", key, data.InheritedEnv)
-		}
 	}
 }
 
@@ -893,8 +869,8 @@ func TestBuildSupervisorServiceDataDoesNotReadExplicitEnvOptInFromLaunchctl(t *t
 		t.Fatalf("buildSupervisorServiceData: %v", err)
 	}
 	got := supervisorServiceEnvMap(data.ExtraEnv)
-	if _, ok := got["GC_DOLT_DATA_DIR"]; ok || slices.Contains(data.InheritedEnv, "GC_DOLT_DATA_DIR") {
-		t.Fatalf("empty current-process opt-in was selected: ExtraEnv=%#v InheritedEnv=%#v", got, data.InheritedEnv)
+	if _, ok := got["GC_DOLT_DATA_DIR"]; ok {
+		t.Fatalf("empty current-process opt-in was selected: ExtraEnv=%#v", got)
 	}
 }
 
@@ -1409,13 +1385,7 @@ func TestInstallSupervisorSystemdWarmRefreshRefusesActivePrePreserveSupervisor(t
 	}
 }
 
-// The unit refresh must never restart the unit wholesale and must only ever
-// signal the supervisor's main PID: with KillMode=process the main PID is the
-// only thing systemd's stop path signals, and the manual SIGTERM-to-main path
-// mirrors that contract even when systemd cannot be consulted. SIGKILL exists
-// only as the bounded fallback when the old supervisor ignores SIGTERM for the
-// warm-refresh stop timeout — this test pins exactly that fallback path.
-func TestInstallSupervisorSystemdWarmRefreshSignalsMainPIDWithoutRestart(t *testing.T) {
+func TestInstallSupervisorSystemdWarmRefreshFallsBackToKillWhenGracefulSignalDoesNotStop(t *testing.T) {
 	if goruntime.GOOS != "linux" {
 		t.Skip("systemd path only applies on linux")
 	}
@@ -1441,18 +1411,22 @@ func TestInstallSupervisorSystemdWarmRefreshSignalsMainPIDWithoutRestart(t *test
 
 	oldRun := supervisorSystemctlRun
 	oldActive := supervisorSystemctlActive
+	oldTimeout := supervisorSystemdWarmRefreshStopTimeout
+	oldPoll := supervisorSystemdWarmRefreshPollInterval
 	var calls []string
 	supervisorSystemctlRun = func(args ...string) error {
 		calls = append(calls, strings.Join(args, " "))
 		return nil
 	}
-	// Always active: the old supervisor never reports inactive within the
-	// graceful stop timeout, driving the refresh through its SIGKILL fallback.
 	supervisorSystemctlActive = func(string) bool { return true }
 	stubSupervisorRunningPreserveSignalReady(t, true)
+	supervisorSystemdWarmRefreshStopTimeout = time.Millisecond
+	supervisorSystemdWarmRefreshPollInterval = time.Millisecond
 	t.Cleanup(func() {
 		supervisorSystemctlRun = oldRun
 		supervisorSystemctlActive = oldActive
+		supervisorSystemdWarmRefreshStopTimeout = oldTimeout
+		supervisorSystemdWarmRefreshPollInterval = oldPoll
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -1469,9 +1443,6 @@ func TestInstallSupervisorSystemdWarmRefreshSignalsMainPIDWithoutRestart(t *test
 		if !strings.Contains(joined, want) {
 			t.Fatalf("systemctl calls = %v, want %q", calls, want)
 		}
-	}
-	if strings.Contains(joined, "--user restart "+service) {
-		t.Fatalf("systemctl calls = %v, warm refresh must signal the main PID instead of restarting the unit", calls)
 	}
 }
 

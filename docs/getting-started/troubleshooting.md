@@ -363,32 +363,44 @@ fixed in [PR #141](https://github.com/gastownhall/gascity/pull/141).
 ## Provider Credentials in the Supervisor Environment
 
 The generated launchd plist and systemd unit never contain provider credential
-values. Gas City selects non-empty provider variables from the process that
-runs `gc supervisor install`; variables named by `GC_SUPERVISOR_ENV` use the
-same value-free path. Missing variables remain missing so the provider fails at
-its own boundary.
+values. On Linux, generated services use systemd encrypted credentials:
+`supervisor.toml` declares non-secret credential IDs, ciphertext paths,
+environment variable names, and the providers allowed to receive each value.
+Installation writes only `LoadCredentialEncrypted=` entries and
+`UnsetEnvironment=` cleanup into the unit.
 
-On Linux, installation imports the selected names and their current process
-values into the user systemd manager without placing values in command
-arguments or the unit. The unit records only `PassEnvironment` names. An active
-preserve-capable supervisor is restarted even when the selected names are
-unchanged, so credential rotation reaches newly launched sessions.
+Example declaration:
 
-On macOS, installation verifies that launchd's user domain already carries the
-same values as the invoking process. A missing or different entry stops the
-install and reports names only. Populate launchd through the credential owner
-and rerun installation; Gas City does not serialize a replacement into the
-plist.
+```toml
+[credentials]
+[[credentials.encrypted]]
+id = "openai-token"
+path = "/home/user/.gc/credentials/openai-token.cred"
+env = "OPENAI_API_KEY"
+providers = ["codex"]
+```
 
-After adding or rotating a credential, export the canonical variable in the
-current process and refresh the installed supervisor:
+Provision the ciphertext outside `gc supervisor install`, for example through
+AI Hub or an operator-owned secret flow that runs `systemd-creds encrypt --user`
+with the same credential ID. The plaintext must not appear in `Environment=`,
+`PassEnvironment=`, command arguments, manager environment, logs, or the unit
+file.
+
+At runtime, systemd exposes decrypted credential files through
+`CREDENTIALS_DIRECTORY`. The supervisor reads only that directory, clears
+inherited provider credentials from its own environment, and injects a loaded
+value only into subprocesses whose resolved provider matches the configured
+selector. Missing `CREDENTIALS_DIRECTORY`, missing IDs, invalid files, empty
+values, control characters, or unmapped providers fail at their owner; Gas City
+does not fall back to ambient environment variables.
+
+After adding or rotating a credential, refresh the installed supervisor:
 
 ```bash
 gc supervisor install
 ```
 
-There is no supervisor secrets file or alternate credential loader. Never put
-credential values in a generated service file.
+Never put credential values in a generated service file.
 
 ## Supervisor Log Written Twice (journald + supervisor.log)
 
@@ -428,20 +440,11 @@ Scope and caveats:
   is the single sink in those shapes. The variable is not captured into
   generated service files automatically; it exists for units you manage by
   hand.
-- **To deliver the variable through a generated service** — for example as a
-  starting point you then hand-edit to `StandardOutput=journal` — select its
-  name explicitly and regenerate:
-
-  ```bash
-  export GC_SUPERVISOR_LOG_TEE=0
-  GC_SUPERVISOR_ENV=GC_SUPERVISOR_LOG_TEE gc supervisor install
-  ```
-
-  The generated systemd unit records only `PassEnvironment=GC_SUPERVISOR_LOG_TEE`;
-  its value comes from the user manager. The launchd manager must already
-  contain the same value. Note that `gc start` regenerates the service file
-  with the file-redirect defaults, so a hand-edited unit at gc's service path
-  stays journal-only only on hosts where gc never manages the unit.
+- **To use journald-only logging**, run the supervisor under a hand-managed or
+  delegated unit that owns `StandardOutput=journal`,
+  `StandardError=journal`, and `GC_SUPERVISOR_LOG_TEE=0`. A hand-edited unit at
+  gc's service path stays journal-only only on hosts where gc never manages the
+  unit.
 
 ## Delegating the Supervisor Lifecycle to an Operator-Managed systemd Unit
 
