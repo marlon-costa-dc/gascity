@@ -227,3 +227,57 @@ func addProviderSelector(selectors map[string]bool, provider string) {
 		selectors[provider] = true
 	}
 }
+
+// providerProcessPassthroughEnvForResolvedProvider composes the controller
+// credential passthrough with the supervisor's encrypted-credential store for
+// one resolved provider. Encrypted credentials are authoritative for the env
+// keys they configure on the providers they select.
+func providerProcessPassthroughEnvForResolvedProvider(resolved *config.ResolvedProvider) map[string]string {
+	env := processenv.ProviderProcessPassthroughEnv()
+	for key, value := range supervisorCredentialEnvForResolvedProvider(resolved) {
+		env[key] = value
+	}
+	return env
+}
+
+// expandSessionEnvValueForResolvedProvider expands $VAR refs for one resolved
+// provider. Encrypted credentials configured for the provider resolve first;
+// a store-managed key never falls back to the ambient environment for an
+// unselected provider — the activation contract replaced that value.
+func expandSessionEnvValueForResolvedProvider(value string, resolved *config.ResolvedProvider) string {
+	return os.Expand(value, func(key string) string {
+		if v, ok := supervisorCredentialValueForResolvedProvider(resolved, key); ok {
+			return v
+		}
+		if supervisorCredentialsActivated() && supervisorCredentialEnvNameConfigured(key) {
+			return ""
+		}
+		return os.Getenv(key)
+	})
+}
+
+// expandUpstreamEnvValueForResolvedProvider expands a $VAR env-ref for one
+// resolved provider. Store-managed keys resolve only for selected providers;
+// an upstream ref to a store-managed key on an unselected provider is a hard
+// error that never leaks the ambient credential value it declined to use.
+func expandUpstreamEnvValueForResolvedProvider(value string, resolved *config.ResolvedProvider) (string, error) {
+	missing := ""
+	os.Expand(value, func(key string) string {
+		if missing == "" && supervisorCredentialsActivated() && supervisorCredentialEnvNameConfigured(key) {
+			if _, ok := supervisorCredentialValueForResolvedProvider(resolved, key); !ok {
+				missing = key
+			}
+		}
+		return ""
+	})
+	if missing != "" {
+		return "", fmt.Errorf("upstream env ref $%s is provisioned as an encrypted credential for other providers; provider %q is not selected", missing, resolvedProviderName(resolved))
+	}
+	expanded := os.Expand(value, func(key string) string {
+		if v, ok := supervisorCredentialValueForResolvedProvider(resolved, key); ok {
+			return v
+		}
+		return os.Getenv(key)
+	})
+	return expanded, nil
+}

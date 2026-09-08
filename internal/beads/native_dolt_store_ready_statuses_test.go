@@ -1,3 +1,11 @@
+//go:build beads_rowlock
+
+// Asserts Ready() issues ONE GetReadyWork call carrying every open-class status
+// via WorkFilter.Statuses. Requires beads_rowlock: that field exists only on the
+// newer library line. The default build queries one status at a time
+// (native_dolt_store_norowlock.go) and is covered by the ready-projection tests.
+// See beads gc-5oauf.
+
 package beads
 
 import (
@@ -7,23 +15,6 @@ import (
 
 	beadslib "github.com/steveyegge/beads"
 )
-
-// workFilterMatchesStatus mirrors the backing store's status selection for
-// GetReadyWork spies: Statuses carries the whole open-class set with OR
-// semantics, and singular Status remains honored for callers that still set
-// it. Spies that key off filter.Status alone silently match nothing once
-// Ready() moved to the single multi-status query.
-func workFilterMatchesStatus(filter beadslib.WorkFilter, status beadslib.Status) bool {
-	if filter.Status != "" {
-		return status == filter.Status
-	}
-	for _, s := range filter.Statuses {
-		if status == s {
-			return true
-		}
-	}
-	return false
-}
 
 // Ready must fetch all open-class backing statuses in ONE GetReadyWork call
 // (WorkFilter.Statuses) instead of one call per status: each backing call
