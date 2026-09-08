@@ -323,7 +323,7 @@ func TestGitRepoAwareFallbackPreservesRefStabilityForInRepoPaths(t *testing.T) {
 // under opt-in GC_FORMULA_REF.
 func TestGitRepoAwareFallbackUsesFilesystemForOutOfRepoPaths(t *testing.T) {
 	gitOK(t)
-	outsideDir := t.TempDir()
+	outsideDir := tempDirOutsideGit(t)
 	loose := filepath.Join(outsideDir, "loose.toml")
 	if err := os.WriteFile(loose, []byte("z = 3\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -508,6 +508,37 @@ func gitOK(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available in PATH")
+	}
+}
+
+func tempDirOutsideGit(t *testing.T) string {
+	t.Helper()
+	candidate, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for {
+		candidate = filepath.Dir(candidate)
+		cmd := exec.Command("git", "-C", candidate, "rev-parse", "--show-toplevel")
+		if err := cmd.Run(); err != nil {
+			dir, mkdirErr := os.MkdirTemp(candidate, "gascity-formula-source-")
+			if mkdirErr != nil {
+				t.Fatalf("create temporary directory outside Git: %v", mkdirErr)
+			}
+			t.Cleanup(func() {
+				if removeErr := os.RemoveAll(dir); removeErr != nil {
+					t.Errorf("remove temporary directory %s: %v", dir, removeErr)
+				}
+			})
+			verify := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
+			if out, verifyErr := verify.CombinedOutput(); verifyErr == nil {
+				t.Fatalf("temporary directory %s unexpectedly belongs to Git repo %s", dir, strings.TrimSpace(string(out)))
+			}
+			return dir
+		}
+		if candidate == filepath.Dir(candidate) {
+			t.Fatal("could not locate a writable temporary parent outside Git")
+		}
 	}
 }
 

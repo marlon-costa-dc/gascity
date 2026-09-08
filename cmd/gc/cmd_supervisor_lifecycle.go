@@ -1941,7 +1941,7 @@ func unsetSupervisorSystemdEnvironment(keys []string) error {
 	return nil
 }
 
-func supervisorSystemdCredentialPurgeNames(data *supervisorServiceData, existing []byte) ([]string, error) {
+func supervisorSystemdCredentialPurgeNames(data *supervisorServiceData, existing []byte) []string {
 	selected := make(map[string]bool)
 	add := func(key string) {
 		if supervisorServiceEnvNameRE.MatchString(key) {
@@ -1963,11 +1963,7 @@ func supervisorSystemdCredentialPurgeNames(data *supervisorServiceData, existing
 			add(key)
 		}
 	}
-	managerKeys, err := supervisorSystemdManagerCredentialEnvNames()
-	if err != nil {
-		return nil, err
-	}
-	for _, key := range managerKeys {
+	for _, key := range supervisorSystemdManagerCredentialEnvNames() {
 		add(key)
 	}
 	keys := make([]string, 0, len(selected))
@@ -1975,13 +1971,17 @@ func supervisorSystemdCredentialPurgeNames(data *supervisorServiceData, existing
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	return keys, nil
+	return keys
 }
 
-func supervisorSystemdManagerCredentialEnvNames() ([]string, error) {
+func supervisorSystemdManagerCredentialEnvNames() []string {
 	out, err := supervisorSystemctlOutput("--user", "show-environment")
 	if err != nil {
-		return nil, fmt.Errorf("systemctl --user show-environment: %w", err)
+		// Best-effort hygiene: a manager without show-environment (or a test
+		// fake) only loses the manager-sourced purge names; the unit-passed and
+		// process-scoped names below still purge, and the warning stays loud.
+		fmt.Fprintf(os.Stderr, "gc supervisor install: systemctl --user show-environment unavailable (%v); skipping manager-sourced credential purge names\n", err) //nolint:errcheck // best-effort stderr
+		return nil
 	}
 	var keys []string
 	for _, line := range strings.Split(string(out), "\n") {
@@ -1994,7 +1994,7 @@ func supervisorSystemdManagerCredentialEnvNames() ([]string, error) {
 		}
 	}
 	sort.Strings(keys)
-	return keys, nil
+	return keys
 }
 
 func supervisorSystemdPassEnvironmentNames(unit string) []string {
@@ -2057,11 +2057,7 @@ func installSupervisorSystemd(data *supervisorServiceData, stdout, stderr io.Wri
 		return 1
 	}
 
-	purgeEnv, err := supervisorSystemdCredentialPurgeNames(data, existing)
-	if err != nil {
-		fmt.Fprintf(stderr, "gc supervisor install: identifying credential names in user manager environment: %v\n", err) //nolint:errcheck // best-effort stderr
-		return 1
-	}
+	purgeEnv := supervisorSystemdCredentialPurgeNames(data, existing)
 	data.UnsetEnv = purgeEnv
 	content, err := renderSupervisorTemplate(supervisorSystemdTemplate, data)
 	if err != nil {

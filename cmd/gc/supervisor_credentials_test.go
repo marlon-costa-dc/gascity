@@ -175,12 +175,9 @@ func TestSupervisorSystemdCredentialPurgeNamesCollectsLegacyAndManagerCredential
 	t.Cleanup(func() { supervisorSystemctlOutput = oldOutput })
 	t.Setenv("ANTHROPIC_API_KEY", "ambient-anthropic-token")
 
-	keys, err := supervisorSystemdCredentialPurgeNames(&supervisorServiceData{
+	keys := supervisorSystemdCredentialPurgeNames(&supervisorServiceData{
 		Credentials: []supervisorServiceCredential{{ID: "openai-token", Env: "OPENAI_API_KEY", Path: "/non-secret/openai-token.cred"}},
 	}, []byte("PassEnvironment=GEMINI_API_KEY INVALID-NAME? GC_DOLT_PASSWORD\n"))
-	if err != nil {
-		t.Fatalf("supervisorSystemdCredentialPurgeNames: %v", err)
-	}
 	for _, want := range []string{"ANTHROPIC_API_KEY", "GC_DOLT_PASSWORD", "GEMINI_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"} {
 		if !slicesContainsString(keys, want) {
 			t.Fatalf("purge names %v missing %s", keys, want)

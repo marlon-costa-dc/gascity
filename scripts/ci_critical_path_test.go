@@ -1131,7 +1131,10 @@ func TestForkVerifyRunsOnlyInForks(t *testing.T) {
 		t.Fatal("fork-verify workflow has no verify job")
 	}
 
-	const want = "${{ github.repository != 'gastownhall/gascity' }}"
+	// Fork overlay: canonical PRs must not duplicate CI, and [WIP] pushes on
+	// the fork must not spend fork-verify cycles — CI owns the matrix via the
+	// Draft PR (gct-f451u family).
+	const want = "${{ github.repository != 'gastownhall/gascity' && !contains(github.event.head_commit.message, '[WIP]') }}"
 	if strings.TrimSpace(job.If) != want {
 		t.Fatalf("fork verify job condition = %q, want %q so canonical PRs do not duplicate CI", job.If, want)
 	}
