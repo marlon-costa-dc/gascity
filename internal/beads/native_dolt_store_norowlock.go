@@ -23,40 +23,6 @@ import (
 // fence and the single-call ready query. Doing so migrates every database
 // forward on open and is one-way — see beads gc-5oauf.
 
-// setIssueRowVersion is a no-op: the 1.2.2 line has no CAS token to stamp.
-func setIssueRowVersion(_ *beadslib.Issue, _ int64) {}
-
-// issueRowVersion reports 0, the zero CAS token. Callers compare it against a
-// caller-supplied expected revision; conditional writes are unavailable in this
-// build (ConditionalWriterFor returns false), so no comparison reaches here.
-func issueRowVersion(_ *beadslib.Issue) int64 { return 0 }
-
-// getReadyWorkForOpenStatuses queries each open-class backing status in turn,
-// because WorkFilter on this library line carries a single Status rather than a
-// set. Results are concatenated in status order; the caller de-duplicates by ID
-// and applies the gc-side post-filter, so the extra rows are harmless.
-//
-// This costs one round trip per status (~30-70ms per Ready() on a live
-// server-mode store versus the single-call path). It remains cheaper than the
-// BdStore fallback it replaces, which forks a bd process per operation.
-func getReadyWorkForOpenStatuses(
-	ctx context.Context,
-	storage beadslib.Storage,
-	base beadslib.WorkFilter,
-) ([]*beadslib.Issue, error) {
-	var out []*beadslib.Issue
-	for _, status := range nativeDoltOpenReadyStatuses {
-		filter := base
-		filter.Status = status
-		issues, err := storage.GetReadyWork(ctx, filter)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, issues...)
-	}
-	return out, nil
-}
-
 // blockedBatchQuerier is the local shape of the library's BlockedQuerier: a
 // storage that can answer the denormalized, transitive is_blocked column in one
 // batched read.

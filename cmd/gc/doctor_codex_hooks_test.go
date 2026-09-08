@@ -49,7 +49,7 @@ func TestCodexHooksDriftCheckPassesCurrentHooks(t *testing.T) {
     "PreCompact": [{
       "hooks": [{
         "type": "command",
-        "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city %s handoff --auto --hook-format codex \"context cycle\""
+        "command": "export PATH=\"$HOME/go/bin:$HOME/.local/bin:$PATH\" && gc --city %s hook run --when-managed-session -- handoff --auto --hook-format codex \"context cycle\""
       }]
     }]
   }

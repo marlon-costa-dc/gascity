@@ -1062,11 +1062,11 @@ func TestCompileScopedWorkCarriesScopeAndCleanupMetadata(t *testing.T) {
 	if got := cleanup.Metadata["gc.scope_role"]; got != "teardown" {
 		t.Fatalf("cleanup gc.scope_role = %q, want teardown", got)
 	}
-	if got := cleanup.Metadata["gc.kind"]; got != "retry" {
-		t.Fatalf("cleanup gc.kind = %q, want retry", got)
+	if got := cleanup.Metadata["gc.kind"]; got != "cleanup" {
+		t.Fatalf("cleanup gc.kind = %q, want cleanup", got)
 	}
-	if got := cleanup.Metadata["gc.original_kind"]; got != "cleanup" {
-		t.Fatalf("cleanup gc.original_kind = %q, want cleanup", got)
+	if _, exists := cleanup.Metadata["gc.original_kind"]; exists {
+		t.Fatal("cleanup must not carry retry projection metadata")
 	}
 	scopeCheck := recipe.StepByID("mol-scoped-work.implement-scope-check")
 	if scopeCheck == nil {
@@ -1132,25 +1132,8 @@ func TestCompileScopedWorkCarriesScopeAndCleanupMetadata(t *testing.T) {
 	assertBefore("mol-scoped-work.cleanup-worktree", "mol-scoped-work.workflow-finalize")
 	assertBefore("mol-scoped-work.submit-scope-check", "mol-scoped-work.workflow-finalize")
 
-	// The teardown retry control must block on its own attempt.1, matching
-	// the invariant in processRetryControl: a retry-manager is only ever
-	// processed after its latest attempt has closed. Without this edge,
-	// the control bead becomes ready as soon as the body scope closes,
-	// and the dispatcher crash-loops with "latest attempt ... is open,
-	// not closed (invariant violation)".
-	cleanupAttempt := recipe.StepByID("mol-scoped-work.cleanup-worktree.attempt.1")
-	if cleanupAttempt == nil {
-		t.Fatal("cleanup-worktree.attempt.1 step missing")
-	}
-	foundAttemptDep := false
-	for _, dep := range recipe.Deps {
-		if dep.StepID == cleanup.ID && dep.DependsOnID == cleanupAttempt.ID && dep.Type == "blocks" {
-			foundAttemptDep = true
-			break
-		}
-	}
-	if !foundAttemptDep {
-		t.Fatalf("teardown retry %s missing blocks dep on its attempt %s", cleanup.ID, cleanupAttempt.ID)
+	if retry := recipe.StepByID("mol-scoped-work.cleanup-worktree.attempt.1"); retry != nil {
+		t.Fatal("cleanup-worktree must not compile a retry attempt")
 	}
 }
 

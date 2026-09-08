@@ -1,31 +1,31 @@
-name: RC Release
+name: Prerelease
 
 on:
   push:
     tags:
       - "v*.*.*-rc*"
+      - "v*.*.*-fc*"
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "RC tag to create or publish, e.g. v1.2.0-rc1"
+        description: "Prerelease tag to create or publish, e.g. v1.2.0-rc1 or v1.2.0-fc1"
         required: true
         type: string
       target_ref:
-        description: "Commit SHA, branch, or tag to build when creating the RC tag"
+        description: "Commit SHA, branch, or tag to build when creating the prerelease tag"
         required: true
         default: "release/v1.2.0"
         type: string
 
 concurrency:
-  group: rc-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+  group: prerelease-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
   cancel-in-progress: false
 
 permissions: {}
 
 jobs:
-  rc-release:
-    name: Draft RC release
-    if: ${{ github.repository == 'gastownhall/gascity' }}
+  prerelease:
+    name: Draft prerelease
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -48,8 +48,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Resolve RC tag
-        id: rc
+      - name: Resolve prerelease tag
+        id: prerelease
         env:
           DISPATCH_TAG: ${{ inputs.tag_name }}
           EVENT_NAME: ${{ github.event_name }}
@@ -62,8 +62,8 @@ jobs:
             tag="$GITHUB_REF_NAME"
           fi
 
-          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
-            echo "ERROR: RC tag must match vMAJOR.MINOR.PATCH-rcN, got: $tag" >&2
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(rc|fc)[0-9]+$ ]]; then
+            echo "ERROR: prerelease tag must match vMAJOR.MINOR.PATCH-rcN or vMAJOR.MINOR.PATCH-fcN, got: $tag" >&2
             exit 1
           fi
 
@@ -112,7 +112,7 @@ jobs:
         # used solely for the tag push. continue-on-error lets the create step's
         # friendly guard report missing secrets with instructions instead of the
         # bare "Input required and not supplied: app-id" mint failure.
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.rc.outputs.needs_create == 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.prerelease.outputs.needs_create == 'true' }}
         id: tagger-token
         continue-on-error: true
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3
@@ -120,15 +120,15 @@ jobs:
           app-id: ${{ secrets.RELEASE_TAGGER_APP_ID }}
           private-key: ${{ secrets.RELEASE_TAGGER_APP_PRIVATE_KEY }}
 
-      - name: Create RC tag
+      - name: Create prerelease tag
         # Terminal step for the create lane: create+push the tag with the App
         # token, then stop. The resulting tag-push event runs this workflow
         # again to perform the single publish (see the probe comment above), so
         # the publish steps below are gated off this lane.
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.rc.outputs.needs_create == 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.prerelease.outputs.needs_create == 'true' }}
         env:
-          TAG_NAME: ${{ steps.rc.outputs.tag }}
-          TARGET_COMMIT: ${{ steps.rc.outputs.commit }}
+          TAG_NAME: ${{ steps.prerelease.outputs.tag }}
+          TARGET_COMMIT: ${{ steps.prerelease.outputs.commit }}
           TAGGER_TOKEN: ${{ steps.tagger-token.outputs.token || '' }}
         run: |
           set -euo pipefail
@@ -147,35 +147,47 @@ jobs:
           echo "Created tag $TAG_NAME at $TARGET_COMMIT"
 
       - name: Reject replace directives in go.mod
-        if: ${{ steps.rc.outputs.needs_create != 'true' }}
+        if: ${{ steps.prerelease.outputs.needs_create != 'true' }}
         run: |
           if grep -qE '^replace\s' go.mod; then
-            echo "ERROR: go.mod contains replace directives; aborting RC release." >&2
+            echo "ERROR: go.mod contains replace directives; aborting prerelease." >&2
             grep -n '^replace' go.mod
             exit 1
           fi
 
       - name: Run GoReleaser draft prerelease
-        if: ${{ steps.rc.outputs.needs_create != 'true' }}
+        if: ${{ steps.prerelease.outputs.needs_create != 'true' }}
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
         with:
           version: "~> v2"
           args: release --clean --draft --skip=announce
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ steps.rc.outputs.tag }}
+          GORELEASER_CURRENT_TAG: ${{ steps.prerelease.outputs.tag }}
 
-      - name: Summarize RC release
-        if: ${{ steps.rc.outputs.needs_create != 'true' }}
+      - name: Verify prerelease binary metadata
+        if: ${{ steps.prerelease.outputs.needs_create != 'true' }}
+        env:
+          TAG_NAME: ${{ steps.prerelease.outputs.tag }}
+          TARGET_COMMIT: ${{ steps.prerelease.outputs.commit }}
+        run: |
+          set -euo pipefail
+          scripts/verify-release-binary-metadata.sh \
+            dist/gascity_linux_amd64_v1/gc \
+            "$TARGET_COMMIT" \
+            "${TAG_NAME#v}"
+
+      - name: Summarize prerelease
+        if: ${{ steps.prerelease.outputs.needs_create != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ steps.rc.outputs.tag }}
-          TARGET_COMMIT: ${{ steps.rc.outputs.commit }}
+          TAG_NAME: ${{ steps.prerelease.outputs.tag }}
+          TARGET_COMMIT: ${{ steps.prerelease.outputs.commit }}
         run: |
           set -euo pipefail
           url="$(gh release view "$TAG_NAME" --json url --jq .url)"
           {
-            echo "### Draft RC release"
+            echo "### Draft prerelease"
             echo
             echo "- Tag: \`$TAG_NAME\`"
             echo "- Commit: \`$TARGET_COMMIT\`"

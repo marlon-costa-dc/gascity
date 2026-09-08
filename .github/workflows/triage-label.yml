@@ -12,6 +12,7 @@ jobs:
   # pull_request_target is safe here because this job never checks out or runs
   # pull request code; it only labels the issue/PR from event metadata.
   add-triage-label:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       issues: write

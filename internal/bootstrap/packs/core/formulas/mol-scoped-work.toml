@@ -18,7 +18,7 @@ formula_compiler = ">=2.0.0"
 
 [vars]
 [vars.base_branch]
-description = "Base branch to branch from"
+description = "Base branch from which the tracked work branch is created"
 default = "main"
 
 [vars.setup_command]
@@ -64,10 +64,6 @@ gc mail inbox
 """
 metadata = { "gc.continuation_group" = "main", "gc.session_affinity" = "require" }
 
-[steps.retry]
-max_attempts = 3
-on_exhausted = "hard_fail"
-
 [[steps]]
 id = "body"
 title = "Worktree body scope"
@@ -97,21 +93,37 @@ if [ -z "$WORK_BEAD_ID" ]; then
   exit 1
 fi
 WORKTREE=$(gc bd show "$WORK_BEAD_ID" --json | jq -r '.[0].metadata.work_dir // empty')
+RECORDED_BRANCH=$(gc bd show "$WORK_BEAD_ID" --json | jq -r '.[0].metadata["gc.work_branch"] // empty')
+WORK_BRANCH="work/$WORK_BEAD_ID"
 if [ -z "$WORKTREE" ]; then
   WORKTREE_PATH=$(pwd)/worktrees/"$WORK_BEAD_ID"
-  git worktree add "$WORKTREE_PATH" --detach origin/{{base_branch}}
-  gc bd update "$WORK_BEAD_ID" --set-metadata work_dir="$WORKTREE_PATH"
+  git worktree add -b "$WORK_BRANCH" "$WORKTREE_PATH" "origin/{{base_branch}}"
+  gc bd update "$WORK_BEAD_ID" --set-metadata work_dir="$WORKTREE_PATH" --set-metadata gc.work_branch="$WORK_BRANCH"
   WORKTREE="$WORKTREE_PATH"
+elif [ ! -d "$WORKTREE" ]; then
+  echo "mol-scoped-work recorded worktree does not exist: $WORKTREE" >&2
+  exit 1
+else
+  ACTUAL_BRANCH=$(git -C "$WORKTREE" symbolic-ref --quiet --short HEAD)
+  if [ -z "$ACTUAL_BRANCH" ]; then
+    git -C "$WORKTREE" switch -c "$WORK_BRANCH"
+    ACTUAL_BRANCH="$WORK_BRANCH"
+  fi
+  if [ "$ACTUAL_BRANCH" != "$WORK_BRANCH" ]; then
+    echo "mol-scoped-work worktree branch mismatch: expected $WORK_BRANCH, found $ACTUAL_BRANCH" >&2
+    exit 1
+  fi
+  if [ -n "$RECORDED_BRANCH" ] && [ "$RECORDED_BRANCH" != "$WORK_BRANCH" ]; then
+    echo "mol-scoped-work recorded branch mismatch: expected $WORK_BRANCH, found $RECORDED_BRANCH" >&2
+    exit 1
+  fi
+  gc bd update "$WORK_BEAD_ID" --set-metadata gc.work_branch="$WORK_BRANCH"
 fi
 cd "$WORKTREE"
 {{setup_command}}
 ```
 """
 metadata = { "gc.scope_ref" = "body", "gc.scope_role" = "setup", "gc.on_fail" = "abort_scope", "gc.continuation_group" = "main", "gc.session_affinity" = "require" }
-
-[steps.retry]
-max_attempts = 3
-on_exhausted = "hard_fail"
 
 [[steps]]
 id = "preflight-tests"
@@ -128,23 +140,16 @@ Run the configured checks before implementation.
 """
 metadata = { "gc.scope_ref" = "body", "gc.scope_role" = "member", "gc.on_fail" = "abort_scope", "gc.continuation_group" = "main", "gc.session_affinity" = "require" }
 
-[steps.retry]
-max_attempts = 3
-on_exhausted = "hard_fail"
-
 [[steps]]
 id = "implement"
 title = "Implement the requested change"
 needs = ["preflight-tests"]
 description = """
-Make the code changes for convoy `{{convoy_id}}` in the worktree. Commit focused changes
-as needed and keep the branch scoped to this work.
+Make the code changes for convoy `{{convoy_id}}` on the branch created by
+workspace-setup. Keep every change scoped to this tracked item and publish it
+through the repository's declared landing owner.
 """
 metadata = { "gc.scope_ref" = "body", "gc.scope_role" = "member", "gc.on_fail" = "abort_scope", "gc.continuation_group" = "main", "gc.session_affinity" = "require" }
-
-[steps.retry]
-max_attempts = 3
-on_exhausted = "hard_fail"
 
 [[steps]]
 id = "self-review"
@@ -164,10 +169,6 @@ git status
 """
 metadata = { "gc.scope_ref" = "body", "gc.scope_role" = "member", "gc.on_fail" = "abort_scope", "gc.continuation_group" = "main", "gc.session_affinity" = "require" }
 
-[steps.retry]
-max_attempts = 3
-on_exhausted = "hard_fail"
-
 [[steps]]
 id = "submit"
 title = "Finalize the work item"
@@ -175,7 +176,7 @@ needs = ["self-review"]
 description = """
 Perform the city-specific finalization for this work item. Examples:
 
-- push the branch and hand off to a reviewer
+- publish the tracked branch for the repository's landing owner
 - close the original work bead
 - update metadata for downstream systems
 
@@ -183,10 +184,6 @@ This is intentionally generic so cities can opt into the graph contract
 without inheriting Gastown's exact human workflow.
 """
 metadata = { "gc.scope_ref" = "body", "gc.scope_role" = "member", "gc.on_fail" = "abort_scope", "gc.continuation_group" = "main", "gc.session_affinity" = "require" }
-
-[steps.retry]
-max_attempts = 3
-on_exhausted = "hard_fail"
 
 [[steps]]
 id = "cleanup-worktree"
@@ -218,11 +215,7 @@ if [ -n "$WORKTREE" ] && [ -d "$WORKTREE" ]; then
     fi
   fi
 fi
-gc bd update "$WORK_BEAD_ID" --unset-metadata work_dir
+gc bd update "$WORK_BEAD_ID" --unset-metadata work_dir --unset-metadata gc.work_branch
 ```
 """
 metadata = { "gc.kind" = "cleanup", "gc.scope_ref" = "body", "gc.scope_role" = "teardown" }
-
-[steps.retry]
-max_attempts = 3
-on_exhausted = "hard_fail"

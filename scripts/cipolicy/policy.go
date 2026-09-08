@@ -19,8 +19,11 @@ const (
 	// approximating shell semantics: any execution change requires explicit
 	// policy review, while workflow, job, step, and input descriptions remain
 	// free to change. A failure prints the projection and candidate digest.
-	expectedCITriggersHash       = "d1a8bcd089019589658d8f154af9c26a70877285d84a384c2dcea299efc9554a"
-	expectedCIExecutionHash      = "40c61d69abee24e0e025829045bbf699c7c9dcac44b1fb9911d94c9295ae4865"
+	expectedCITriggersHash = "d1a8bcd089019589658d8f154af9c26a70877285d84a384c2dcea299efc9554a"
+	// Why: dc-use@7c845b2d9 carries the draft-PR runner-policy skip in ci.yml;
+	// the pinned execution shape predates it, so the fleet's own integration
+	// lane failed this pin. Re-pinned to the shipped dc-use shape (bfc5abe9).
+	expectedCIExecutionHash      = "bfc5abe9ef4887a57c2985854e0ebf8094a08b6e521df9389256691dd36b6681"
 	expectedNightlyTriggersHash  = "0a4400a09ac567e90adf8be1232eef1f14e36efd8dba3e143aa6e36f5b7a36f5"
 	expectedNightlyExecutionHash = "a2c68532e85598b527a2cff2d2057c99ed5c65208fa34ea143869d8375f99a84"
 	expectedSetupActionHash      = "8f2d6b3a57f11d4f33a41211b1d3d5362d1437ba40c7b6db068abb98e731e5ac"

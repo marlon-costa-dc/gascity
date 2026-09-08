@@ -9,7 +9,7 @@
 // Gas City uses:
 //   - session.created / session.compacted → gc prime --hook (side effects such
 //     as session-id persistence and poller bootstrap)
-//   - experimental.session.compacting → gc handoff --auto "context cycle"
+//   - experimental.session.compacting → managed-session-selected auto handoff
 //     and inject the handoff confirmation into the compaction context
 //   - experimental.chat.system.transform → inject gc prime --hook, queued
 //     nudges, and unread mail into the system prompt for each turn
@@ -20,35 +20,39 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const GC_OPENCODE_HOOK_VERSION = 6;
+const GC_OPENCODE_HOOK_VERSION = 7;
 const GC_BIN = process.env.GC_BIN || "gc";
 // GC_BIN is the explicit override. The fallback order matches Pi hooks so
 // sibling providers resolve the same installed gc before developer-local bins.
 const PATH_PREFIX =
   `/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`;
 
+async function executeCommand(directory, args, extraEnv = {}) {
+  // execFile always gives the child a stdin pipe and never closes it, so a
+  // gc subcommand that reads hook stdin waits for an EOF that never arrives
+  // and is killed when the timeout expires. Close it immediately: these
+  // calls send nothing on stdin. (`stdio` is not an execFile option — it is
+  // honored by spawn and execFileSync, which is why the pi hook can pass
+  // stdio: ["ignore", ...] instead.)
+  const pending = execFileAsync(GC_BIN, args, {
+    cwd: directory,
+    encoding: "utf-8",
+    timeout: 30000,
+    env: {
+      ...process.env,
+      ...extraEnv,
+      PATH: PATH_PREFIX + (process.env.PATH || ""),
+    },
+  });
+  pending.child.stdin?.end();
+  const { stdout, stderr } = await pending;
+  logRunStderr(stderr);
+  return stdout.trim();
+}
+
 async function runCommand(directory, args, warnOnFailure, extraEnv = {}) {
   try {
-    // execFile always gives the child a stdin pipe and never closes it, so a
-    // gc subcommand that reads hook stdin waits for an EOF that never arrives
-    // and is killed when the timeout expires. Close it immediately: these
-    // calls send nothing on stdin. (`stdio` is not an execFile option — it is
-    // honored by spawn and execFileSync, which is why the pi hook can pass
-    // stdio: ["ignore", ...] instead.)
-    const pending = execFileAsync(GC_BIN, args, {
-      cwd: directory,
-      encoding: "utf-8",
-      timeout: 30000,
-      env: {
-        ...process.env,
-        ...extraEnv,
-        PATH: PATH_PREFIX + (process.env.PATH || ""),
-      },
-    });
-    pending.child.stdin?.end();
-    const { stdout, stderr } = await pending;
-    logRunStderr(stderr);
-    return stdout.trim();
+    return await executeCommand(directory, args, extraEnv);
   } catch (err) {
     if (warnOnFailure) {
       logRunFailure(args, directory, err);
@@ -61,8 +65,13 @@ async function run(directory, ...args) {
   return runCommand(directory, args, false);
 }
 
-async function runWithWarning(directory, ...args) {
-  return runCommand(directory, args, true);
+async function runStrict(directory, ...args) {
+  try {
+    return await executeCommand(directory, args);
+  } catch (err) {
+    logRunFailure(args, directory, err);
+    throw err;
+  }
 }
 
 function logRunFailure(args, directory, err) {
@@ -210,7 +219,7 @@ export default async function gascityPlugin({ directory, client }) {
     },
 
     "experimental.session.compacting": async (_input, output) => {
-      const handoff = await runWithWarning(directory, "handoff", "--auto", "context cycle");
+      const handoff = await runStrict(directory, "hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle");
       if (!handoff) {
         return;
       }
