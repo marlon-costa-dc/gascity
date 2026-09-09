@@ -369,6 +369,7 @@ func TestNativeDoltStoreReadyOnlyIncludesOpenAndDeferredUpstreamStatuses(t *test
 				}
 				result = append(result, cloneNativeIssueForTest(issue))
 			}
+			println("DEBUG spy: filter.Statuses=", len(filter.Statuses), "filter.Status=", string(filter.Status), "issues=", len(issues), "matched=", len(result))
 			return result, nil
 		},
 	}
@@ -2217,6 +2218,19 @@ type nativeDoltStorageSpy struct {
 	getDependentsWithMetadata   func(context.Context, string) ([]*beadslib.IssueWithDependencyMetadata, error)
 	getConfig                   func(context.Context, string) (string, error)
 	close                       func() error
+}
+
+// IsBlockedBatch satisfies the ready projection's BlockedQuerier requirement
+// (bd-jge made IsBlockedBatch mandatory for the native ready path). The spy's
+// fixtures express blocking through statuses and explicit dependency edges, so
+// the batch answer is uniformly not-blocked; scenario-specific blocking is
+// asserted via getDependenciesWithMetadata.
+func (s *nativeDoltStorageSpy) IsBlockedBatch(_ context.Context, ids []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = false
+	}
+	return out, nil
 }
 
 func (s *nativeDoltStorageSpy) CreateIssue(ctx context.Context, issue *beadslib.Issue, actor string) error {
