@@ -369,7 +369,6 @@ func TestNativeDoltStoreReadyOnlyIncludesOpenAndDeferredUpstreamStatuses(t *test
 				}
 				result = append(result, cloneNativeIssueForTest(issue))
 			}
-			println("DEBUG spy: filter.Statuses=", len(filter.Statuses), "filter.Status=", string(filter.Status), "issues=", len(issues), "matched=", len(result))
 			return result, nil
 		},
 	}
