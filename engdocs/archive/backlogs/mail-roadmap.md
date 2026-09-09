@@ -98,5 +98,5 @@ These exist in Gastown but may not apply to Gas City's model.
 |---------|--------|
 | Legacy JSONL storage | Gas City is beads-only |
 | Crew-specific inbox paths | No hardcoded roles |
-| `gt mail search` | Nice to have, not essential |
+| `gc mail search` | Nice to have, not essential |
 | Message type field (task/scavenge/notification/reply) | May not need structured types |

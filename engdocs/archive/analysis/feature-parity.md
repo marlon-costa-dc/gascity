@@ -35,12 +35,12 @@ become role-agnostic infrastructure that any pack can use.
 | Gastown | Gas City | Status | Notes |
 |---------|----------|--------|-------|
 | `gt install [path]` | `gc init [path]` | **DONE** | Auto-init on `gc start` too |
-| `gt start [path]` | `gc start [path]` | **DONE** | One-shot + controller modes |
-| `gt down` / `gt stop` | `gc stop [path]` | **DONE** | Graceful shutdown + orphan cleanup |
+| `gc start [path]` | `gc start [path]` | **DONE** | One-shot + controller modes |
+| `gt down` / `gc stop` | `gc stop [path]` | **DONE** | Graceful shutdown + orphan cleanup |
 | `gt up` | `gc start` | **DONE** | gt up is idempotent boot; gc start one-shot reconcile is equivalent |
 | `gt shutdown` | `gc stop` + `gc worktree clean` | **N/A** | WONTFIX: `gc stop` + `gc worktree clean --all` covers it. Graceful handoff wait and uncommitted work protection are domain-layer concerns for the pack config. |
 | `gt restart` | `gc restart [path]` | **DONE** | Stop then start |
-| `gt status` | `gc status [path]` | **DONE** | City-wide overview: controller, suspended state, all agents/pools, rigs, summary count. |
+| `gc status` | `gc status [path]` | **DONE** | City-wide overview: controller, suspended state, all agents/pools, rigs, summary count. |
 | `gt enable` / `gt disable` | `gc suspend` / `gc resume` | **DONE** | City-level suspend: hook injection becomes no-op. Also supports `GC_SUSPENDED=1` env override. |
 | `gt version` | `gc version` | **DONE** | |
 | `gt info` | — | **N/A** | Whats-new splash; polish |
@@ -174,8 +174,8 @@ become role-agnostic infrastructure that any pack can use.
 
 | Gastown | Gas City | Status | Notes |
 |---------|----------|--------|-------|
-| `gt hook` (show/attach/detach/clear) | `gc hook` | **DONE** | Has work_query. Attach/detach/clear are N/A — Gas City doesn't use hooked beads; users can implement via bd if needed. |
-| `gt sling <bead> [target]` | `gc sling <target> <bead>` | **DONE** | Routes + nudges |
+| `gc hook` (show/attach/detach/clear) | `gc hook` | **DONE** | Has work_query. Attach/detach/clear are N/A — Gas City doesn't use hooked beads; users can implement via bd if needed. |
+| `gc sling <bead> [target]` | `gc sling <target> <bead>` | **DONE** | Routes + nudges |
 | `gt unsling` / `gt unhook` | — | **N/A** | WONTFIX: Gas City doesn't use hooked beads. Users can `bd update --hook=""` if needed. |
 | Sling to self | `gc sling $GC_AGENT <bead>` | **DONE** | Shell expands `$GC_AGENT`; no special code needed |
 | Sling batch (multiple beads) | `doSlingBatch` container expansion | **DONE** | Convoy/epic auto-expand open children; per-child warnings, partial failure, single nudge |
@@ -188,9 +188,9 @@ become role-agnostic infrastructure that any pack can use.
 | Sling auto-convoy | `gc sling` (default) | **DONE** | Auto-creates convoy on sling; `--no-convoy` to suppress, `--owned` to mark owned |
 | Sling --account | — | **TODO** | Per-sling account override for quota rotation. Resolves handle → `CLAUDE_CONFIG_DIR` for spawned agent. Requires `gc account` + `gc quota` command groups. |
 | Sling --agent override | — | **N/A** | WONTFIX: Use separate pools with different providers. Priority sorting (`bd ready --sort priority`) handles work routing. Adding pools is already supported via config + `gc agent add`. |
-| `gt handoff` | `gc handoff` | **DONE** | Mail-to-self + restart-requested + block |
+| `gc handoff` | `gc handoff` | **DONE** | Mail-to-self + restart-requested + block |
 | `gt broadcast` | — | **DEFER** | Nudge all agents; operator convenience, no programmatic callers. Implement when needed. |
-| `gt nudge <target> [msg]` | `gc session nudge <name> <msg>` | **DONE** | Direct message injection via tmux send-keys |
+| `gc nudge <target> [msg]` | `gc session nudge <name> <msg>` | **DONE** | Direct message injection via tmux send-keys |
 
 ---
 
@@ -198,25 +198,25 @@ become role-agnostic infrastructure that any pack can use.
 
 | Gastown | Gas City | Status | Notes |
 |---------|----------|--------|-------|
-| `gt mail send` | `gc mail send` | **DONE** | Creates message bead |
-| `gt mail inbox` | `gc mail inbox` | **DONE** | Lists unread |
-| `gt mail read` | `gc mail read` | **DONE** | Read + close |
-| `gt mail peek` | `gc mail check` | **DONE** | Obviated by `gc mail check --inject` |
-| `gt mail delete` | — | **DEFER** | Add when needed |
-| `gt mail archive` | `gc mail archive` | **DONE** | |
-| `gt mail mark-read/mark-unread` | — | **DEFER** | Add when needed |
-| `gt mail check` | `gc mail check` | **DONE** | Count unread |
-| `gt mail search` | — | **DEFER** | Add when needed |
-| `gt mail thread` / `gt mail reply` | — | **DEFER** | Add when needed |
-| `gt mail claim/release` | — | **DEFER** | Add when needed |
-| `gt mail clear` | — | **DEFER** | Add when needed |
-| `gt mail hook` | `gc mail check --inject` | **DONE** | Hook injection via `--inject` flag |
-| `gt mail announces` | — | **REMAP** | No channels; direct addressing sufficient |
-| `gt mail channel` | — | **REMAP** | Pub/sub channels; domain pattern |
-| `gt mail queue` | — | **REMAP** | Claim queues; domain pattern |
-| `gt mail group` | — | **REMAP** | Mailing lists; domain pattern |
-| `gt mail directory` | — | **N/A** | Directory listing; UX polish |
-| `gt mail identity` | — | **REMAP** | Identity is `$GC_AGENT` |
+| `gc mail send` | `gc mail send` | **DONE** | Creates message bead |
+| `gc mail inbox` | `gc mail inbox` | **DONE** | Lists unread |
+| `gc mail read` | `gc mail read` | **DONE** | Read + close |
+| `gc mail peek` | `gc mail check` | **DONE** | Obviated by `gc mail check --inject` |
+| `gc mail delete` | — | **DEFER** | Add when needed |
+| `gc mail archive` | `gc mail archive` | **DONE** | |
+| `gc mail mark-read/mark-unread` | — | **DEFER** | Add when needed |
+| `gc mail check` | `gc mail check` | **DONE** | Count unread |
+| `gc mail search` | — | **DEFER** | Add when needed |
+| `gc mail thread` / `gc mail reply` | — | **DEFER** | Add when needed |
+| `gc mail claim/release` | — | **DEFER** | Add when needed |
+| `gc mail clear` | — | **DEFER** | Add when needed |
+| `gc mail hook` | `gc mail check --inject` | **DONE** | Hook injection via `--inject` flag |
+| `gc mail announces` | — | **REMAP** | No channels; direct addressing sufficient |
+| `gc mail channel` | — | **REMAP** | Pub/sub channels; domain pattern |
+| `gc mail queue` | — | **REMAP** | Claim queues; domain pattern |
+| `gc mail group` | — | **REMAP** | Mailing lists; domain pattern |
+| `gc mail directory` | — | **N/A** | Directory listing; UX polish |
+| `gc mail identity` | — | **REMAP** | Identity is `$GC_AGENT` |
 | Mail priority (urgent/high/normal/low) | — | **DEFER** | Add when needed |
 | Mail type (task/scavenge/notification/reply) | — | **DEFER** | Add when needed |
 | Mail delivery modes (queue/interrupt) | — | **DEFER** | Add when needed |
@@ -263,16 +263,16 @@ become role-agnostic infrastructure that any pack can use.
 
 | Gastown | Gas City | Status | Notes |
 |---------|----------|--------|-------|
-| `gt convoy create` | `gc convoy create` | **DONE** | Create batch tracking bead |
-| `gt convoy add` | `gc convoy add` | **DONE** | Add issues to convoy |
-| `gt convoy close` | `gc convoy close` | **DONE** | Close convoy |
-| `gt convoy status` | `gc convoy status` | **DONE** | Show progress |
-| `gt convoy list` | `gc convoy list` | **DONE** | Dashboard view |
-| `gt convoy check` | `gc convoy check` | **DONE** | Auto-close completed convoys |
-| `gt convoy land` | — | **TODO** | Land completed convoy (cleanup) |
-| `gt convoy launch` | — | **TODO** | Dispatch convoy work |
-| `gt convoy stage` | — | **TODO** | Stage convoy for validation |
-| `gt convoy stranded` | `gc convoy stranded` | **DONE** | Find convoys with stuck work |
+| `gc convoy create` | `gc convoy create` | **DONE** | Create batch tracking bead |
+| `gc convoy add` | `gc convoy add` | **DONE** | Add issues to convoy |
+| `gc convoy close` | `gc convoy close` | **DONE** | Close convoy |
+| `gc convoy status` | `gc convoy status` | **DONE** | Show progress |
+| `gc convoy list` | `gc convoy list` | **DONE** | Dashboard view |
+| `gc convoy check` | `gc convoy check` | **DONE** | Auto-close completed convoys |
+| `gc convoy land` | — | **TODO** | Land completed convoy (cleanup) |
+| `gc convoy launch` | — | **TODO** | Dispatch convoy work |
+| `gc convoy stage` | — | **TODO** | Stage convoy for validation |
+| `gc convoy stranded` | `gc convoy stranded` | **DONE** | Find convoys with stuck work |
 | Auto-close on completion | `gc convoy check` + bd on_close hook | **DONE** | `gc convoy check` (batch scan) + `gc convoy autoclose` (reactive via bd on_close hook) |
 | Close-triggers-convoy-check | bd on_close hook → `gc convoy autoclose` | **DONE** | bd on_close hook triggers `gc convoy autoclose <bead-id>` which checks parent convoy. Recursive-safe, idempotent. |
 | Reactive feeding | — | **N/A** | WONTFIX: `bd ready` + pool auto-scaling handle work discovery; agents poll their own queues. Reactive push is unnecessary with pull-based GUPP. |
@@ -326,8 +326,8 @@ become role-agnostic infrastructure that any pack can use.
 
 | Gastown | Gas City | Status | Notes |
 |---------|----------|--------|-------|
-| `gt doctor` | `gc doctor` | **DONE** | Comprehensive health checks |
-| `gt doctor --fix` | `gc doctor --fix` | **DONE** | Auto-repair |
+| `gc doctor` | `gc doctor` | **DONE** | Comprehensive health checks |
+| `gc doctor --fix` | `gc doctor --fix` | **DONE** | Auto-repair |
 | Witness patrol (rig-level) | Reconciler tick | **DONE** | Different mechanism, same outcome |
 | Deacon patrol (town-level) | Controller loop | **DONE** | Same |
 | Stall detection (30min threshold) | Idle timeout | **DONE** | Configurable per agent |
@@ -439,7 +439,7 @@ become role-agnostic infrastructure that any pack can use.
 | Template functions ({{ cmd }}) | Template functions | **DONE** | {{ cmd }}, {{ session }}, {{ basename }}, etc. |
 | Shared template composition | Shared templates | **DONE** | `prompts/shared/` directory |
 | Template variables (role data) | Template variables | **DONE** | CityRoot, AgentName, RigName, WorkDir, Branch, DefaultBranch, IssuePrefix, WorkQuery, SlingQuery, TemplateName + custom Env |
-| `gt prime` | `gc prime` | **DONE** | Output agent prompt |
+| `gc prime` | `gc prime` | **DONE** | Output agent prompt |
 | `gt role show/list/def/env/home/detect` | — | **REMAP** | Roles are config; `gc prime` + `gc config show` |
 | Commands provisioning (`.claude/commands/`) | `overlay_dir` config | **DONE** | Generic `overlay_dir` copies any directory tree into agent workdir at startup |
 | CLAUDE.md generation | — | **TODO** | Generate agent-specific CLAUDE.md files |
@@ -490,7 +490,7 @@ become role-agnostic infrastructure that any pack can use.
 | Gastown | Gas City | Status | Notes |
 |---------|----------|--------|-------|
 | `gt dashboard` | — | **TODO** | Web dashboard for convoy tracking |
-| `gt status-line` | `session_setup` + scripts | **DONE** | Inlined as `examples/gastown/scripts/status-line.sh`, called via tmux `#()` in status-right |
+| `gc status-line` | `session_setup` + scripts | **DONE** | Inlined as `examples/gastown/scripts/status-line.sh`, called via tmux `#()` in status-right |
 | `gt theme` | — | **N/A** | tmux theme management |
 | `gt dnd` (Do Not Disturb) | — | **N/A** | Notification suppression |
 | `gt notify` | — | **N/A** | Notification level |
@@ -502,18 +502,18 @@ become role-agnostic infrastructure that any pack can use.
 
 | Gastown | Gas City | Status | Notes |
 |---------|----------|--------|-------|
-| `gt dolt init` | `dolt.InitCity` | **DONE** | |
-| `gt dolt start/stop/status` | `dolt.EnsureRunning/StopCity` | **DONE** | |
-| `gt dolt logs` | `gc dolt logs` | **DONE** | Tail dolt server log with `--follow` |
-| `gt dolt sql` | `gc dolt sql` | **DONE** | Interactive SQL shell; auto-connects to running server or falls back to file-based |
-| `gt dolt init-rig` | `dolt.InitRigBeads` | **DONE** | |
-| `gt dolt list` | `gc dolt list` | **DONE** | List dolt databases with table/row counts |
-| `gt dolt migrate` | — | **N/A** | Schema migration; one-time |
-| `gt dolt fix-metadata` | — | **TODO** | Repair metadata.json |
-| `gt dolt recover` | `gc dolt recover` | **DONE** | Recover from corruption: backup, rebuild metadata, verify |
-| `gt dolt cleanup` | `gc dolt cleanup` | **DONE** | Fixed in #706 (external-rig discovery via registry); #711 fixes --force for default data-dir orphans (`examples/dolt/commands/cleanup.sh`) |
-| `gt dolt rollback` | `gc dolt rollback` | **DONE** | List backups or restore with --force |
-| `gt dolt sync` | `gc dolt sync` | **DONE** | Push to configured remotes; stages, commits, pushes each database |
+| `gc dolt init` | `dolt.InitCity` | **DONE** | |
+| `gc dolt start/stop/status` | `dolt.EnsureRunning/StopCity` | **DONE** | |
+| `gc dolt logs` | `gc dolt logs` | **DONE** | Tail dolt server log with `--follow` |
+| `gc dolt sql` | `gc dolt sql` | **DONE** | Interactive SQL shell; auto-connects to running server or falls back to file-based |
+| `gc dolt init-rig` | `dolt.InitRigBeads` | **DONE** | |
+| `gc dolt list` | `gc dolt list` | **DONE** | List dolt databases with table/row counts |
+| `gc dolt migrate` | — | **N/A** | Schema migration; one-time |
+| `gc dolt fix-metadata` | — | **TODO** | Repair metadata.json |
+| `gc dolt recover` | `gc dolt recover` | **DONE** | Recover from corruption: backup, rebuild metadata, verify |
+| `gc dolt cleanup` | `gc dolt cleanup` | **DONE** | Fixed in #706 (external-rig discovery via registry); #711 fixes --force for default data-dir orphans (`examples/dolt/commands/cleanup.sh`) |
+| `gc dolt rollback` | `gc dolt rollback` | **DONE** | List backups or restore with --force |
+| `gc dolt sync` | `gc dolt sync` | **DONE** | Push to configured remotes; stages, commits, pushes each database |
 | Dolt branch per agent | — | **TODO** | Write isolation branches |
 | Dolt health ticker | Order recipe: `dolt-health` | **DONE** | Cooldown order (30s) runs `gc dolt status` + `gc dolt start` on failure. Lives in `examples/gastown/formulas/orders/dolt-health/`. |
 
@@ -532,7 +532,7 @@ become role-agnostic infrastructure that any pack can use.
 | `gt wl` (wasteland federation) | — | **N/A** | Cross-town federation; future |
 | `gt swarm` (deprecated) | — | **N/A** | Superseded by convoy |
 | `gt synthesis` | — | **REMAP** | Convoy synthesis is a prompt-level concern; agents use `bd mol pour` + formula steps |
-| `gt whoami` | — | **N/A** | WONTFIX: `$GC_AGENT` env var is sufficient |
+| `gc whoami` | — | **N/A** | WONTFIX: `$GC_AGENT` env var is sufficient |
 
 ---
 

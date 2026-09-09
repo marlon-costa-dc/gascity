@@ -1,3 +1,9 @@
+//go:build beads_rowlock
+
+// Metadata compare-and-set on the native store. Requires beads_rowlock:
+// CompareAndSetMetadataKey and probeConditionalWriteCapability are defined in
+// native_dolt_store_conditional.go. See beads gc-5oauf.
+
 package beads
 
 import (

@@ -153,6 +153,31 @@ func newHarness(t *testing.T, stubEnv map[string]string) *harness {
 		t.Fatalf("write bundle: %v", err)
 	}
 
+	// The child PATH must not carry host mise state. Entries under
+	// ~/.local/share/mise (shims or installs) resolve commands through the
+	// user's mise config, which inside this virtualized HOME has no bootstrap:
+	// a shim invocation then makes mise self-bootstrap by downloading mise,
+	// and the download itself resolves through the same shim — an unbounded
+	// curl loop per spawned process (observed as thousands of `shims/curl`
+	// processes during one suite run). The stub dir is added explicitly so
+	// ZCODE_NODE_BIN stays resolvable without the host PATH.
+	hostPath := os.Getenv("PATH")
+	var kept []string
+	for _, dir := range filepath.SplitList(hostPath) {
+		if strings.Contains(dir, filepath.Join(".local", "share", "mise")) {
+			continue
+		}
+		kept = append(kept, dir)
+	}
+	childPath := filepath.Join(root, "stub-node-dir")
+	if err := os.MkdirAll(childPath, 0o755); err != nil {
+		t.Fatalf("mkdir stub dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(childPath, "stub-node"), []byte(nodeStub), 0o755); err != nil {
+		t.Fatalf("write stub into dir: %v", err)
+	}
+	childPath = childPath + string(filepath.ListSeparator) + strings.Join(kept, string(filepath.ListSeparator))
+
 	h := &harness{
 		t:         t,
 		home:      home,
@@ -164,7 +189,7 @@ func newHarness(t *testing.T, stubEnv map[string]string) *harness {
 		env: map[string]string{
 			"HOME":                    home,
 			"XDG_STATE_HOME":          filepath.Join(home, ".local", "state"),
-			"PATH":                    os.Getenv("PATH"),
+			"PATH":                    childPath,
 			"ZCODE_CJS":               bundle,
 			"ZCODE_API_KEY":           "dummy-not-a-real-key",
 			"ZCODE_MODEL":             "glm-test",

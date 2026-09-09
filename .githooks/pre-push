@@ -15,12 +15,21 @@ zero="0000000000000000000000000000000000000000"
 
 go_changed=0
 any_non_deletion=0
+wip_push=0
 while read -r _local_ref local_sha _remote_ref remote_sha; do
   # Branch deletion — nothing to test, nothing to guard.
   if [ "$local_sha" = "$zero" ]; then
     continue
   fi
   any_non_deletion=1
+  # Fleet WIP contract: a "[WIP]" head is a checkpoint headed for a Draft PR,
+  # and the Draft PR's CI is the matrix's owner. Running the full sharded
+  # go test fan-out here (>10 min on this repository) outlives the SSH
+  # session the push holds open, so the checkpoint never leaves the
+  # machine. Promotion (non-WIP head) still runs the matrix at push time.
+  if git log -1 --format=%s "$local_sha" 2>/dev/null | grep -qE '^\[WIP\]'; then
+    wip_push=1
+  fi
   # New remote branch: no cheap base to diff against — run the suite.
   if [ "$remote_sha" = "$zero" ]; then
     go_changed=1
@@ -47,6 +56,11 @@ if [ "$any_non_deletion" -eq 1 ]; then
 fi
 
 if [ "$go_changed" -eq 0 ]; then
+  exit 0
+fi
+
+if [ "$wip_push" -eq 1 ]; then
+  echo "pre-push: [WIP] head — the go test matrix runs in CI on the Draft PR, not at push time" >&2
   exit 0
 fi
 

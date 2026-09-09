@@ -8,25 +8,6 @@ import (
 	"github.com/gastownhall/gascity/internal/fsys"
 )
 
-// TestNativeDoltStoreMetadataCASConformance holds NativeDoltStore to the
-// complete value-CAS contract. The in-memory native fixture serializes
-// transaction callbacks so its contention behavior matches real Dolt.
-func TestNativeDoltStoreMetadataCASConformance(t *testing.T) {
-	beadstest.RunMetadataCASConformance(t, "NativeDoltStore",
-		func(_ *testing.T) beads.Store { return beads.NewNativeDoltStoreForConformance() })
-}
-
-func TestNativeDoltStoreConditionalWriterConformance(t *testing.T) {
-	beadstest.RunConditionalWriterConformanceWithOptions(t, "NativeDoltStore",
-		func(_ *testing.T) beads.Store { return beads.NewNativeDoltStoreForConformance() },
-		beadstest.ConditionalWriterOptions{
-			RowBackedMutationFlavors: true,
-			RestrictedUpdateFields:   true,
-			SuppliesCurrent:          true,
-		},
-	)
-}
-
 // TestMemStoreMetadataCASConformance and TestFileStoreMetadataCASConformance
 // run the SAME narrow suite against the two stores whose fixtures do provide
 // isolation (both guard the whole CAS under their own lock), so the contention

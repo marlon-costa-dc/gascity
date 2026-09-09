@@ -5,32 +5,45 @@
 //
 // Events:
 //   session_start       → gc prime --hook (load context side effects and capture OMP session id)
-//   session_compact     → gc prime --hook (reload after compaction)
+//   session_compact     → selected auto handoff + gc prime --hook
 //   before_agent_start  → inject queued nudges + unread mail
 
 import { execFileSync } from "node:child_process";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
-const GC_OMP_HOOK_VERSION = 2;
+const GC_OMP_HOOK_VERSION = 3;
 const PATH_PREFIX =
   `/opt/homebrew/bin:/usr/local/bin:${process.env.HOME}/go/bin:${process.env.HOME}/.local/bin:`;
 
+function execute(args: string[], cwd?: string, extraEnv: Record<string, string> = {}): string {
+  return execFileSync("gc", args, {
+    cwd: cwd || process.cwd(),
+    encoding: "utf-8",
+    timeout: 30000,
+    stdio: ["ignore", "pipe", "inherit"],
+    env: {
+      ...process.env,
+      ...extraEnv,
+      PATH: PATH_PREFIX + (process.env.PATH || ""),
+    },
+  }).trim();
+}
+
 function run(args: string[], cwd?: string, extraEnv: Record<string, string> = {}): string {
   try {
-    return execFileSync("gc", args, {
-      cwd: cwd || process.cwd(),
-      encoding: "utf-8",
-      timeout: 30000,
-      stdio: ["ignore", "pipe", "inherit"],
-      env: {
-        ...process.env,
-        ...extraEnv,
-        PATH: PATH_PREFIX + (process.env.PATH || ""),
-      },
-    }).trim();
+    return execute(args, cwd, extraEnv);
   } catch (err) {
     logRunFailure(args, cwd, err);
     return "";
+  }
+}
+
+function runStrict(args: string[], cwd?: string): string {
+  try {
+    return execute(args, cwd);
+  } catch (err) {
+    logRunFailure(args, cwd, err);
+    throw err;
   }
 }
 
@@ -75,6 +88,7 @@ export default function gascityOmpExtension(pi: ExtensionAPI) {
   });
 
   pi.on("session_compact", (_event, ctx) => {
+    runStrict(["hook", "run", "--when-managed-session", "--", "handoff", "--auto", "context cycle"], ctx.cwd);
     run(["prime", "--hook"], ctx.cwd, providerSessionEnv(ctx));
   });
 

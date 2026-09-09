@@ -147,7 +147,7 @@ lifecycle in Gas Town.
 
 ### The 7-step lifecycle
 
-#### Step 1: Work creation & assignment (`gt sling`)
+#### Step 1: Work creation & assignment (`gc sling`)
 
 `SpawnPolecatForSling()` does an atomic multi-step spawn:
 
@@ -185,7 +185,7 @@ that read from beads.
 
 #### Step 3: Agent doing work
 
-Agent reads its hook via `gt prime --hook` and implements the work in its
+Agent reads its hook via `gc prime --hook` and implements the work in its
 isolated worktree. The agent has full autonomy (GUPP: "If you find work
 on your hook, YOU RUN IT").
 

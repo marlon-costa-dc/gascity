@@ -34,7 +34,7 @@ instead of nuking, completion signaling via agent beads instead of mail.
 
 ### 1b. Witness: restart, never nuke
 - [~] **016381ad** — All `gt polecat nuke` in zombie detection replaced with
-  `gt session restart`. "Idle Polecat Heresy" replaced with "Completion Protocol."
+  `gc session restart`. "Idle Polecat Heresy" replaced with "Completion Protocol."
 - [~] **b10863da** — Idle polecats with clean sandboxes skipped entirely by
   witness patrol. Dirty sandboxes escalated for recovery.
 - **Action:** Update witness patrol formula and prompt: replace automatic
@@ -118,7 +118,7 @@ Every mail creates a permanent Dolt commit. Nudges are free (tmux send-keys).
   **Done:** Listed as ephemeral in global fragment.
 
 ### 3c. Mail drain + improved instructions
-- [x] **655620a1** — Witness patrol v8: `gt mail drain` step archives stale
+- [x] **655620a1** — Witness patrol v8: `gc mail drain` step archives stale
   protocol messages (>30 min). Batch processing when inbox > 10 messages.
   **Done:** Added Mail Drain section to witness prompt.
 - [x] **9fb00901** — Overhauled mail instructions in crew and polecat templates:
@@ -201,7 +201,7 @@ From batch 3 analysis (session summary).
 - [x] Crash recovery: agents re-read formula steps on restart and determine
   resume position from context (git state, bead state, last completed action).
   No step-tracking metadata needed on the wisp bead.
-- **Disposition:** No new `gc` command needed (upstream's `gt prime` with
+- **Disposition:** No new `gc` command needed (upstream's `gc prime` with
   `showFormulaSteps()` is unnecessary — the LLM reads formula steps directly).
   We keep the explicit `bd mol wisp`/`bd mol burn` dance but with `--root-only`.
 
@@ -1152,7 +1152,7 @@ bucketed into SDK gaps, Gastown example gaps, or no-action items.
   Upstream now has a queue/poller path, deferred delivery, and reply-reminder nudges for runtimes without prompt detection. Gas City still has wait-idle plus immediate fallback only. This is an SDK gap, and the current Gastown prompt already documents queue/wait-idle modes we do not implement.
 
 - [~] **8da798be + 43c2253c + 712c5b5f + ec99d68e + e502a90c + c11da4d8 + c889e513 + 3324f10b + 77092bb2 + 61b88b0e** — Crew targeting and `gt assign` ergonomics.
-  Upstream added town-level `crew_agents`, `gt sling --crew`, and a one-shot `gt assign` flow with crew-name inference and validation. Gas City has neither `gc assign` nor crew-targeting equivalents today. This is a user-facing SDK gap for people dispatching work through Gastown crews.
+  Upstream added town-level `crew_agents`, `gc sling --crew`, and a one-shot `gt assign` flow with crew-name inference and validation. Gas City has neither `gc assign` nor crew-targeting equivalents today. This is a user-facing SDK gap for people dispatching work through Gastown crews.
 
 - [~] **bfa4696c + 5850beaa + 96008270 + 560a2c5c + 7eb47927 + 897e42df + bfa042aa + 30a91067 + 5f9493fc + 3fde5616 + d0404d40 + 65445cd9 + da32d2c9 + f451959f + 24654548 + cffa8b40** — ACP propulsion parity.
   Gas City already has ACP transport, but it does not have upstream's propulsion stack: output suppression while propelled, trigger detection, larger buffering, event-driven propeller handoff, or the follow-up safety/test coverage. Treat this as an SDK follow-up gap rather than a missing first implementation.

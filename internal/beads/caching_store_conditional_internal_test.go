@@ -1,3 +1,15 @@
+//go:build beads_rowlock
+
+// Conditional-write capability resolution across the caching store. Requires
+// beads_rowlock: these tests assert that NativeDoltStore is discoverable as an
+// AtomicConditionalCloser/ConditionalWriter, which holds only when
+// native_dolt_store_conditional.go is compiled.
+//
+// In a default build the same production code path is still exercised — through
+// its documented degraded arm, ErrConditionalWriteUnsupported — by the
+// bdstore_conditional_* tests, which do not depend on the native CAS methods.
+// See beads gc-5oauf.
+
 package beads
 
 import (

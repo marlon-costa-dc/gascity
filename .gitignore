@@ -41,6 +41,15 @@ internal/api/dashboardspa/web/frontend/.playwright/
 !/.claude/
 /.claude/*
 !/.claude/skills/
+# The Gas City pack runtime materializes skill symlinks and an ownership
+# manifest into every provider tree of a registered rig. They point into the
+# per-machine pack cache and are runtime state, never source.
+/.claude/skills/.gc-skill-ownership.json
+/.claude/skills/core.gc-*
+/.claude/skills/gascity.mayor
+/.claude/skills/gc.mayor
+/.codex/
+/.agents/
 
 # sync-project-agents writes local migration backups here; don't commit them.
 .agents/migration/
@@ -76,3 +85,10 @@ __pycache__/
 # Beads / Dolt files (added by bd init)
 .beads/proxieddb/
 .beads.backup-*
+
+# Gas City
+.beads/*
+!.beads/identity.toml
+
+.test-tmp/
+worktrees/

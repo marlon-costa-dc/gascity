@@ -3,6 +3,7 @@ package contract
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -201,6 +202,31 @@ func TestPreflightBlocksNativeOnIdentityMismatch(t *testing.T) {
 	if check.Details.MetadataProjectID != "metadata-id" || check.Details.DBProjectID != "database-id" {
 		t.Fatalf("identity details = %+v, want both project ids visible", check.Details)
 	}
+}
+
+func TestPreflightUsesCanonicalIdentityWhenMetadataProjectIDIsMissing(t *testing.T) {
+	scope := "/city"
+	checker := testPreflightChecker(preflightMetadataJSON(`{
+		"backend": "dolt",
+		"dolt_mode": "server",
+		"dolt_database": "gascity"
+	}`), PreflightBDContext{Backend: "dolt", DoltMode: "server"}, "canonical-id")
+	checker.FS.(*fsys.Fake).Files[ProjectIdentityPath(scope)] = []byte(
+		fmt.Sprintf(identityBodyTemplate, "canonical-id"),
+	)
+
+	result, err := checker.Check(scope)
+	if err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+
+	assertPreflightVerdict(t, result, PreflightVerdictEligible, true)
+	assertCheckState(t, result, PreflightCheckIdentityMatch, PreflightCheckPass)
+	check := findPreflightCheck(t, result, PreflightCheckIdentityMatch)
+	if check.Details.MetadataProjectID != "canonical-id" || check.Details.DBProjectID != "canonical-id" {
+		t.Fatalf("identity details = %+v, want canonical identity and database ids", check.Details)
+	}
+	assertPreflightReadOnly(t, checker.FS.(*fsys.Fake))
 }
 
 func TestPreflightPassesOnHealthyDolt(t *testing.T) {

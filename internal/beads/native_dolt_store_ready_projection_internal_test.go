@@ -347,8 +347,8 @@ func (s *nativeProjectionlessStorage) GetReadyWork(_ context.Context, filter bea
 // cache's predicate weaker than the backing's — and owes the same fail-safe.
 func TestNativeBackingWithoutTheBlockedColumnSendsReadyToTheLiveVerdict(t *testing.T) {
 	storage := &nativeProjectionlessStorage{nativeDoltMemStorage: newNativeDoltMemStorage(), blocked: map[string]bool{}}
-	if _, ok := beadslib.AsBlockedQuerier(storage); ok {
-		t.Fatal("fixture storage exposes BlockedQuerier; it must model a backing that cannot answer the column")
+	if _, err := isBlockedBatchForStorage(context.Background(), storage, []string{"probe"}); !errors.Is(err, ErrReadyProjectionUnsupported) {
+		t.Fatalf("fixture storage can answer the blocked column (err = %v); it must model a backing that cannot", err)
 	}
 	native := newNativeDoltStoreForTest(storage)
 
