@@ -6,7 +6,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -116,8 +115,11 @@ class WorkerReportArtifactTests(unittest.TestCase):
 
             env = os.environ.copy()
             env["GITHUB_STEP_SUMMARY"] = str(summary_path)
-            with patch.dict(os.environ, env, clear=True), patch.object(
-                sys, "argv", ["worker_report_summary.py", str(report_dir)]
+            with (
+                patch.dict(os.environ, env, clear=True),
+                patch.object(
+                    sys, "argv", ["worker_report_summary.py", str(report_dir)]
+                ),
             ):
                 self.assertEqual(summary_script.main(), 0)
 
@@ -206,7 +208,9 @@ class WorkerReportArtifactTests(unittest.TestCase):
             self.assertEqual(baseline["status_counts"]["fail"], 1)
             delta = summary["delta"]
             self.assertEqual(delta["total_reports"], 0)
-            self.assertTrue(all(value == 0 for value in delta["status_counts"].values()))
+            self.assertTrue(
+                all(value == 0 for value in delta["status_counts"].values())
+            )
             self.assertEqual(
                 delta["newly_passing_requirements"][0]["requirement"],
                 "WC-START-001",
@@ -231,7 +235,9 @@ class WorkerReportArtifactTests(unittest.TestCase):
                         "evidence": {f"evidence_key_{i:02d}": f"value-{i}"},
                     }
                 )
-            self.write_report(report_dir, "phase2-codex.json", self.report_payload(results))
+            self.write_report(
+                report_dir, "phase2-codex.json", self.report_payload(results)
+            )
 
             payload = rollup.build_rollup(
                 [str(report_dir / "phase2-codex.json")],
@@ -244,7 +250,9 @@ class WorkerReportArtifactTests(unittest.TestCase):
                 item["key"]: item["count"]
                 for item in payload["summary"]["top_evidence_keys"]
             }
-            self.assertEqual(len(payload["summary"]["top_evidence"]), rollup.TOP_EVIDENCE_LIMIT)
+            self.assertEqual(
+                len(payload["summary"]["top_evidence"]), rollup.TOP_EVIDENCE_LIMIT
+            )
             self.assertIn(
                 f"evidence_key_{rollup.TOP_EVIDENCE_LIMIT:02d}",
                 evidence_keys,

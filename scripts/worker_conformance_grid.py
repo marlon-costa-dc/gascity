@@ -170,7 +170,9 @@ def render_grid(cells, runs, generated_on):
 PROVIDER_ROW_RE = re.compile(r"^\| `(?P<provider>[^`]+)` \|")
 
 
-def merge_provider_rows(existing_block: str, generated_block: str, providers: list[str]) -> str:
+def merge_provider_rows(
+    existing_block: str, generated_block: str, providers: list[str]
+) -> str:
     """Rewrite only the named providers' rows, keeping every other row verbatim.
 
     A full regeneration writes every provider from the reports it was given, so
@@ -203,7 +205,8 @@ def merge_provider_rows(existing_block: str, generated_block: str, providers: li
     missing = sorted(set(per_table) - seen)
     if missing:
         raise SystemExit(
-            "merge target has no existing row for: " + ", ".join(missing)
+            "merge target has no existing row for: "
+            + ", ".join(missing)
             + " (add the row once, then --provider keeps it current)"
         )
     return "\n".join(out) + ("\n" if existing_block.endswith("\n") else "")
@@ -211,14 +214,18 @@ def merge_provider_rows(existing_block: str, generated_block: str, providers: li
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--report-dir", action="append", required=True, dest="report_dirs")
-    parser.add_argument("--readme", help="README to update in place between grid markers")
+    parser.add_argument(
+        "--report-dir", action="append", required=True, dest="report_dirs"
+    )
+    parser.add_argument(
+        "--readme", help="README to update in place between grid markers"
+    )
     parser.add_argument(
         "--provider",
         action="append",
         dest="providers",
         help="merge mode: rewrite only these providers' rows, leaving every "
-             "other provider's recorded cells untouched (repeatable)",
+        "other provider's recorded cells untouched (repeatable)",
     )
     parser.add_argument(
         "--generated-on",
@@ -245,9 +252,9 @@ def main():
         print(f"{args.readme}: grid markers not found", file=sys.stderr)
         return 1
     if args.providers:
-        existing_block = text[begin:end + len(GRID_END)]
+        existing_block = text[begin : end + len(GRID_END)]
         grid = merge_provider_rows(existing_block, grid, args.providers)
-    updated = text[:begin] + grid + text[end + len(GRID_END):]
+    updated = text[:begin] + grid + text[end + len(GRID_END) :]
     readme.write_text(updated)
     print(f"updated {args.readme}")
     return 0

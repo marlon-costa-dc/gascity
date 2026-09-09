@@ -13,11 +13,10 @@ ledgers. The matching ledger rows live in `gascity/REQUIREMENTS.md`
 from __future__ import annotations
 
 import pathlib
-import tomllib
 import unittest
 
 import test_formula_assets as base_contract
-
+import tomllib
 
 PACKS_ROOT = pathlib.Path(__file__).resolve().parents[2]
 GASCITY_ROOT = PACKS_ROOT / "gascity"
@@ -221,10 +220,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
                     self.assertIn(var_name, resolved["vars"])
                     self.assertEqual(resolved["vars"][var_name]["default"], default)
                     formula_path = (
-                        PACKS_ROOT
-                        / pack_name
-                        / "formulas"
-                        / f"{default}.formula.toml"
+                        PACKS_ROOT / pack_name / "formulas" / f"{default}.formula.toml"
                     )
                     self.assertTrue(
                         formula_path.is_file(),
@@ -244,9 +240,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
                 if methodology["implementation_strategy"] == "convoy-step":
                     # Convoy-step packs replace drains entirely; an empty drain
                     # policy list is the declared strategy.
-                    self.assertEqual(
-                        methodology.get("allowed_drain_policies", []), []
-                    )
+                    self.assertEqual(methodology.get("allowed_drain_policies", []), [])
                     continue
 
                 self.assertEqual(
@@ -258,9 +252,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
                 )
                 step_by_id = {step["id"]: step for step in raw["steps"]}
                 implement = step_by_id["implement"]
-                self.assertEqual(
-                    implement["condition"], "{{drain_policy}} == separate"
-                )
+                self.assertEqual(implement["condition"], "{{drain_policy}} == separate")
                 self.assertEqual(implement["drain"]["context"], "separate")
                 self.assertEqual(
                     implement["drain"]["formula"],
@@ -310,9 +302,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
                             f"{resolved_target!r} must target {prefix}* or gc.*",
                         )
                         agent_dir = (
-                            pack_root
-                            / "agents"
-                            / resolved_target.removeprefix(prefix)
+                            pack_root / "agents" / resolved_target.removeprefix(prefix)
                         )
                         agent_data = tomllib.loads(
                             (agent_dir / "agent.toml").read_text(encoding="utf-8")
@@ -324,9 +314,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
                         )
                         self.assertEqual(agent_data["scope"], "rig")
                         self.assertTrue(agent_data["fallback"])
-                        self.assertTrue(
-                            (agent_dir / "prompt.template.md").is_file()
-                        )
+                        self.assertTrue((agent_dir / "prompt.template.md").is_file())
 
     def test_agent_prompts_embed_shared_claim_protocol(self) -> None:
         shared_fragment = SHARED_CLAIM_FRAGMENT.read_text(encoding="utf-8")
@@ -344,9 +332,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
                 agent_toml.parent
                 for agent_toml in (pack_root / "agents").glob("*/agent.toml")
             )
-            self.assertGreater(
-                len(agent_dirs), 0, f"{pack_name} must define agents"
-            )
+            self.assertGreater(len(agent_dirs), 0, f"{pack_name} must define agents")
             for agent_dir in agent_dirs:
                 with self.subTest(pack=pack_name, agent=agent_dir.name):
                     prompt = agent_dir / "prompt.template.md"
@@ -358,9 +344,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
                     self.assertIn(CLAIM_PROTOCOL_INCLUDE, text)
                     self.assertEqual(text.count(CLAIM_PROTOCOL_INCLUDE), 1)
                     local_fragment = (
-                        agent_dir
-                        / "template-fragments"
-                        / "gc-role-worker.template.md"
+                        agent_dir / "template-fragments" / "gc-role-worker.template.md"
                     )
                     self.assertEqual(
                         local_fragment.read_text(encoding="utf-8"),
@@ -373,9 +357,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
             paths: list[pathlib.Path] = []
             for sub_dir in PROMPT_ASSET_DIRS:
                 paths.extend(sorted((pack_root / sub_dir).glob("**/*.md")))
-            self.assertGreater(
-                len(paths), 0, f"{pack_name} must ship prompt assets"
-            )
+            self.assertGreater(len(paths), 0, f"{pack_name} must ship prompt assets")
 
             combined: list[str] = []
             for path in paths:
@@ -453,9 +435,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
                     "implement-item": base_contract.ITEM_SUMMARY_GATE,
                 }
             for formula_name, gates in formula_gates.items():
-                resolved = resolved_build_formula(
-                    pack_name, {"formula": formula_name}
-                )
+                resolved = resolved_build_formula(pack_name, {"formula": formula_name})
                 steps = {step["id"]: step for step in resolved["steps"]}
                 for step_id, (schema, path_keys) in gates.items():
                     if step_id not in steps:
@@ -499,8 +479,7 @@ class DerivedPackCompatibilityTests(unittest.TestCase):
                 self.assertEqual(
                     steps[step_id]["check"]["check"]["path"],
                     ".gc/scripts/checks/implementation-review-approved.sh",
-                    "bmad story development must keep its methodology "
-                    "review check",
+                    "bmad story development must keep its methodology review check",
                 )
 
 

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import io
 import pathlib
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
-import io
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts"))
+sys.path.insert(
+    0, str(pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts")
+)
 
-import validate_context_bundle as context_validator
 import validate_build_artifact as build_artifact_validator
+import validate_context_bundle as context_validator
 import validate_verdict_report as verdict_validator
 
 
@@ -48,7 +50,9 @@ class ContextBundleValidatorTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(context_validator.ValidationError, "unknown fields"):
+            with self.assertRaisesRegex(
+                context_validator.ValidationError, "unknown fields"
+            ):
                 context_validator.validate_bundle(bundle, allowed_roots=[root])
 
     def test_context_bundle_rejects_missing_files_and_symlink_escapes(self) -> None:
@@ -67,8 +71,12 @@ class ContextBundleValidatorTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(context_validator.ValidationError, "outside allowed roots"):
-                context_validator.validate_bundle(bundle, allowed_roots=[root / "allowed"])
+            with self.assertRaisesRegex(
+                context_validator.ValidationError, "outside allowed roots"
+            ):
+                context_validator.validate_bundle(
+                    bundle, allowed_roots=[root / "allowed"]
+                )
 
             bundle.write_text(
                 "items:\n"
@@ -77,7 +85,9 @@ class ContextBundleValidatorTests(unittest.TestCase):
                 "    description: Missing file.\n",
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(context_validator.ValidationError, "does not exist"):
+            with self.assertRaisesRegex(
+                context_validator.ValidationError, "does not exist"
+            ):
                 context_validator.validate_bundle(bundle, allowed_roots=[root])
 
     def test_context_bundle_rejects_binary_and_secret_paths(self) -> None:
@@ -109,7 +119,13 @@ class ContextBundleValidatorTests(unittest.TestCase):
             with self.assertRaisesRegex(context_validator.ValidationError, "secret"):
                 context_validator.validate_bundle(bundle, allowed_roots=[root])
 
-            for filename in (".env.production", "private.pem", ".ssh/config", ".git/config", "cookies.txt"):
+            for filename in (
+                ".env.production",
+                "private.pem",
+                ".ssh/config",
+                ".git/config",
+                "cookies.txt",
+            ):
                 secret = root / filename
                 secret.parent.mkdir(parents=True, exist_ok=True)
                 secret.write_text("secret\n", encoding="utf-8")
@@ -120,10 +136,14 @@ class ContextBundleValidatorTests(unittest.TestCase):
                     "    description: Secret file.\n",
                     encoding="utf-8",
                 )
-                with self.assertRaisesRegex(context_validator.ValidationError, "secret"):
+                with self.assertRaisesRegex(
+                    context_validator.ValidationError, "secret"
+                ):
                     context_validator.validate_bundle(bundle, allowed_roots=[root])
 
-    def test_context_bundle_accepts_benign_files_under_secret_named_ancestors(self) -> None:
+    def test_context_bundle_accepts_benign_files_under_secret_named_ancestors(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(prefix="secret-project-") as tmp:
             root = pathlib.Path(tmp)
             subject = root / "requirements.md"
@@ -168,7 +188,9 @@ class ContextBundleValidatorTests(unittest.TestCase):
                     encoding="utf-8",
                 )
 
-                with self.assertRaisesRegex(context_validator.ValidationError, "secret"):
+                with self.assertRaisesRegex(
+                    context_validator.ValidationError, "secret"
+                ):
                     context_validator.validate_bundle(bundle, allowed_roots=[root])
 
     def test_context_bundle_rejects_symlink_to_secret_named_directory(self) -> None:
@@ -267,7 +289,12 @@ class BuildArtifactValidatorTests(unittest.TestCase):
         "gc.build.final-report.v1": "final-report.v1.yaml",
     }
     SCHEMA_ROOT = pathlib.Path(__file__).resolve().parents[1] / "schemas" / "build"
-    VALIDATOR_SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts" / "validate_build_artifact.py"
+    VALIDATOR_SCRIPT = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "assets"
+        / "scripts"
+        / "validate_build_artifact.py"
+    )
 
     def valid_artifact(self, schema: str = "gc.build.requirements.v1") -> str:
         sections = []
@@ -310,7 +337,9 @@ trace:
 {body}
 """
 
-    def test_build_artifact_accepts_valid_minimal_artifacts_for_all_base_schemas(self) -> None:
+    def test_build_artifact_accepts_valid_minimal_artifacts_for_all_base_schemas(
+        self,
+    ) -> None:
         for schema in self.SCHEMA_SECTIONS:
             with self.subTest(schema=schema):
                 artifact = build_artifact_validator.validate_artifact_text(
@@ -319,11 +348,18 @@ trace:
                 )
 
                 self.assertEqual(artifact.schema_id, schema)
-                self.assertEqual([entry["id"] for entry in artifact.coverage], ["GC-METH-001", "GC-METH-012"])
+                self.assertEqual(
+                    [entry["id"] for entry in artifact.coverage],
+                    ["GC-METH-001", "GC-METH-012"],
+                )
 
     def test_build_artifact_rejects_missing_front_matter_and_wrong_schema(self) -> None:
-        with self.assertRaisesRegex(build_artifact_validator.ValidationError, "front matter"):
-            build_artifact_validator.validate_artifact_text("# Missing front matter\n", expected_schema="gc.build.requirements.v1")
+        with self.assertRaisesRegex(
+            build_artifact_validator.ValidationError, "front matter"
+        ):
+            build_artifact_validator.validate_artifact_text(
+                "# Missing front matter\n", expected_schema="gc.build.requirements.v1"
+            )
 
         with self.assertRaisesRegex(build_artifact_validator.ValidationError, "schema"):
             build_artifact_validator.validate_artifact_text(
@@ -332,58 +368,96 @@ trace:
             )
 
     def test_build_artifact_rejects_missing_upstream_hash(self) -> None:
-        text = self.valid_artifact().replace("      hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n", "")
+        text = self.valid_artifact().replace(
+            "      hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+            "",
+        )
 
         with self.assertRaisesRegex(build_artifact_validator.ValidationError, "hash"):
-            build_artifact_validator.validate_artifact_text(text, expected_schema="gc.build.requirements.v1")
+            build_artifact_validator.validate_artifact_text(
+                text, expected_schema="gc.build.requirements.v1"
+            )
 
-    def test_build_artifact_rejects_invalid_coverage_status_and_missing_rationale(self) -> None:
-        invalid_status = self.valid_artifact().replace("status: deferred", "status: waiting", 1)
+    def test_build_artifact_rejects_invalid_coverage_status_and_missing_rationale(
+        self,
+    ) -> None:
+        invalid_status = self.valid_artifact().replace(
+            "status: deferred", "status: waiting", 1
+        )
         missing_rationale = self.valid_artifact().replace(
             "      rationale: Derived-pack compatibility is verified by a later work item.\n",
             "",
         )
 
-        with self.assertRaisesRegex(build_artifact_validator.ValidationError, "coverage"):
-            build_artifact_validator.validate_artifact_text(invalid_status, expected_schema="gc.build.requirements.v1")
-        with self.assertRaisesRegex(build_artifact_validator.ValidationError, "rationale"):
-            build_artifact_validator.validate_artifact_text(missing_rationale, expected_schema="gc.build.requirements.v1")
+        with self.assertRaisesRegex(
+            build_artifact_validator.ValidationError, "coverage"
+        ):
+            build_artifact_validator.validate_artifact_text(
+                invalid_status, expected_schema="gc.build.requirements.v1"
+            )
+        with self.assertRaisesRegex(
+            build_artifact_validator.ValidationError, "rationale"
+        ):
+            build_artifact_validator.validate_artifact_text(
+                missing_rationale, expected_schema="gc.build.requirements.v1"
+            )
 
     def test_build_artifact_rejects_markdown_yaml_coverage_mismatch(self) -> None:
-        text = self.valid_artifact().replace("| GC-METH-012 | deferred |", "| GC-METH-012 | covered |")
+        text = self.valid_artifact().replace(
+            "| GC-METH-012 | deferred |", "| GC-METH-012 | covered |"
+        )
 
-        with self.assertRaisesRegex(build_artifact_validator.ValidationError, "markdown coverage"):
-            build_artifact_validator.validate_artifact_text(text, expected_schema="gc.build.requirements.v1")
+        with self.assertRaisesRegex(
+            build_artifact_validator.ValidationError, "markdown coverage"
+        ):
+            build_artifact_validator.validate_artifact_text(
+                text, expected_schema="gc.build.requirements.v1"
+            )
 
     def test_build_artifact_validator_and_schema_files_are_present(self) -> None:
-        self.assertTrue(self.VALIDATOR_SCRIPT.is_file(), f"missing {self.VALIDATOR_SCRIPT}")
+        self.assertTrue(
+            self.VALIDATOR_SCRIPT.is_file(), f"missing {self.VALIDATOR_SCRIPT}"
+        )
         for schema_id, filename in self.SCHEMA_FILES.items():
             with self.subTest(schema=schema_id):
-                self.assertTrue((self.SCHEMA_ROOT / filename).is_file(), f"missing {self.SCHEMA_ROOT / filename}")
+                self.assertTrue(
+                    (self.SCHEMA_ROOT / filename).is_file(),
+                    f"missing {self.SCHEMA_ROOT / filename}",
+                )
 
     def test_build_artifact_schemas_keep_producer_metadata_neutral(self) -> None:
         for schema_id in self.SCHEMA_FILES:
             with self.subTest(schema=schema_id):
                 schema = build_artifact_validator.load_schema(schema_id)
 
-                leaves = {str(field).split(".")[-1].lower() for field in schema["required_front_matter"]}
-                self.assertFalse(leaves & build_artifact_validator.FORBIDDEN_REQUIRED_FIELD_NAMES)
+                leaves = {
+                    str(field).split(".")[-1].lower()
+                    for field in schema["required_front_matter"]
+                }
+                self.assertFalse(
+                    leaves & build_artifact_validator.FORBIDDEN_REQUIRED_FIELD_NAMES
+                )
 
     def test_build_artifact_rejects_schema_requiring_role_fields(self) -> None:
         for field in ("owner", "stage-owner", "persona", "producer.role"):
             with self.subTest(field=field):
-                with self.assertRaisesRegex(build_artifact_validator.ValidationError, "must not require"):
+                with self.assertRaisesRegex(
+                    build_artifact_validator.ValidationError, "must not require"
+                ):
                     build_artifact_validator.validate_schema_definition(
-                        {"schema_id": "gc.build.requirements.v1", "required_front_matter": ["schema", field]}
+                        {
+                            "schema_id": "gc.build.requirements.v1",
+                            "required_front_matter": ["schema", field],
+                        }
                     )
 
     def test_build_artifact_statuses_follow_base_approval_states(self) -> None:
         review_questions = self.valid_artifact("gc.build.review.v1").replace(
             "\nstatus: approved\n", "\nstatus: questions\n"
         )
-        summary_complete = self.valid_artifact("gc.build.implementation-summary.v1").replace(
-            "\nstatus: approved\n", "\nstatus: complete\n"
-        )
+        summary_complete = self.valid_artifact(
+            "gc.build.implementation-summary.v1"
+        ).replace("\nstatus: approved\n", "\nstatus: complete\n")
 
         artifact = build_artifact_validator.validate_artifact_text(
             review_questions, expected_schema="gc.build.review.v1"
@@ -402,12 +476,22 @@ trace:
             "        - GC-METH-001\n"
             "        - GC-METH-012\n",
         )
-        missing = declared.replace("        - GC-METH-012\n", "        - GC-METH-012\n        - GC-METH-099\n")
+        missing = declared.replace(
+            "        - GC-METH-012\n", "        - GC-METH-012\n        - GC-METH-099\n"
+        )
 
-        artifact = build_artifact_validator.validate_artifact_text(declared, expected_schema="gc.build.requirements.v1")
-        self.assertEqual([entry["id"] for entry in artifact.coverage], ["GC-METH-001", "GC-METH-012"])
-        with self.assertRaisesRegex(build_artifact_validator.ValidationError, "GC-METH-099"):
-            build_artifact_validator.validate_artifact_text(missing, expected_schema="gc.build.requirements.v1")
+        artifact = build_artifact_validator.validate_artifact_text(
+            declared, expected_schema="gc.build.requirements.v1"
+        )
+        self.assertEqual(
+            [entry["id"] for entry in artifact.coverage], ["GC-METH-001", "GC-METH-012"]
+        )
+        with self.assertRaisesRegex(
+            build_artifact_validator.ValidationError, "GC-METH-099"
+        ):
+            build_artifact_validator.validate_artifact_text(
+                missing, expected_schema="gc.build.requirements.v1"
+            )
 
     def test_build_artifact_cli_reports_errors_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -453,8 +537,12 @@ findings:
 Failure details.
 """
 
-        self.assertEqual(verdict_validator.validate_report_text(pass_report).verdict, "pass")
-        self.assertEqual(verdict_validator.validate_report_text(fail_report).severity, "major")
+        self.assertEqual(
+            verdict_validator.validate_report_text(pass_report).verdict, "pass"
+        )
+        self.assertEqual(
+            verdict_validator.validate_report_text(fail_report).severity, "major"
+        )
 
     def test_verdict_report_rejects_bad_schema_and_unstructured_failures(self) -> None:
         bad_schema = """---
@@ -479,7 +567,9 @@ findings: []
         with self.assertRaisesRegex(verdict_validator.ValidationError, "findings"):
             verdict_validator.validate_report_text(no_findings)
 
-    def test_verdict_report_rejects_severity_that_is_not_max_finding_severity(self) -> None:
+    def test_verdict_report_rejects_severity_that_is_not_max_finding_severity(
+        self,
+    ) -> None:
         report = """---
 schema: gc.verdict-report.v1
 kind: review
@@ -522,7 +612,9 @@ findings:
 ---
 """
 
-                with self.assertRaisesRegex(verdict_validator.ValidationError, "missing fields"):
+                with self.assertRaisesRegex(
+                    verdict_validator.ValidationError, "missing fields"
+                ):
                     verdict_validator.validate_report_text(report)
 
     def test_verdict_report_cli_reports_malformed_yaml_without_traceback(self) -> None:

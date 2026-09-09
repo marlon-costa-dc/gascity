@@ -9,24 +9,34 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts"))
+sys.path.insert(
+    0, str(pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts")
+)
 
 import github_api
 
 
 def subprocess_result(stdout: str, stderr: str = "", returncode: int = 0):
-    return type("Result", (), {"stdout": stdout, "stderr": stderr, "returncode": returncode})()
+    return type(
+        "Result", (), {"stdout": stdout, "stderr": stderr, "returncode": returncode}
+    )()
 
 
 class GitHubAPITests(unittest.TestCase):
     def test_parse_github_url_accepts_only_full_issue_or_pr_urls(self) -> None:
-        issue = github_api.parse_github_url("https://github.com/owner/repo/issues/123", expected_kind="issue")
-        pr = github_api.parse_github_url("https://github.com/owner/repo/pull/456", expected_kind="pull")
+        issue = github_api.parse_github_url(
+            "https://github.com/owner/repo/issues/123", expected_kind="issue"
+        )
+        pr = github_api.parse_github_url(
+            "https://github.com/owner/repo/pull/456", expected_kind="pull"
+        )
 
         self.assertEqual(issue.repo_slug, "owner/repo")
         self.assertEqual(issue.kind, "issue")
         self.assertEqual(issue.number, 123)
-        self.assertEqual(issue.canonical_url, "https://github.com/owner/repo/issues/123")
+        self.assertEqual(
+            issue.canonical_url, "https://github.com/owner/repo/issues/123"
+        )
         self.assertEqual(pr.kind, "pull")
         self.assertEqual(pr.number, 456)
 
@@ -41,7 +51,10 @@ class GitHubAPITests(unittest.TestCase):
             "https://github.com/owner/repo/issues/123/comments/1",
         ]
         for value in bad_values:
-            with self.subTest(value=value), self.assertRaises(github_api.GitHubAPIError):
+            with (
+                self.subTest(value=value),
+                self.assertRaises(github_api.GitHubAPIError),
+            ):
                 github_api.parse_github_url(value)
 
     def test_issue_snapshot_normalizes_body_hash_and_labels(self) -> None:
@@ -57,12 +70,22 @@ class GitHubAPITests(unittest.TestCase):
             "updated_at": "2026-05-02T00:00:00Z",
         }
 
-        with mock.patch("github_api.subprocess.run", return_value=subprocess_result(json.dumps(payload))) as run:
-            snapshot = github_api.issue_snapshot("https://github.com/owner/repo/issues/123")
+        with mock.patch(
+            "github_api.subprocess.run",
+            return_value=subprocess_result(json.dumps(payload)),
+        ) as run:
+            snapshot = github_api.issue_snapshot(
+                "https://github.com/owner/repo/issues/123"
+            )
 
-        self.assertEqual(run.call_args.args[0], ["gh", "api", "repos/owner/repo/issues/123"])
+        self.assertEqual(
+            run.call_args.args[0], ["gh", "api", "repos/owner/repo/issues/123"]
+        )
         self.assertEqual(snapshot["repo"], "owner/repo")
-        self.assertEqual(snapshot["body_hash"], "sha256:a5cdbfe55af8c3143f8dabf722bbfecb699122cb0c986db748f5afd09e684fda")
+        self.assertEqual(
+            snapshot["body_hash"],
+            "sha256:a5cdbfe55af8c3143f8dabf722bbfecb699122cb0c986db748f5afd09e684fda",
+        )
         self.assertEqual(snapshot["labels"], ["bug", "triage"])
 
     def test_pr_snapshot_normalizes_head_sha_and_refs(self) -> None:
@@ -71,7 +94,11 @@ class GitHubAPITests(unittest.TestCase):
             "body": "PR body",
             "state": "open",
             "user": {"login": "contributor"},
-            "head": {"sha": "abc123", "ref": "fix/bug", "repo": {"full_name": "fork/repo"}},
+            "head": {
+                "sha": "abc123",
+                "ref": "fix/bug",
+                "repo": {"full_name": "fork/repo"},
+            },
             "base": {"ref": "main", "repo": {"full_name": "owner/repo"}},
             "html_url": "https://github.com/owner/repo/pull/9",
             "url": "https://api.github.com/repos/owner/repo/pulls/9",
@@ -79,10 +106,15 @@ class GitHubAPITests(unittest.TestCase):
             "updated_at": "2026-05-02T00:00:00Z",
         }
 
-        with mock.patch("github_api.subprocess.run", return_value=subprocess_result(json.dumps(payload))) as run:
+        with mock.patch(
+            "github_api.subprocess.run",
+            return_value=subprocess_result(json.dumps(payload)),
+        ) as run:
             snapshot = github_api.pr_snapshot("https://github.com/owner/repo/pull/9")
 
-        self.assertEqual(run.call_args.args[0], ["gh", "api", "repos/owner/repo/pulls/9"])
+        self.assertEqual(
+            run.call_args.args[0], ["gh", "api", "repos/owner/repo/pulls/9"]
+        )
         self.assertEqual(snapshot["repo"], "owner/repo")
         self.assertEqual(snapshot["head_sha"], "abc123")
         self.assertEqual(snapshot["head_ref"], "fix/bug")
@@ -90,7 +122,10 @@ class GitHubAPITests(unittest.TestCase):
         self.assertEqual(snapshot["author"], "contributor")
 
     def test_actor_returns_authenticated_login(self) -> None:
-        with mock.patch("github_api.subprocess.run", return_value=subprocess_result('{"login":"octocat"}')):
+        with mock.patch(
+            "github_api.subprocess.run",
+            return_value=subprocess_result('{"login":"octocat"}'),
+        ):
             self.assertEqual(github_api.actor()["login"], "octocat")
 
     def test_create_and_update_comment_use_issue_comment_endpoint(self) -> None:
@@ -103,21 +138,45 @@ class GitHubAPITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             body_path = pathlib.Path(tmp) / "comment.md"
             body_path.write_text("hello\n", encoding="utf-8")
-            with mock.patch("github_api.subprocess.run", return_value=subprocess_result(json.dumps(comment))) as run:
-                created = github_api.comment_create("https://github.com/owner/repo/pull/123", body_path)
+            with mock.patch(
+                "github_api.subprocess.run",
+                return_value=subprocess_result(json.dumps(comment)),
+            ) as run:
+                created = github_api.comment_create(
+                    "https://github.com/owner/repo/pull/123", body_path
+                )
 
             self.assertEqual(
                 run.call_args.args[0],
-                ["gh", "api", "-X", "POST", "repos/owner/repo/issues/123/comments", "-f", "body=hello\n"],
+                [
+                    "gh",
+                    "api",
+                    "-X",
+                    "POST",
+                    "repos/owner/repo/issues/123/comments",
+                    "-f",
+                    "body=hello\n",
+                ],
             )
             self.assertEqual(created["id"], 111)
 
-            with mock.patch("github_api.subprocess.run", return_value=subprocess_result(json.dumps(comment))) as run:
+            with mock.patch(
+                "github_api.subprocess.run",
+                return_value=subprocess_result(json.dumps(comment)),
+            ) as run:
                 updated = github_api.comment_update("owner/repo", 111, body_path)
 
             self.assertEqual(
                 run.call_args.args[0],
-                ["gh", "api", "-X", "PATCH", "repos/owner/repo/issues/comments/111", "-f", "body=hello\n"],
+                [
+                    "gh",
+                    "api",
+                    "-X",
+                    "PATCH",
+                    "repos/owner/repo/issues/comments/111",
+                    "-f",
+                    "body=hello\n",
+                ],
             )
             self.assertEqual(updated["author"], "bot")
 
@@ -135,7 +194,10 @@ class GitHubAPITests(unittest.TestCase):
             body_path = pathlib.Path(tmp) / "body.md"
             title_path.write_text("Fix issue\n", encoding="utf-8")
             body_path.write_text("Details\n", encoding="utf-8")
-            with mock.patch("github_api.subprocess.run", return_value=subprocess_result(json.dumps(created_payload))) as run:
+            with mock.patch(
+                "github_api.subprocess.run",
+                return_value=subprocess_result(json.dumps(created_payload)),
+            ) as run:
                 created = github_api.pr_create(
                     "owner/repo",
                     head="fix/issue",
@@ -167,8 +229,13 @@ class GitHubAPITests(unittest.TestCase):
             )
             self.assertEqual(created["number"], 12)
 
-            with mock.patch("github_api.subprocess.run", return_value=subprocess_result(json.dumps(created_payload))) as run:
-                updated = github_api.pr_update("https://github.com/owner/repo/pull/12", title_path, body_path)
+            with mock.patch(
+                "github_api.subprocess.run",
+                return_value=subprocess_result(json.dumps(created_payload)),
+            ) as run:
+                updated = github_api.pr_update(
+                    "https://github.com/owner/repo/pull/12", title_path, body_path
+                )
 
             self.assertEqual(
                 run.call_args.args[0],
@@ -187,22 +254,35 @@ class GitHubAPITests(unittest.TestCase):
             self.assertEqual(updated["url"], "https://github.com/owner/repo/pull/12")
 
     def test_gh_api_surfaces_nonzero_exit_stderr(self) -> None:
-        with mock.patch("github_api.subprocess.run", return_value=subprocess_result("", stderr="missing auth", returncode=1)):
+        with mock.patch(
+            "github_api.subprocess.run",
+            return_value=subprocess_result("", stderr="missing auth", returncode=1),
+        ):
             with self.assertRaisesRegex(github_api.GitHubAPIError, "missing auth"):
                 github_api.gh_api(["user"])
 
     def test_gh_api_rejects_malformed_and_non_container_json(self) -> None:
-        with mock.patch("github_api.subprocess.run", return_value=subprocess_result("not-json")):
+        with mock.patch(
+            "github_api.subprocess.run", return_value=subprocess_result("not-json")
+        ):
             with self.assertRaisesRegex(github_api.GitHubAPIError, "invalid JSON"):
                 github_api.gh_api(["user"])
 
-        with mock.patch("github_api.subprocess.run", return_value=subprocess_result('"scalar"')):
-            with self.assertRaisesRegex(github_api.GitHubAPIError, "not an object or list"):
+        with mock.patch(
+            "github_api.subprocess.run", return_value=subprocess_result('"scalar"')
+        ):
+            with self.assertRaisesRegex(
+                github_api.GitHubAPIError, "not an object or list"
+            ):
                 github_api.gh_api(["user"])
 
     def test_pr_search_encodes_marker_quotes(self) -> None:
-        with mock.patch("github_api.subprocess.run", return_value=subprocess_result('{"items":[]}')) as run:
-            result = github_api.pr_search("owner/repo", 'gc:review" is:closed', author="octocat")
+        with mock.patch(
+            "github_api.subprocess.run", return_value=subprocess_result('{"items":[]}')
+        ) as run:
+            result = github_api.pr_search(
+                "owner/repo", 'gc:review" is:closed', author="octocat"
+            )
 
         self.assertEqual(result["items"], [])
         request = run.call_args.args[0][-1]

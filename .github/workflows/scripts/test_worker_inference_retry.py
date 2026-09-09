@@ -3,7 +3,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -12,7 +11,9 @@ import worker_inference_retry as retry_script
 
 
 class WorkerInferenceRetryTests(unittest.TestCase):
-    def make_report(self, suite: str, results: list[dict], status: str | None = None) -> dict:
+    def make_report(
+        self, suite: str, results: list[dict], status: str | None = None
+    ) -> dict:
         report = {
             "schema_version": "gc.worker.conformance.v1",
             "run_id": f"{suite}-codex-tmux-cli",
@@ -22,28 +23,37 @@ class WorkerInferenceRetryTests(unittest.TestCase):
                 "profile_filter": "codex/tmux-cli",
             },
             "summary": {
-                "status": status or retry_script.summary_status(
+                "status": status
+                or retry_script.summary_status(
                     retry_script.Counter(result["status"] for result in results)
                 ),
                 "total": len(results),
                 "passed": sum(1 for result in results if result["status"] == "pass"),
                 "failed": sum(1 for result in results if result["status"] == "fail"),
-                "unsupported": sum(1 for result in results if result["status"] == "unsupported"),
+                "unsupported": sum(
+                    1 for result in results if result["status"] == "unsupported"
+                ),
                 "environment_errors": sum(
                     1 for result in results if result["status"] == "environment_error"
                 ),
                 "provider_incidents": sum(
                     1 for result in results if result["status"] == "provider_incident"
                 ),
-                "flaky_live": sum(1 for result in results if result["status"] == "flaky_live"),
+                "flaky_live": sum(
+                    1 for result in results if result["status"] == "flaky_live"
+                ),
                 "not_certifiable_live": sum(
-                    1 for result in results if result["status"] == "not_certifiable_live"
+                    1
+                    for result in results
+                    if result["status"] == "not_certifiable_live"
                 ),
                 "profiles": 1,
                 "requirements": len(results),
                 "failing_profiles": [],
                 "failing_requirements": [
-                    result["requirement"] for result in results if result["status"] == "fail"
+                    result["requirement"]
+                    for result in results
+                    if result["status"] == "fail"
                 ],
                 "top_evidence": [],
             },
@@ -68,7 +78,9 @@ class WorkerInferenceRetryTests(unittest.TestCase):
             ],
         )
 
-        plan = retry_script.build_retry_plan({"worker-inference-codex.json": report}, delayed_delay=17)
+        plan = retry_script.build_retry_plan(
+            {"worker-inference-codex.json": report}, delayed_delay=17
+        )
 
         self.assertIsNotNone(plan)
         self.assertEqual(plan["strategy"], "delayed")
@@ -159,7 +171,8 @@ class WorkerInferenceRetryTests(unittest.TestCase):
         self.assertEqual(report["metadata"]["retry_strategy"], "delayed")
 
         results = {
-            (result["profile"], result["requirement"]): result for result in report["results"]
+            (result["profile"], result["requirement"]): result
+            for result in report["results"]
         }
         flaky = results[("codex/tmux-cli", "WI-TASK-001")]
         self.assertEqual(flaky["status"], "flaky_live")
@@ -183,7 +196,9 @@ class WorkerInferenceRetryTests(unittest.TestCase):
             status="flaky_live",
         )
 
-        code = retry_script.exit_code_for_reports({"worker-inference-codex.json": report}, 1)
+        code = retry_script.exit_code_for_reports(
+            {"worker-inference-codex.json": report}, 1
+        )
 
         self.assertEqual(code, 0)
 

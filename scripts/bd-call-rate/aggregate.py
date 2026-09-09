@@ -126,7 +126,7 @@ def _fmt_table(
         suffix = ""
         if extra and key in extra:
             suffix = extra[key]
-        lines.append(f"{str(key):<28}{n:>9}{rate:>10.2f}{pct:>7.1f}%{suffix}")
+        lines.append(f"{key!s:<28}{n:>9}{rate:>10.2f}{pct:>7.1f}%{suffix}")
     return "\n".join(lines)
 
 

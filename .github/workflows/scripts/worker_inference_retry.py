@@ -4,13 +4,10 @@ import copy
 import glob
 import json
 import os
-import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from collections import Counter
-
 
 DEFAULT_COMMAND = [
     "go",
@@ -78,14 +75,20 @@ def main() -> int:
         return run_attempt(DEFAULT_COMMAND, {})
 
     profile = os.environ.get("PROFILE", "").strip() or "all-profiles"
-    immediate_delay = env_seconds("GC_WORKER_INFERENCE_RETRY_IMMEDIATE_DELAY_SECONDS", 0)
+    immediate_delay = env_seconds(
+        "GC_WORKER_INFERENCE_RETRY_IMMEDIATE_DELAY_SECONDS", 0
+    )
     delayed_delay = env_seconds("GC_WORKER_INFERENCE_RETRY_DELAY_SECONDS", 90)
 
-    with tempfile.TemporaryDirectory(prefix=f"worker-inference-retry-{sanitize(profile)}-") as root:
+    with tempfile.TemporaryDirectory(
+        prefix=f"worker-inference-retry-{sanitize(profile)}-"
+    ) as root:
         attempt1_dir = os.path.join(root, "attempt-1")
         attempt2_dir = os.path.join(root, "attempt-2")
 
-        attempt1_exit = run_attempt(DEFAULT_COMMAND, {"GC_WORKER_REPORT_DIR": attempt1_dir})
+        attempt1_exit = run_attempt(
+            DEFAULT_COMMAND, {"GC_WORKER_REPORT_DIR": attempt1_dir}
+        )
         attempt1_reports = load_reports(attempt1_dir)
         if not attempt1_reports:
             return attempt1_exit
@@ -102,7 +105,9 @@ def main() -> int:
         if plan["delay_seconds"] > 0:
             time.sleep(plan["delay_seconds"])
 
-        attempt2_exit = run_attempt(DEFAULT_COMMAND, {"GC_WORKER_REPORT_DIR": attempt2_dir})
+        attempt2_exit = run_attempt(
+            DEFAULT_COMMAND, {"GC_WORKER_REPORT_DIR": attempt2_dir}
+        )
         attempt2_reports = load_reports(attempt2_dir)
         if not attempt2_reports:
             write_reports(attempt1_reports, report_dir)
@@ -126,7 +131,9 @@ def env_seconds(name: str, default: int) -> int:
     try:
         value = int(raw)
     except ValueError as exc:
-        raise SystemExit(f"{name} must be an integer number of seconds: {raw!r}") from exc
+        raise SystemExit(
+            f"{name} must be an integer number of seconds: {raw!r}"
+        ) from exc
     if value < 0:
         raise SystemExit(f"{name} must be >= 0: {raw!r}")
     return value
@@ -168,7 +175,9 @@ def build_retry_plan(
             if mode is None:
                 return None
             modes.add(mode)
-            reasons.append(f"{result.get('profile', '')} {result.get('requirement', '')} {mode}".strip())
+            reasons.append(
+                f"{result.get('profile', '')} {result.get('requirement', '')} {mode}".strip()
+            )
     if not saw_failure or not modes:
         return None
     strategy = "delayed" if "delayed" in modes else "immediate"
@@ -217,7 +226,9 @@ def merge_retry_reports(
         initial = initial_reports.get(name)
         retry = retry_reports.get(name)
         if initial and retry:
-            merged[name] = merge_report_attempts(initial, retry, plan, initial_exit, retry_exit)
+            merged[name] = merge_report_attempts(
+                initial, retry, plan, initial_exit, retry_exit
+            )
             continue
         report = copy.deepcopy(retry or initial)
         if report is None:
@@ -242,7 +253,9 @@ def merge_report_attempts(
     retry_exit: int,
 ) -> dict:
     merged = copy.deepcopy(retry)
-    merged["results"] = merge_result_sets(initial.get("results") or [], retry.get("results") or [], plan)
+    merged["results"] = merge_result_sets(
+        initial.get("results") or [], retry.get("results") or [], plan
+    )
     merged["metadata"] = merge_report_metadata(
         retry.get("metadata") or initial.get("metadata") or {},
         plan,
@@ -254,7 +267,9 @@ def merge_report_attempts(
     merged["summary"] = compute_summary(
         merged["results"],
         suite_failed=bool((retry.get("summary") or {}).get("suite_failed")),
-        failure_detail=str((retry.get("summary") or {}).get("failure_detail", "")).strip(),
+        failure_detail=str(
+            (retry.get("summary") or {}).get("failure_detail", "")
+        ).strip(),
     )
     return merged
 
@@ -280,9 +295,15 @@ def merge_report_metadata(
     return merged
 
 
-def merge_result_sets(initial_results: list[dict], retry_results: list[dict], plan: dict) -> list[dict]:
-    initial_by_key = {result_key(result): copy.deepcopy(result) for result in initial_results}
-    retry_by_key = {result_key(result): copy.deepcopy(result) for result in retry_results}
+def merge_result_sets(
+    initial_results: list[dict], retry_results: list[dict], plan: dict
+) -> list[dict]:
+    initial_by_key = {
+        result_key(result): copy.deepcopy(result) for result in initial_results
+    }
+    retry_by_key = {
+        result_key(result): copy.deepcopy(result) for result in retry_results
+    }
 
     merged = []
     for key in sorted(set(initial_by_key) | set(retry_by_key)):
@@ -298,7 +319,10 @@ def merge_result_sets(initial_results: list[dict], retry_results: list[dict], pl
 
 
 def merge_result_attempts(initial: dict, retry: dict, plan: dict) -> dict:
-    if str(initial.get("status", "")) in RETRYABLE_STATUSES and str(retry.get("status", "")) == "pass":
+    if (
+        str(initial.get("status", "")) in RETRYABLE_STATUSES
+        and str(retry.get("status", "")) == "pass"
+    ):
         merged = copy.deepcopy(retry)
         merged["status"] = "flaky_live"
         merged["detail"] = (
@@ -341,7 +365,7 @@ def merge_retry_evidence(initial: dict, retry: dict, plan: dict) -> dict:
     if retry:
         evidence["retry_final_status"] = str(retry.get("status", "")).strip()
         evidence["retry_final_detail"] = str(retry.get("detail", "")).strip()
-    for key, value in ((initial.get("evidence") or {}).items()):
+    for key, value in (initial.get("evidence") or {}).items():
         evidence[f"retry_initial_{key}"] = value
     return evidence
 
@@ -351,12 +375,16 @@ def rebuild_report(report: dict) -> dict:
     rebuilt["summary"] = compute_summary(
         rebuilt.get("results") or [],
         suite_failed=bool((rebuilt.get("summary") or {}).get("suite_failed")),
-        failure_detail=str((rebuilt.get("summary") or {}).get("failure_detail", "")).strip(),
+        failure_detail=str(
+            (rebuilt.get("summary") or {}).get("failure_detail", "")
+        ).strip(),
     )
     return rebuilt
 
 
-def compute_summary(results: list[dict], suite_failed: bool = False, failure_detail: str = "") -> dict:
+def compute_summary(
+    results: list[dict], suite_failed: bool = False, failure_detail: str = ""
+) -> dict:
     counts = Counter()
     profiles = set()
     requirements = set()

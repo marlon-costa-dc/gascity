@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import io
 import pathlib
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
-import io
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts"))
+sys.path.insert(
+    0, str(pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts")
+)
 
 import github_reports
 
@@ -51,10 +53,14 @@ recommended_next_action: fix
 ---
 """
 
-        with self.assertRaisesRegex(github_reports.ValidationError, "recommended_next_action"):
+        with self.assertRaisesRegex(
+            github_reports.ValidationError, "recommended_next_action"
+        ):
             github_reports.validate_triage_report_text(report)
         with self.assertRaisesRegex(github_reports.ValidationError, "repo"):
-            github_reports.validate_triage_report_text(report.replace("fix", "ask_reporter"), expected_repo="other/repo")
+            github_reports.validate_triage_report_text(
+                report.replace("fix", "ask_reporter"), expected_repo="other/repo"
+            )
 
     def test_validate_triage_report_requires_analysis_body(self) -> None:
         report = """---
@@ -74,7 +80,9 @@ recommended_next_action: ask_reporter
     def test_review_outcome_maps_generic_verdicts_to_comment_outcomes(self) -> None:
         self.assertEqual(github_reports.review_outcome("pass", "none"), "approve")
         self.assertEqual(github_reports.review_outcome("fail", "minor"), "comment")
-        self.assertEqual(github_reports.review_outcome("fail", "major"), "request_changes")
+        self.assertEqual(
+            github_reports.review_outcome("fail", "major"), "request_changes"
+        )
         self.assertEqual(github_reports.review_outcome("fail", "blocker"), "block")
 
         with self.assertRaises(github_reports.ValidationError):
@@ -144,7 +152,10 @@ recommended_next_action: ask_reporter
         self.assertIn("outcome: request_changes", review_comment)
         self.assertIn("human approved", review_comment)
         self.assertIn("<!-- gc:github-issue-triage", triage_comment)
-        self.assertIn("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", triage_comment)
+        self.assertIn(
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            triage_comment,
+        )
         self.assertIn("needs_info", triage_comment)
         self.assertIn("## Analysis", triage_comment)
         self.assertIn("### Summary", triage_comment)
@@ -178,7 +189,9 @@ recommended_next_action: ask_reporter
                 human_approved=False,
             )
 
-        self.assertIn("security-sensitive details require human approval", triage_comment)
+        self.assertIn(
+            "security-sensitive details require human approval", triage_comment
+        )
         self.assertNotIn("p0 details require human approval", triage_comment)
         self.assertNotIn("Sensitive exploit detail", triage_comment)
 
@@ -208,7 +221,9 @@ recommended_next_action: ask_reporter
             )
 
         self.assertIn("p0 details require human approval", triage_comment)
-        self.assertNotIn("security-sensitive details require human approval", triage_comment)
+        self.assertNotIn(
+            "security-sensitive details require human approval", triage_comment
+        )
         self.assertNotIn("Urgent private impact detail", triage_comment)
 
     def test_unapproved_security_p0_triage_comment_joins_redaction_notes(self) -> None:
@@ -236,7 +251,9 @@ recommended_next_action: ask_reporter
                 human_approved=False,
             )
 
-        self.assertIn("security-sensitive details require human approval", triage_comment)
+        self.assertIn(
+            "security-sensitive details require human approval", triage_comment
+        )
         self.assertIn("p0 details require human approval", triage_comment)
         self.assertNotIn("Critical private exploit detail", triage_comment)
 

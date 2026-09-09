@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 import sys
@@ -15,9 +16,17 @@ except ImportError:  # pragma: no cover
     yaml = None
 
 
-FRONT_MATTER_RE = re.compile(r"\A---\n(?P<front>.*?)\n---(?:\n|\Z)(?P<body>.*)\Z", re.DOTALL)
+FRONT_MATTER_RE = re.compile(
+    r"\A---\n(?P<front>.*?)\n---(?:\n|\Z)(?P<body>.*)\Z", re.DOTALL
+)
 SCHEMA_ROOT = Path(__file__).resolve().parents[2] / "schemas" / "build"
-FORBIDDEN_REQUIRED_FIELD_NAMES = {"owner", "stage-owner", "stage_owner", "persona", "role"}
+FORBIDDEN_REQUIRED_FIELD_NAMES = {
+    "owner",
+    "stage-owner",
+    "stage_owner",
+    "persona",
+    "role",
+}
 
 
 class ValidationError(Exception):
@@ -88,7 +97,9 @@ def validate_schema_definition(schema: dict[str, Any]) -> None:
     schema_id = schema.get("schema_id", "<unknown>")
     fields = schema.get("required_front_matter", [])
     if not isinstance(fields, list):
-        raise ValidationError(f"schema {schema_id}: required_front_matter must be a list")
+        raise ValidationError(
+            f"schema {schema_id}: required_front_matter must be a list"
+        )
     for field in fields:
         leaf = str(field).split(".")[-1].lower()
         if leaf in FORBIDDEN_REQUIRED_FIELD_NAMES:
@@ -97,10 +108,14 @@ def validate_schema_definition(schema: dict[str, Any]) -> None:
             )
 
 
-def validate_required_front_matter(front_matter: dict[str, Any], schema: dict[str, Any]) -> None:
+def validate_required_front_matter(
+    front_matter: dict[str, Any], schema: dict[str, Any]
+) -> None:
     fields = schema.get("required_front_matter", [])
     if not isinstance(fields, list):
-        raise ValidationError(f"schema {schema.get('schema_id', '<unknown>')}: required_front_matter must be a list")
+        raise ValidationError(
+            f"schema {schema.get('schema_id', '<unknown>')}: required_front_matter must be a list"
+        )
     missing = [field for field in fields if get_path(front_matter, str(field)) is None]
     if missing:
         raise ValidationError(f"front matter missing required fields: {missing}")
@@ -116,10 +131,16 @@ def validate_required_front_matter(front_matter: dict[str, Any], schema: dict[st
 def validate_status(front_matter: dict[str, Any], schema: dict[str, Any]) -> None:
     status = required_string(front_matter, "status")
     allowed = schema.get("allowed_statuses", [])
-    if not isinstance(allowed, list) or not all(isinstance(item, str) for item in allowed):
-        raise ValidationError(f"schema {schema.get('schema_id', '<unknown>')}: allowed_statuses must be strings")
+    if not isinstance(allowed, list) or not all(
+        isinstance(item, str) for item in allowed
+    ):
+        raise ValidationError(
+            f"schema {schema.get('schema_id', '<unknown>')}: allowed_statuses must be strings"
+        )
     if status not in allowed:
-        raise ValidationError(f"status must be one of {sorted(allowed)}, got {status!r}")
+        raise ValidationError(
+            f"status must be one of {sorted(allowed)}, got {status!r}"
+        )
 
 
 def validate_trace(front_matter: dict[str, Any]) -> dict[str, Any]:
@@ -146,16 +167,24 @@ def validate_upstream(trace: dict[str, Any]) -> list[dict[str, Any]]:
         hash_value = required_string(raw, "hash", prefix=f"trace.upstream[{index}]")
         validate_upstream_path(path, index)
         if ":" not in hash_value:
-            raise ValidationError(f"trace.upstream[{index}].hash must include a hash or revision scheme")
+            raise ValidationError(
+                f"trace.upstream[{index}].hash must include a hash or revision scheme"
+            )
         ids = raw.get("ids")
         if ids is not None:
-            if not isinstance(ids, list) or not all(isinstance(item, str) and item.strip() for item in ids):
-                raise ValidationError(f"trace.upstream[{index}].ids must be a list of non-empty strings")
+            if not isinstance(ids, list) or not all(
+                isinstance(item, str) and item.strip() for item in ids
+            ):
+                raise ValidationError(
+                    f"trace.upstream[{index}].ids must be a list of non-empty strings"
+                )
         upstream.append(raw)
     return upstream
 
 
-def validate_coverage_completeness(upstream: list[dict[str, Any]], coverage: list[dict[str, Any]]) -> None:
+def validate_coverage_completeness(
+    upstream: list[dict[str, Any]], coverage: list[dict[str, Any]]
+) -> None:
     covered_ids = {str(entry["id"]) for entry in coverage}
     missing = [
         item_id
@@ -164,19 +193,29 @@ def validate_coverage_completeness(upstream: list[dict[str, Any]], coverage: lis
         if str(item_id).strip() not in covered_ids
     ]
     if missing:
-        raise ValidationError(f"coverage must account for every upstream ID, missing: {missing}")
+        raise ValidationError(
+            f"coverage must account for every upstream ID, missing: {missing}"
+        )
 
 
 def validate_upstream_path(path: str, index: int) -> None:
     parsed = Path(path)
     if not parsed.is_absolute() and ".." in parsed.parts:
-        raise ValidationError(f"trace.upstream[{index}].path must not escape the artifact root")
+        raise ValidationError(
+            f"trace.upstream[{index}].path must not escape the artifact root"
+        )
 
 
-def validate_coverage(trace: dict[str, Any], schema: dict[str, Any]) -> list[dict[str, Any]]:
+def validate_coverage(
+    trace: dict[str, Any], schema: dict[str, Any]
+) -> list[dict[str, Any]]:
     allowed = schema.get("coverage_statuses", [])
-    if not isinstance(allowed, list) or not all(isinstance(item, str) for item in allowed):
-        raise ValidationError(f"schema {schema.get('schema_id', '<unknown>')}: coverage_statuses must be strings")
+    if not isinstance(allowed, list) or not all(
+        isinstance(item, str) for item in allowed
+    ):
+        raise ValidationError(
+            f"schema {schema.get('schema_id', '<unknown>')}: coverage_statuses must be strings"
+        )
     allowed_set = set(allowed)
     seen: set[str] = set()
     coverage: list[dict[str, Any]] = []
@@ -189,7 +228,9 @@ def validate_coverage(trace: dict[str, Any], schema: dict[str, Any]) -> list[dic
             raise ValidationError(f"trace.coverage[{index}].id duplicates {item_id!r}")
         seen.add(item_id)
         if status not in allowed_set:
-            raise ValidationError(f"trace.coverage[{index}].status must be one of {sorted(allowed_set)}, got {status!r}")
+            raise ValidationError(
+                f"trace.coverage[{index}].status must be one of {sorted(allowed_set)}, got {status!r}"
+            )
         if status != "covered":
             required_string(raw, "rationale", prefix=f"trace.coverage[{index}]")
         coverage.append(raw)
@@ -204,7 +245,9 @@ def validate_markdown_coverage(body: str, coverage: list[dict[str, Any]]) -> Non
     if not actual:
         raise ValidationError("markdown coverage matrix is missing")
     if actual != expected:
-        raise ValidationError(f"markdown coverage matrix must match YAML coverage, got {actual!r}, expected {expected!r}")
+        raise ValidationError(
+            f"markdown coverage matrix must match YAML coverage, got {actual!r}, expected {expected!r}"
+        )
 
 
 def parse_markdown_coverage(body: str) -> dict[str, str]:
@@ -252,17 +295,23 @@ def clean_table_cell(value: str) -> str:
 
 def validate_required_sections(body: str, schema: dict[str, Any]) -> None:
     required = schema.get("required_sections", [])
-    if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
-        raise ValidationError(f"schema {schema.get('schema_id', '<unknown>')}: required_sections must be strings")
+    if not isinstance(required, list) or not all(
+        isinstance(item, str) for item in required
+    ):
+        raise ValidationError(
+            f"schema {schema.get('schema_id', '<unknown>')}: required_sections must be strings"
+        )
     positions: list[tuple[str, int]] = []
     for section in required:
         match = re.search(rf"^##\s+{re.escape(section)}\s*$", body, re.MULTILINE)
         if not match:
             raise ValidationError(f"missing required body section {section!r}")
         positions.append((section, match.start()))
-    for (left_name, left_pos), (right_name, right_pos) in zip(positions, positions[1:]):
+    for (left_name, left_pos), (right_name, right_pos) in itertools.pairwise(positions):
         if left_pos >= right_pos:
-            raise ValidationError(f"body section {left_name!r} must appear before {right_name!r}")
+            raise ValidationError(
+                f"body section {left_name!r} must appear before {right_name!r}"
+            )
 
 
 def required_string(data: dict[str, Any], key: str, *, prefix: str = "") -> str:
@@ -285,14 +334,18 @@ def get_path(data: dict[str, Any], dotted_path: str) -> Any:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate a gc build artifact")
     parser.add_argument("--schema", required=True, help="Expected schema id")
-    parser.add_argument("--path", required=True, type=Path, help="Artifact markdown path")
+    parser.add_argument(
+        "--path", required=True, type=Path, help="Artifact markdown path"
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     try:
-        artifact = validate_artifact_text(args.path.read_text(encoding="utf-8"), expected_schema=args.schema)
+        artifact = validate_artifact_text(
+            args.path.read_text(encoding="utf-8"), expected_schema=args.schema
+        )
     except CLI_ERROR_TYPES as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

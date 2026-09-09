@@ -45,7 +45,9 @@ def parse_github_url(value: str, *, expected_kind: str = "") -> GitHubRef:
 
     parts = [part for part in parsed.path.split("/") if part]
     if len(parts) != 4:
-        raise GitHubAPIError("GitHub URL must be /<owner>/<repo>/issues/<number> or /<owner>/<repo>/pull/<number>")
+        raise GitHubAPIError(
+            "GitHub URL must be /<owner>/<repo>/issues/<number> or /<owner>/<repo>/pull/<number>"
+        )
     owner, repo_name, raw_kind, raw_number = parts
     if raw_kind not in {"issues", "pull"}:
         raise GitHubAPIError("GitHub URL kind must be issues or pull")
@@ -55,7 +57,9 @@ def parse_github_url(value: str, *, expected_kind: str = "") -> GitHubRef:
     kind = "issue" if raw_kind == "issues" else "pull"
     if expected_kind and kind != expected_kind:
         raise GitHubAPIError(f"GitHub URL must reference a {expected_kind}, got {kind}")
-    return GitHubRef(owner=owner, repo_name=repo_name, kind=kind, number=int(raw_number))
+    return GitHubRef(
+        owner=owner, repo_name=repo_name, kind=kind, number=int(raw_number)
+    )
 
 
 def body_hash(body: str) -> str:
@@ -63,9 +67,15 @@ def body_hash(body: str) -> str:
 
 
 def gh_api(args: list[str]) -> dict[str, Any] | list[Any]:
-    result = subprocess.run(["gh", "api", *args], text=True, capture_output=True, check=False)
+    result = subprocess.run(
+        ["gh", "api", *args], text=True, capture_output=True, check=False
+    )
     if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or f"gh api exited {result.returncode}"
+        detail = (
+            result.stderr.strip()
+            or result.stdout.strip()
+            or f"gh api exited {result.returncode}"
+        )
         raise GitHubAPIError(detail)
     if not result.stdout.strip():
         return {}
@@ -145,7 +155,17 @@ def actor() -> dict[str, Any]:
 def comment_create(url: str, body_path: Path) -> dict[str, Any]:
     ref = parse_github_url(url)
     body = body_path.read_text(encoding="utf-8")
-    data = require_object(gh_api(["-X", "POST", f"repos/{ref.repo_slug}/issues/{ref.number}/comments", "-f", f"body={body}"]))
+    data = require_object(
+        gh_api(
+            [
+                "-X",
+                "POST",
+                f"repos/{ref.repo_slug}/issues/{ref.number}/comments",
+                "-f",
+                f"body={body}",
+            ]
+        )
+    )
     return normalize_comment(data)
 
 
@@ -154,7 +174,17 @@ def comment_update(repo_slug: str, comment_id: int, body_path: Path) -> dict[str
     if comment_id <= 0:
         raise GitHubAPIError("comment id must be a positive integer")
     body = body_path.read_text(encoding="utf-8")
-    data = require_object(gh_api(["-X", "PATCH", f"repos/{repo_slug}/issues/comments/{comment_id}", "-f", f"body={body}"]))
+    data = require_object(
+        gh_api(
+            [
+                "-X",
+                "PATCH",
+                f"repos/{repo_slug}/issues/comments/{comment_id}",
+                "-f",
+                f"body={body}",
+            ]
+        )
+    )
     return normalize_comment(data)
 
 
@@ -197,7 +227,17 @@ def pr_update(pr_url: str, title_path: Path, body_path: Path) -> dict[str, Any]:
     title = read_title(title_path)
     body = body_path.read_text(encoding="utf-8")
     data = require_object(
-        gh_api(["-X", "PATCH", f"repos/{ref.repo_slug}/pulls/{ref.number}", "-f", f"title={title}", "-f", f"body={body}"])
+        gh_api(
+            [
+                "-X",
+                "PATCH",
+                f"repos/{ref.repo_slug}/pulls/{ref.number}",
+                "-f",
+                f"title={title}",
+                "-f",
+                f"body={body}",
+            ]
+        )
     )
     return normalize_pr(data)
 
@@ -223,7 +263,13 @@ def pr_search(repo_slug: str, marker: str, *, author: str = "") -> dict[str, Any
                     "state": string_or_empty(item.get("state")),
                 }
             )
-    return {"ok": True, "repo": repo_slug, "marker": marker, "author": author, "items": normalized}
+    return {
+        "ok": True,
+        "repo": repo_slug,
+        "marker": marker,
+        "author": author,
+        "items": normalized,
+    }
 
 
 def normalize_comment(data: dict[str, Any]) -> dict[str, Any]:

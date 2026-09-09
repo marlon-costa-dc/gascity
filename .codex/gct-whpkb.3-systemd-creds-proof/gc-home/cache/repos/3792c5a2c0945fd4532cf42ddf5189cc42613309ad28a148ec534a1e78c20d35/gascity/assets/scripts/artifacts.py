@@ -12,7 +12,12 @@ class ArtifactError(Exception):
 
 
 _GC_PLAN_MARKER = ".gc-plans"
-_GC_PLAN_ARTIFACTS = {"requirements.md", "implementation-plan.md", "tasks.md", "context.yaml"}
+_GC_PLAN_ARTIFACTS = {
+    "requirements.md",
+    "implementation-plan.md",
+    "tasks.md",
+    "context.yaml",
+}
 _GC_PLAN_OWNED_DIRS = {"github"}
 
 
@@ -21,9 +26,13 @@ def resolve_artifact_root(override: str, *, rig_root: str = "") -> Path:
     if raw_override:
         return Path(raw_override).expanduser().resolve()
 
-    raw_rig_root = rig_root.strip() or first_env("GC_RIG_ROOT", "GC_DIR", "GC_BEADS_SCOPE_ROOT")
+    raw_rig_root = rig_root.strip() or first_env(
+        "GC_RIG_ROOT", "GC_DIR", "GC_BEADS_SCOPE_ROOT"
+    )
     if not raw_rig_root:
-        raise ArtifactError("artifact root override is empty and no rig root environment is available")
+        raise ArtifactError(
+            "artifact root override is empty and no rig root environment is available"
+        )
     rig = Path(raw_rig_root).expanduser().resolve()
     plans = rig / "plans"
     if plans.exists() and plans.is_dir() and _plans_root_is_foreign(plans):
@@ -46,7 +55,9 @@ def _plans_root_is_foreign(plans: Path) -> bool:
             return False
         if child.name in _GC_PLAN_ARTIFACTS:
             return False
-        if child.is_dir() and any((child / artifact).exists() for artifact in _GC_PLAN_ARTIFACTS):
+        if child.is_dir() and any(
+            (child / artifact).exists() for artifact in _GC_PLAN_ARTIFACTS
+        ):
             return False
     return True
 
@@ -54,7 +65,9 @@ def _plans_root_is_foreign(plans: Path) -> bool:
 def mark_owned_artifact_root(root: Path, override: str, *, rig_root: str = "") -> None:
     if override.strip():
         return
-    raw_rig_root = rig_root.strip() or first_env("GC_RIG_ROOT", "GC_DIR", "GC_BEADS_SCOPE_ROOT")
+    raw_rig_root = rig_root.strip() or first_env(
+        "GC_RIG_ROOT", "GC_DIR", "GC_BEADS_SCOPE_ROOT"
+    )
     if not raw_rig_root:
         return
     plans = Path(raw_rig_root).expanduser().resolve() / "plans"
@@ -118,7 +131,9 @@ def main(argv: list[str] | None = None) -> int:
                 mark_owned_artifact_root(path, args.override, rig_root=args.rig_root)
         elif args.command == "path":
             root = resolve_artifact_root(args.override, rig_root=args.rig_root)
-            path = resolve_artifact_path(args.override, args.relative, rig_root=args.rig_root)
+            path = resolve_artifact_path(
+                args.override, args.relative, rig_root=args.rig_root
+            )
             if args.mkdir_parents:
                 mkdir_target = path if args.directory else path.parent
                 mkdir_target.mkdir(parents=True, exist_ok=True)

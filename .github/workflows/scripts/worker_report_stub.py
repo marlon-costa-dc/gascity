@@ -5,7 +5,6 @@ import json
 import os
 import sys
 
-
 SCHEMA_VERSION = "gc.worker.conformance.v1"
 
 
@@ -49,7 +48,9 @@ def main() -> int:
         },
         "results": [],
     }
-    out_path = os.path.join(report_dir, f"{sanitize(suite)}-{sanitize(profile)}-job-failure.json")
+    out_path = os.path.join(
+        report_dir, f"{sanitize(suite)}-{sanitize(profile)}-job-failure.json"
+    )
     with open(out_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
         handle.write("\n")

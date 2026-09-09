@@ -57,7 +57,12 @@ class ValidationError(Exception):
 
 
 YAML_ERROR_TYPES = (yaml.YAMLError,) if yaml is not None else ()
-CLI_ERROR_TYPES = (OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError) + YAML_ERROR_TYPES
+CLI_ERROR_TYPES = (
+    OSError,
+    UnicodeDecodeError,
+    json.JSONDecodeError,
+    ValidationError,
+) + YAML_ERROR_TYPES
 
 
 @dataclass(frozen=True)
@@ -87,12 +92,16 @@ def load_mapping(path: Path) -> dict[str, Any]:
     return data
 
 
-def validate_bundle(path: Path, *, allowed_roots: list[Path] | None = None, max_bytes: int = 1_000_000) -> ContextBundle:
+def validate_bundle(
+    path: Path, *, allowed_roots: list[Path] | None = None, max_bytes: int = 1_000_000
+) -> ContextBundle:
     bundle_path = path.resolve()
     data = load_mapping(bundle_path)
     unknown_top = set(data) - {"items"}
     if unknown_top:
-        raise ValidationError(f"{bundle_path}: unknown top-level fields: {sorted(unknown_top)}")
+        raise ValidationError(
+            f"{bundle_path}: unknown top-level fields: {sorted(unknown_top)}"
+        )
     raw_items = data.get("items", [])
     if raw_items is None:
         raw_items = []
@@ -107,20 +116,35 @@ def validate_bundle(path: Path, *, allowed_roots: list[Path] | None = None, max_
             raise ValidationError(f"{bundle_path}: {item_name} must be a mapping")
         unknown = set(raw) - ITEM_KEYS
         if unknown:
-            raise ValidationError(f"{bundle_path}: {item_name} unknown fields: {sorted(unknown)}")
+            raise ValidationError(
+                f"{bundle_path}: {item_name} unknown fields: {sorted(unknown)}"
+            )
         name = required_string(raw, "name", bundle_path, item_name)
         item_path = required_string(raw, "path", bundle_path, item_name)
         description = required_string(raw, "description", bundle_path, item_name)
         resolved = resolve_item_path(bundle_path, item_path)
-        validate_item_path(bundle_path, name, item_path, resolved, roots, max_bytes=max_bytes)
-        items.append(ContextItem(name=name, path=item_path, description=description, resolved_path=resolved))
+        validate_item_path(
+            bundle_path, name, item_path, resolved, roots, max_bytes=max_bytes
+        )
+        items.append(
+            ContextItem(
+                name=name,
+                path=item_path,
+                description=description,
+                resolved_path=resolved,
+            )
+        )
     return ContextBundle(path=bundle_path, items=items)
 
 
-def required_string(raw: dict[str, Any], key: str, bundle_path: Path, item_name: str) -> str:
+def required_string(
+    raw: dict[str, Any], key: str, bundle_path: Path, item_name: str
+) -> str:
     value = raw.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise ValidationError(f"{bundle_path}: {item_name}.{key} must be a non-empty string")
+        raise ValidationError(
+            f"{bundle_path}: {item_name}.{key} must be a non-empty string"
+        )
     return value.strip()
 
 
@@ -151,9 +175,13 @@ def validate_item_path(
     try:
         info = resolved.stat()
     except FileNotFoundError as exc:
-        raise ValidationError(f"{bundle_path}: {item_name} path {original_path!r} does not exist: {resolved}") from exc
+        raise ValidationError(
+            f"{bundle_path}: {item_name} path {original_path!r} does not exist: {resolved}"
+        ) from exc
     if not stat.S_ISREG(info.st_mode):
-        raise ValidationError(f"{bundle_path}: {item_name} path {original_path!r} is not a regular file: {resolved}")
+        raise ValidationError(
+            f"{bundle_path}: {item_name} path {original_path!r} is not a regular file: {resolved}"
+        )
     if info.st_size > max_bytes:
         raise ValidationError(
             f"{bundle_path}: {item_name} path {original_path!r} exceeds max size {max_bytes}: {resolved}"
@@ -161,7 +189,9 @@ def validate_item_path(
     with resolved.open("rb") as handle:
         sample = handle.read(min(info.st_size, 8192))
     if b"\x00" in sample:
-        raise ValidationError(f"{bundle_path}: {item_name} path {original_path!r} appears binary: {resolved}")
+        raise ValidationError(
+            f"{bundle_path}: {item_name} path {original_path!r} appears binary: {resolved}"
+        )
 
 
 def path_is_relative_to(path: Path, root: Path) -> bool:
@@ -172,15 +202,17 @@ def path_is_relative_to(path: Path, root: Path) -> bool:
     return True
 
 
-def is_secret_path(original: Path, resolved: Path, allowed_roots: list[Path] | None = None) -> bool:
-    part_sets = path_part_sets(original, allowed_roots) + path_part_sets(resolved, allowed_roots)
+def is_secret_path(
+    original: Path, resolved: Path, allowed_roots: list[Path] | None = None
+) -> bool:
+    part_sets = path_part_sets(original, allowed_roots) + path_part_sets(
+        resolved, allowed_roots
+    )
     names = {part for parts in part_sets for part in parts}
     if names & SECRET_NAMES:
         return True
     if any(
-        part in SECRET_DIRECTORY_NAMES
-        for parts in part_sets
-        for part in parts[:-1]
+        part in SECRET_DIRECTORY_NAMES for parts in part_sets for part in parts[:-1]
     ):
         return True
 
@@ -191,8 +223,12 @@ def is_secret_path(original: Path, resolved: Path, allowed_roots: list[Path] | N
             path_values.add("/".join(parts))
     leaf_patterns = {pattern for pattern in SECRET_PATTERNS if "/" not in pattern}
     path_patterns = {pattern for pattern in SECRET_PATTERNS if "/" in pattern}
-    return any(fnmatch.fnmatch(value, pattern) for value in names for pattern in leaf_patterns) or any(
-        fnmatch.fnmatch(value, pattern) for value in path_values for pattern in path_patterns
+    return any(
+        fnmatch.fnmatch(value, pattern) for value in names for pattern in leaf_patterns
+    ) or any(
+        fnmatch.fnmatch(value, pattern)
+        for value in path_values
+        for pattern in path_patterns
     )
 
 
@@ -208,7 +244,9 @@ def path_part_sets(path: Path, allowed_roots: list[Path] | None) -> list[list[st
 
 
 def normalized_parts(path: Path) -> list[str]:
-    return [part.lower() for part in path.parts if part not in {"", path.anchor, "/", "\\"}]
+    return [
+        part.lower() for part in path.parts if part not in {"", path.anchor, "/", "\\"}
+    ]
 
 
 def adjacent_paths(parts: list[str]) -> set[str]:
@@ -226,7 +264,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     try:
-        bundle = validate_bundle(args.path, allowed_roots=args.allow_root or None, max_bytes=args.max_bytes)
+        bundle = validate_bundle(
+            args.path, allowed_roots=args.allow_root or None, max_bytes=args.max_bytes
+        )
     except CLI_ERROR_TYPES as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

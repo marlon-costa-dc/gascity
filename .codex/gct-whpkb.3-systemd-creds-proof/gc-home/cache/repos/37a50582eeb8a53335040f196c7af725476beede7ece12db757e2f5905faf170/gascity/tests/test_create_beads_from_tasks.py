@@ -7,7 +7,9 @@ import tempfile
 import unittest
 from unittest import mock
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts"))
+sys.path.insert(
+    0, str(pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts")
+)
 
 import create_beads_from_tasks as script
 
@@ -95,7 +97,9 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
         ordered = script.topo_order(plan.runnables)
 
         self.assertEqual([item.key for item in ordered], ["schema", "docs", "announce"])
-        self.assertEqual([convoy.key for convoy in plan.convoys], ["implementation", "release"])
+        self.assertEqual(
+            [convoy.key for convoy in plan.convoys], ["implementation", "release"]
+        )
         self.assertEqual(plan.target_rig, "backend")
 
     def test_legacy_epics_fail_validation(self) -> None:
@@ -191,8 +195,7 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
 
     def test_metadata_normalizes_legacy_work_option_keys(self) -> None:
         text = sample_tasks().replace(
-            "        priority: 2\n"
-            "        description: |\n",
+            "        priority: 2\n        description: |\n",
             """        priority: 2
         metadata:
           gc.model: opus
@@ -221,20 +224,38 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
             path.write_text(original, encoding="utf-8")
 
             with mock.patch("builtins.print") as mocked_print:
-                code = script.create_from_tasks(path, city="/city", dry_run=True, force=False)
+                code = script.create_from_tasks(
+                    path, city="/city", dry_run=True, force=False
+                )
 
             self.assertEqual(code, 0)
             self.assertEqual(path.read_text(encoding="utf-8"), original)
-            printed = "\n".join(str(call.args[0]) for call in mocked_print.call_args_list)
-            self.assertIn("gc bd --city /city --rig backend create --json 'Add schema'", printed)
+            printed = "\n".join(
+                str(call.args[0]) for call in mocked_print.call_args_list
+            )
+            self.assertIn(
+                "gc bd --city /city --rig backend create --json 'Add schema'", printed
+            )
             self.assertIn(
                 "gc convoy --city /city --rig backend create --json --target feature/demo 'Implement demo' '<schema>'",
                 printed,
             )
-            self.assertIn("gc bd --city /city --rig backend update '<implementation>' --metadata", printed)
-            self.assertNotIn("gc convoy --city /city --rig backend add '<implementation>' '<schema>'", printed)
-            self.assertIn("gc convoy --city /city --rig backend add '<implementation>' '<docs>'", printed)
-            self.assertIn("gc bd --city /city --rig backend dep add '<announce>' '<docs>'", printed)
+            self.assertIn(
+                "gc bd --city /city --rig backend update '<implementation>' --metadata",
+                printed,
+            )
+            self.assertNotIn(
+                "gc convoy --city /city --rig backend add '<implementation>' '<schema>'",
+                printed,
+            )
+            self.assertIn(
+                "gc convoy --city /city --rig backend add '<implementation>' '<docs>'",
+                printed,
+            )
+            self.assertIn(
+                "gc bd --city /city --rig backend dep add '<announce>' '<docs>'",
+                printed,
+            )
 
     def test_create_updates_created_mapping_for_convoys_and_beads(self) -> None:
         def fake_run(cmd, text=None, capture_output=None, check=None):
@@ -259,14 +280,18 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
                 return subprocess_result(json.dumps({"id": "BACK-2"}))
             if "Announce release" in cmd:
                 return subprocess_result(json.dumps({"id": "BACK-3"}))
-            return subprocess_result("", returncode=1, stderr=f"unexpected command: {joined}")
+            return subprocess_result(
+                "", returncode=1, stderr=f"unexpected command: {joined}"
+            )
 
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp) / "tasks.md"
             path.write_text(sample_tasks(), encoding="utf-8")
 
             with mock.patch("subprocess.run", side_effect=fake_run):
-                code = script.create_from_tasks(path, city=None, dry_run=False, force=False)
+                code = script.create_from_tasks(
+                    path, city=None, dry_run=False, force=False
+                )
 
             self.assertEqual(code, 0)
             text = path.read_text(encoding="utf-8")
@@ -280,7 +305,10 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
     def test_created_status_refuses_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp) / "tasks.md"
-            path.write_text(sample_tasks().replace("status: approved", "status: created"), encoding="utf-8")
+            path.write_text(
+                sample_tasks().replace("status: approved", "status: created"),
+                encoding="utf-8",
+            )
 
             with self.assertRaises(script.PlanError):
                 script.create_from_tasks(path, city=None, dry_run=False, force=False)
@@ -297,13 +325,16 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
             self.assertIn("created_at: '2026-05-10T00:00:00Z'", text)
 
     def test_existing_mapping_is_reused_after_validation(self) -> None:
-        text = sample_tasks() + """
+        text = (
+            sample_tasks()
+            + """
 ## Created Beads
 
 | Key | Kind | Bead ID | Title |
 |---|---|---|---|
 | schema | bead | BACK-1 | Add schema |
 """
+        )
         seen: list[list[str]] = []
 
         def fake_run(cmd, text=None, capture_output=None, check=None):
@@ -311,7 +342,9 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
             joined = " ".join(cmd)
             if " show BACK-1 --json" in joined:
                 return subprocess_result('{"id":"BACK-1"}')
-            return fake_successful_gc(cmd, text=text, capture_output=capture_output, check=check)
+            return fake_successful_gc(
+                cmd, text=text, capture_output=capture_output, check=check
+            )
 
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp) / "tasks.md"
@@ -320,17 +353,24 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
             with mock.patch("subprocess.run", side_effect=fake_run):
                 script.create_from_tasks(path, city=None, dry_run=False, force=False)
 
-        create_titles = [cmd[6] for cmd in seen if len(cmd) > 6 and cmd[0:2] == ["gc", "bd"] and cmd[4] == "create"]
+        create_titles = [
+            cmd[6]
+            for cmd in seen
+            if len(cmd) > 6 and cmd[0:2] == ["gc", "bd"] and cmd[4] == "create"
+        ]
         self.assertNotIn("Add schema", create_titles)
 
     def test_existing_convoy_mapping_retries_metadata_update(self) -> None:
-        text = sample_tasks() + """
+        text = (
+            sample_tasks()
+            + """
 ## Created Beads
 
 | Key | Kind | Bead ID | Title |
 |---|---|---|---|
 | implementation | convoy | CONV-1 | Implement demo |
 """
+        )
         seen: list[list[str]] = []
 
         def fake_run(cmd, text=None, capture_output=None, check=None):
@@ -338,7 +378,9 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
             joined = " ".join(cmd)
             if " show CONV-1 --json" in joined:
                 return subprocess_result('{"id":"CONV-1","issue_type":"convoy"}')
-            return fake_successful_gc(cmd, text=text, capture_output=capture_output, check=check)
+            return fake_successful_gc(
+                cmd, text=text, capture_output=capture_output, check=check
+            )
 
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp) / "tasks.md"
@@ -350,13 +392,15 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
         metadata_updates = [
             cmd
             for cmd in seen
-            if len(cmd) > 6 and cmd[:2] == ["gc", "bd"] and cmd[4:7] == ["update", "CONV-1", "--metadata"]
+            if len(cmd) > 6
+            and cmd[:2] == ["gc", "bd"]
+            and cmd[4:7] == ["update", "CONV-1", "--metadata"]
         ]
         self.assertEqual(len(metadata_updates), 1)
         self.assertIn('"gc.plan.kind": "convoy"', metadata_updates[0][7])
 
     def test_create_output_parser_accepts_pretty_json(self) -> None:
-        output = "created issue\n{\n  \"id\": \"BACK-1\",\n  \"title\": \"Add schema\"\n}\n"
+        output = 'created issue\n{\n  "id": "BACK-1",\n  "title": "Add schema"\n}\n'
 
         self.assertEqual(script.parse_create_output(output), "BACK-1")
 
@@ -371,10 +415,16 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
 
             return run
 
-        with mock.patch("subprocess.run", side_effect=fake_run('[{"id":"BACK-1","dependency_type":"blocks"}]')):
+        with mock.patch(
+            "subprocess.run",
+            side_effect=fake_run('[{"id":"BACK-1","dependency_type":"blocks"}]'),
+        ):
             self.assertTrue(script.dependency_exists(runner, "BACK-2", "BACK-1"))
 
-        with mock.patch("subprocess.run", side_effect=fake_run('[{"id":"BACK-1","dependency_type":"tracks"}]')):
+        with mock.patch(
+            "subprocess.run",
+            side_effect=fake_run('[{"id":"BACK-1","dependency_type":"tracks"}]'),
+        ):
             self.assertFalse(script.dependency_exists(runner, "BACK-2", "BACK-1"))
         self.assertNotIn("--direction=up", [arg for cmd in seen for arg in cmd])
 
@@ -392,7 +442,9 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
 
             with mock.patch("subprocess.run", side_effect=fake_run):
                 with self.assertRaises(script.PlanError):
-                    script.create_from_tasks(path, city=None, dry_run=False, force=False)
+                    script.create_from_tasks(
+                        path, city=None, dry_run=False, force=False
+                    )
 
             text = path.read_text(encoding="utf-8")
             self.assertIn("status: partial", text)
@@ -416,22 +468,31 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
 
             def fake_run(cmd, text=None, capture_output=None, check=None):
                 seen.append(cmd)
-                return fake_successful_gc(cmd, text=text, capture_output=capture_output, check=check)
+                return fake_successful_gc(
+                    cmd, text=text, capture_output=capture_output, check=check
+                )
 
             with tempfile.TemporaryDirectory() as tmp:
                 path = pathlib.Path(tmp) / "tasks.md"
                 path.write_text(markdown, encoding="utf-8")
 
                 with mock.patch("subprocess.run", side_effect=fake_run):
-                    script.create_from_tasks(path, city=None, dry_run=False, force=False)
+                    script.create_from_tasks(
+                        path, city=None, dry_run=False, force=False
+                    )
 
             return [cmd for cmd in seen if cmd[:2] == ["gc", "convoy"] and "add" in cmd]
 
         fresh_adds = collect_convoy_adds(sample_tasks())
-        resume_adds = collect_convoy_adds(sample_tasks().replace("status: approved", "status: partial") + created_section)
+        resume_adds = collect_convoy_adds(
+            sample_tasks().replace("status: approved", "status: partial")
+            + created_section
+        )
 
         self.assertEqual(resume_adds, fresh_adds)
-        self.assertNotIn(["gc", "convoy", "--rig", "backend", "add", "CONV-1", "BACK-1"], resume_adds)
+        self.assertNotIn(
+            ["gc", "convoy", "--rig", "backend", "add", "CONV-1", "BACK-1"], resume_adds
+        )
 
     def test_resume_skips_existing_non_seed_convoy_membership(self) -> None:
         created_section = """
@@ -452,20 +513,28 @@ class CreateBeadsFromTasksTests(unittest.TestCase):
             joined = " ".join(cmd)
             if " dep list CONV-1 " in f" {joined} " and "--type tracks" in joined:
                 return subprocess_result('[{"id":"BACK-2","dependency_type":"tracks"}]')
-            return fake_successful_gc(cmd, text=text, capture_output=capture_output, check=check)
+            return fake_successful_gc(
+                cmd, text=text, capture_output=capture_output, check=check
+            )
 
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp) / "tasks.md"
             path.write_text(
-                sample_tasks().replace("status: approved", "status: partial") + created_section,
+                sample_tasks().replace("status: approved", "status: partial")
+                + created_section,
                 encoding="utf-8",
             )
 
             with mock.patch("subprocess.run", side_effect=fake_run):
                 script.create_from_tasks(path, city=None, dry_run=False, force=False)
 
-        add_commands = [cmd for cmd in seen if cmd[:2] == ["gc", "convoy"] and "add" in cmd]
-        self.assertNotIn(["gc", "convoy", "--rig", "backend", "add", "CONV-1", "BACK-2"], add_commands)
+        add_commands = [
+            cmd for cmd in seen if cmd[:2] == ["gc", "convoy"] and "add" in cmd
+        ]
+        self.assertNotIn(
+            ["gc", "convoy", "--rig", "backend", "add", "CONV-1", "BACK-2"],
+            add_commands,
+        )
 
 
 def subprocess_result(stdout: str, returncode: int = 0, stderr: str = ""):

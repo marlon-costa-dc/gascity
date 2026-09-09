@@ -8,8 +8,9 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
-
-SCRIPT_PATH = pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts" / "artifacts.py"
+SCRIPT_PATH = (
+    pathlib.Path(__file__).resolve().parents[1] / "assets" / "scripts" / "artifacts.py"
+)
 BUILD_SCHEMA_ROOT = pathlib.Path(__file__).resolve().parents[1] / "schemas" / "build"
 
 
@@ -47,7 +48,9 @@ class ArtifactHelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             override = pathlib.Path(temp_dir) / "custom" / "artifact-root"
 
-            self.assertEqual(module.resolve_artifact_root(str(override)), override.resolve())
+            self.assertEqual(
+                module.resolve_artifact_root(str(override)), override.resolve()
+            )
 
     def test_foreign_plans_directory_falls_back_to_gc_plans(self) -> None:
         module = load_artifacts_module()
@@ -112,7 +115,9 @@ class ArtifactHelperTests(unittest.TestCase):
                 module.resolve_artifact_root("", rig_root=str(rig_root)),
                 (rig_root / "plans").resolve(),
             )
-            self.assertIn("/plans/github/issues/owner/repo/1/source.json", stdout.getvalue())
+            self.assertIn(
+                "/plans/github/issues/owner/repo/1/source.json", stdout.getvalue()
+            )
 
     def test_cli_root_and_directory_branches(self) -> None:
         module = load_artifacts_module()
@@ -120,7 +125,9 @@ class ArtifactHelperTests(unittest.TestCase):
             rig_root = pathlib.Path(temp_dir)
 
             with redirect_stdout(io.StringIO()):
-                self.assertEqual(module.main(["root", "--rig-root", str(rig_root), "--mkdir"]), 0)
+                self.assertEqual(
+                    module.main(["root", "--rig-root", str(rig_root), "--mkdir"]), 0
+                )
             self.assertTrue((rig_root / "plans" / ".gc-plans").exists())
 
             with redirect_stdout(io.StringIO()):
@@ -138,7 +145,19 @@ class ArtifactHelperTests(unittest.TestCase):
                     ),
                     0,
                 )
-            self.assertTrue((rig_root / "plans" / "github" / "pulls" / "owner" / "repo" / "2" / "reviews" / "abc").is_dir())
+            self.assertTrue(
+                (
+                    rig_root
+                    / "plans"
+                    / "github"
+                    / "pulls"
+                    / "owner"
+                    / "repo"
+                    / "2"
+                    / "reviews"
+                    / "abc"
+                ).is_dir()
+            )
 
     def test_cli_errors_return_one(self) -> None:
         module = load_artifacts_module()
@@ -190,7 +209,9 @@ class ArtifactHelperTests(unittest.TestCase):
             with self.subTest(filename=filename):
                 path = BUILD_SCHEMA_ROOT / filename
                 self.assertTrue(path.is_file(), f"missing {path}")
-                self.assertIn(f"schema_id: {schema_id}", path.read_text(encoding="utf-8"))
+                self.assertIn(
+                    f"schema_id: {schema_id}", path.read_text(encoding="utf-8")
+                )
 
 
 if __name__ == "__main__":

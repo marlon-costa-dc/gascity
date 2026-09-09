@@ -22,7 +22,9 @@ class SkillFrontmatterTests(unittest.TestCase):
             self.assertIsNotNone(match, f"{path} missing YAML front matter")
             body = match.group("body") if match else ""
             self.assertRegex(body, r"(?m)^name:\s*\S+", f"{path} missing name")
-            self.assertRegex(body, r"(?m)^description:\s*\S+", f"{path} missing description")
+            self.assertRegex(
+                body, r"(?m)^description:\s*\S+", f"{path} missing description"
+            )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 import pathlib
 import unittest
 
-
 WORKFLOW = pathlib.Path(__file__).parents[1] / "remove-needs-triage.yml"
 
 

@@ -13,10 +13,14 @@ class ClassifyModeTests(unittest.TestCase):
 
 class PathsMatchTests(unittest.TestCase):
     def test_directory_glob_matches_nested_file(self) -> None:
-        self.assertTrue(cov.paths_match(["internal/beads/store.go"], ["internal/beads/**"]))
+        self.assertTrue(
+            cov.paths_match(["internal/beads/store.go"], ["internal/beads/**"])
+        )
 
     def test_directory_glob_does_not_match_sibling(self) -> None:
-        self.assertFalse(cov.paths_match(["internal/beadsx/store.go"], ["internal/beads/**"]))
+        self.assertFalse(
+            cov.paths_match(["internal/beadsx/store.go"], ["internal/beads/**"])
+        )
 
     def test_suffix_glob_matches_any_go_file(self) -> None:
         self.assertTrue(cov.paths_match(["cmd/gc/main.go"], ["**/*.go"]))
@@ -27,7 +31,9 @@ class PathsMatchTests(unittest.TestCase):
 
     def test_trailing_wildcard_matches_within_segment(self) -> None:
         # `cmd/gc/session_*` and `contrib/session-scripts/gc-session-k8s*`
-        self.assertTrue(cov.paths_match(["cmd/gc/session_pool.go"], ["cmd/gc/session_*"]))
+        self.assertTrue(
+            cov.paths_match(["cmd/gc/session_pool.go"], ["cmd/gc/session_*"])
+        )
         self.assertTrue(
             cov.paths_match(
                 ["contrib/session-scripts/gc-session-k8s-runner"],
@@ -37,7 +43,9 @@ class PathsMatchTests(unittest.TestCase):
 
     def test_trailing_wildcard_does_not_cross_slash(self) -> None:
         # `*` must not match a path separator, mirroring picomatch/dorny.
-        self.assertFalse(cov.paths_match(["cmd/gc/session_sub/extra.go"], ["cmd/gc/session_*"]))
+        self.assertFalse(
+            cov.paths_match(["cmd/gc/session_sub/extra.go"], ["cmd/gc/session_*"])
+        )
 
     def test_mid_path_wildcard_with_suffix(self) -> None:
         # `cmd/gc/template_resolve*.go`
@@ -49,16 +57,21 @@ class PathsMatchTests(unittest.TestCase):
         )
         self.assertFalse(
             cov.paths_match(
-                ["cmd/gc/template_resolve_t3bridge.txt"], ["cmd/gc/template_resolve*.go"]
+                ["cmd/gc/template_resolve_t3bridge.txt"],
+                ["cmd/gc/template_resolve*.go"],
             )
         )
 
     def test_embedded_globstar(self) -> None:
         # `test/**worker**` matches any test path containing "worker".
         self.assertTrue(
-            cov.paths_match(["test/integration/session_worker_test.go"], ["test/**worker**"])
+            cov.paths_match(
+                ["test/integration/session_worker_test.go"], ["test/**worker**"]
+            )
         )
-        self.assertFalse(cov.paths_match(["test/integration/mail_test.go"], ["test/**worker**"]))
+        self.assertFalse(
+            cov.paths_match(["test/integration/mail_test.go"], ["test/**worker**"])
+        )
 
     def test_root_file_matches_leading_globstar_suffix(self) -> None:
         # `**/*.go` must match a repo-root file, not only nested ones.

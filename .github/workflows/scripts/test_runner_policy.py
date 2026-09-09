@@ -10,14 +10,13 @@ class RunnerPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "allowlist.txt"
             path.write_text(
-                "julianknutsen\n"
-                "  Csells  # maintainer\n"
-                "\n"
-                "# comment\n",
+                "julianknutsen\n  Csells  # maintainer\n\n# comment\n",
                 encoding="utf-8",
             )
 
-            self.assertEqual(runner_policy.load_allowlist(path), {"julianknutsen", "csells"})
+            self.assertEqual(
+                runner_policy.load_allowlist(path), {"julianknutsen", "csells"}
+            )
 
     def test_pull_request_from_allowlisted_author_uses_blacksmith(self) -> None:
         use_blacksmith, reason, runners = runner_policy.select_runners(

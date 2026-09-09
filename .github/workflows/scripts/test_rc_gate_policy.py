@@ -1,6 +1,5 @@
-from pathlib import Path
 import unittest
-
+from pathlib import Path
 
 WORKFLOW = Path(__file__).resolve().parents[1] / "rc-gate.yml"
 MAC_WORKFLOW = Path(__file__).resolve().parents[1] / "mac-regression.yml"
@@ -12,7 +11,11 @@ def _job_block(workflow: str, job_name: str) -> str:
     lines = workflow[start:].splitlines(keepends=True)
     block = [lines[0]]
     for line in lines[1:]:
-        if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":"):
+        if (
+            line.startswith("  ")
+            and not line.startswith("    ")
+            and line.strip().endswith(":")
+        ):
             break
         block.append(line)
     return "".join(block)

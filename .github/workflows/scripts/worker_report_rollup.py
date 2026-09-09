@@ -8,7 +8,6 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 
-
 SCHEMA_VERSION = "gc.worker.conformance.rollup.v2"
 KNOWN_STATUSES = [
     "pass",
@@ -67,7 +66,9 @@ def main() -> int:
 
     expected_profiles = parse_expected_profiles(args.expected_profile)
     baseline_state = load_baseline_state(args.baseline) if args.baseline else None
-    rollup = build_rollup(paths, args.report_dir, args.title, expected_profiles, baseline_state)
+    rollup = build_rollup(
+        paths, args.report_dir, args.title, expected_profiles, baseline_state
+    )
     if args.require_reports and not paths:
         rollup["summary"]["status"] = "fail"
         rollup["summary"]["failure_detail"] = (
@@ -101,7 +102,7 @@ def build_rollup(
     current_state = collect_state(paths, report_dir)
     summary = current_state["summary"]
     reports = current_state["reports"]
-    result_status_by_key = current_state["result_status_by_key"]
+    current_state["result_status_by_key"]
 
     overall_status = rollup_status(summary["status_counts"])
 
@@ -129,7 +130,9 @@ def build_rollup(
             "environment_error_reports": summary["status_counts"]["environment_error"],
             "provider_incident_reports": summary["status_counts"]["provider_incident"],
             "flaky_live_reports": summary["status_counts"]["flaky_live"],
-            "not_certifiable_live_reports": summary["status_counts"]["not_certifiable_live"],
+            "not_certifiable_live_reports": summary["status_counts"][
+                "not_certifiable_live"
+            ],
             "status_counts": summary["status_counts"],
             "suite_failures": summary["suite_failures"],
             "profiles": sorted(summary["profiles"]),
@@ -326,7 +329,8 @@ def build_delta(current_state: dict, baseline_state: dict) -> dict:
         )
 
     return {
-        "total_reports": current_summary["total_reports"] - baseline_summary["total_reports"],
+        "total_reports": current_summary["total_reports"]
+        - baseline_summary["total_reports"],
         "status_counts": deltas,
         "newly_passing_requirements": sorted(
             newly_passing,
@@ -395,7 +399,9 @@ def derive_top_evidence(results: list[dict]) -> list[dict]:
                 "status": status,
                 "detail": str(result.get("detail", "")).strip(),
                 "keys": keys,
-                "excerpt": format_evidence_excerpt(evidence, keys, TOP_EVIDENCE_PREVIEW_KEYS),
+                "excerpt": format_evidence_excerpt(
+                    evidence, keys, TOP_EVIDENCE_PREVIEW_KEYS
+                ),
             }
         )
     return sort_top_evidence(digests)
@@ -454,10 +460,7 @@ def parse_expected_profiles(values: list[str]) -> dict[str, str]:
 def write_summary(out, rollup: dict) -> None:
     summary = rollup["summary"]
     out.write(f"### {rollup['title']}\n")
-    out.write(
-        f"- status: `{summary['status']}` "
-        f"({format_counts(summary)})\n"
-    )
+    out.write(f"- status: `{summary['status']}` ({format_counts(summary)})\n")
     if summary["profiles"]:
         out.write(f"- profiles: {', '.join(summary['profiles'])}\n")
     expected = summary.get("expected_profiles") or []
@@ -469,7 +472,8 @@ def write_summary(out, rollup: dict) -> None:
     download_failures = summary.get("download_failures") or {}
     if download_failures:
         failures = ", ".join(
-            f"{profile}={outcome}" for profile, outcome in sorted(download_failures.items())
+            f"{profile}={outcome}"
+            for profile, outcome in sorted(download_failures.items())
         )
         out.write(f"- download failures: {failures}\n")
     if summary.get("baseline"):
@@ -515,9 +519,7 @@ def write_summary(out, rollup: dict) -> None:
     if hooks:
         out.write(
             "- planned hooks: "
-            + ", ".join(
-                f"{hook['name']} ({hook['suite']})" for hook in hooks
-            )
+            + ", ".join(f"{hook['name']} ({hook['suite']})" for hook in hooks)
             + "\n"
         )
     failing = summary["failing_requirements"]
@@ -527,9 +529,7 @@ def write_summary(out, rollup: dict) -> None:
     if evidence_keys:
         out.write(
             "- top evidence keys: "
-            + ", ".join(
-                f"{item['key']}={item['count']}" for item in evidence_keys[:5]
-            )
+            + ", ".join(f"{item['key']}={item['count']}" for item in evidence_keys[:5])
             + "\n"
         )
     for report in rollup["reports"]:
@@ -549,7 +549,8 @@ def write_summary(out, rollup: dict) -> None:
             out.write(
                 "  top evidence: "
                 + " | ".join(
-                    format_report_evidence(entry) for entry in report["top_evidence"][:2]
+                    format_report_evidence(entry)
+                    for entry in report["top_evidence"][:2]
                 )
                 + "\n"
             )

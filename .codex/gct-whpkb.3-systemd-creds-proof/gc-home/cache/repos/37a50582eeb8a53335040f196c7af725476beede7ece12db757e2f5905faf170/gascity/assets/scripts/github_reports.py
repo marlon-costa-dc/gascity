@@ -29,7 +29,14 @@ VALID_TRIAGE_VERDICTS = {
     "security_sensitive",
 }
 VALID_PRIORITIES = {"p0", "p1", "p2", "p3"}
-VALID_ACTIONS = {"fix", "test_hardening", "close", "ask_reporter", "defer", "security_process"}
+VALID_ACTIONS = {
+    "fix",
+    "test_hardening",
+    "close",
+    "ask_reporter",
+    "defer",
+    "security_process",
+}
 VALID_ACTIONS_BY_VERDICT = {
     "reproduced": {"fix", "defer"},
     "not_reproduced": {"test_hardening", "defer"},
@@ -45,7 +52,12 @@ class ValidationError(Exception):
 
 
 YAML_ERROR_TYPES = (yaml.YAMLError,) if yaml is not None else ()
-CLI_ERROR_TYPES = (OSError, UnicodeDecodeError, ValidationError, validate_verdict_report.ValidationError) + YAML_ERROR_TYPES
+CLI_ERROR_TYPES = (
+    OSError,
+    UnicodeDecodeError,
+    ValidationError,
+    validate_verdict_report.ValidationError,
+) + YAML_ERROR_TYPES
 
 
 @dataclass(frozen=True)
@@ -89,25 +101,39 @@ def validate_triage_report_text(
     reproduction_diff_path = optional_string(data, "reproduction_diff_path")
 
     if schema != "gc.github-issue-triage-report.v1":
-        raise ValidationError(f"schema must be gc.github-issue-triage-report.v1, got {schema!r}")
+        raise ValidationError(
+            f"schema must be gc.github-issue-triage-report.v1, got {schema!r}"
+        )
     if issue_number <= 0:
         raise ValidationError("issue_number must be a positive integer")
     if not BODY_HASH_RE.match(body_hash):
         raise ValidationError("body_hash must be sha256:<64 lowercase hex chars>")
     if verdict not in VALID_TRIAGE_VERDICTS:
-        raise ValidationError(f"verdict must be one of {sorted(VALID_TRIAGE_VERDICTS)}, got {verdict!r}")
+        raise ValidationError(
+            f"verdict must be one of {sorted(VALID_TRIAGE_VERDICTS)}, got {verdict!r}"
+        )
     if priority not in VALID_PRIORITIES:
-        raise ValidationError(f"priority must be one of {sorted(VALID_PRIORITIES)}, got {priority!r}")
+        raise ValidationError(
+            f"priority must be one of {sorted(VALID_PRIORITIES)}, got {priority!r}"
+        )
     if recommended_next_action not in VALID_ACTIONS:
-        raise ValidationError(f"recommended_next_action must be one of {sorted(VALID_ACTIONS)}")
+        raise ValidationError(
+            f"recommended_next_action must be one of {sorted(VALID_ACTIONS)}"
+        )
     if recommended_next_action not in VALID_ACTIONS_BY_VERDICT[verdict]:
-        raise ValidationError(f"recommended_next_action {recommended_next_action!r} is invalid for verdict {verdict!r}")
+        raise ValidationError(
+            f"recommended_next_action {recommended_next_action!r} is invalid for verdict {verdict!r}"
+        )
     if expected_repo and repo != expected_repo:
         raise ValidationError(f"repo must be {expected_repo!r}, got {repo!r}")
     if expected_issue_number and issue_number != expected_issue_number:
-        raise ValidationError(f"issue_number must be {expected_issue_number}, got {issue_number}")
+        raise ValidationError(
+            f"issue_number must be {expected_issue_number}, got {issue_number}"
+        )
     if expected_body_hash and body_hash != expected_body_hash:
-        raise ValidationError(f"body_hash must be {expected_body_hash!r}, got {body_hash!r}")
+        raise ValidationError(
+            f"body_hash must be {expected_body_hash!r}, got {body_hash!r}"
+        )
     analysis_body = text[match.end() :].strip()
     if not analysis_body:
         raise ValidationError("triage report analysis body must not be empty")
@@ -134,7 +160,9 @@ def review_outcome(verdict: str, severity: str) -> str:
         return "request_changes"
     if verdict == "fail" and severity == "blocker":
         return "block"
-    raise ValidationError(f"unsupported review verdict/severity combination: {verdict}/{severity}")
+    raise ValidationError(
+        f"unsupported review verdict/severity combination: {verdict}/{severity}"
+    )
 
 
 def render_pr_review_comment(
@@ -145,9 +173,13 @@ def render_pr_review_comment(
     artifact_ref: str = "",
     human_approved: bool = False,
 ) -> str:
-    report = validate_verdict_report.validate_report_text(report_path.read_text(encoding="utf-8"), expected_kind="review")
+    report = validate_verdict_report.validate_report_text(
+        report_path.read_text(encoding="utf-8"), expected_kind="review"
+    )
     if outcome != review_outcome(report.verdict, report.severity):
-        raise ValidationError(f"outcome {outcome!r} does not match review report {report.verdict}/{report.severity}")
+        raise ValidationError(
+            f"outcome {outcome!r} does not match review report {report.verdict}/{report.severity}"
+        )
     head_sha = marker_value("head_sha", head_sha)
     artifact = public_line("artifact_ref", artifact_ref or str(report_path))
     gate_text = "human approved" if human_approved else "not human approved"
@@ -184,13 +216,17 @@ def render_triage_comment(
         lines.append(f"- artifact: {public_line('artifact_ref', artifact_ref)}")
     approval_notes = []
     if report.verdict == "security_sensitive":
-        approval_notes.append("security-sensitive details require human approval before public posting")
+        approval_notes.append(
+            "security-sensitive details require human approval before public posting"
+        )
     if report.priority == "p0":
         approval_notes.append("p0 details require human approval before public posting")
     if approval_notes and not human_approved:
         lines.append(f"- note: {'; '.join(approval_notes)}")
     elif report.analysis_body:
-        lines.extend(["", "## Analysis", "", demote_markdown_headings(report.analysis_body)])
+        lines.extend(
+            ["", "## Analysis", "", demote_markdown_headings(report.analysis_body)]
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -281,7 +317,9 @@ def demote_markdown_headings(text: str) -> str:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate and render GitHub workflow reports")
+    parser = argparse.ArgumentParser(
+        description="Validate and render GitHub workflow reports"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     triage_parser = subparsers.add_parser("validate-triage")
@@ -326,12 +364,23 @@ def main(argv: list[str] | None = None) -> int:
                 expected_issue_number=args.issue_number,
                 expected_body_hash=args.body_hash,
             )
-            output = {"ok": True, "verdict": report.verdict, "recommended_next_action": report.recommended_next_action}
+            output = {
+                "ok": True,
+                "verdict": report.verdict,
+                "recommended_next_action": report.recommended_next_action,
+            }
         elif args.command == "review-outcome":
-            report = validate_verdict_report.validate_report_text(args.path.read_text(encoding="utf-8"), expected_kind="review")
-            output = {"ok": True, "outcome": review_outcome(report.verdict, report.severity)}
+            report = validate_verdict_report.validate_report_text(
+                args.path.read_text(encoding="utf-8"), expected_kind="review"
+            )
+            output = {
+                "ok": True,
+                "outcome": review_outcome(report.verdict, report.severity),
+            }
         elif args.command == "render-review-comment":
-            report = validate_verdict_report.validate_report_text(args.report_path.read_text(encoding="utf-8"), expected_kind="review")
+            report = validate_verdict_report.validate_report_text(
+                args.report_path.read_text(encoding="utf-8"), expected_kind="review"
+            )
             outcome = review_outcome(report.verdict, report.severity)
             args.output.write_text(
                 render_pr_review_comment(

@@ -6,7 +6,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
 ALLOWLIST_PATH = Path(".github/blacksmith-allowlist.txt")
 
 BLACKSMITH_RUNNERS = {
@@ -51,7 +50,11 @@ def select_runners(
     if force_blacksmith:
         return True, "Blacksmith forced by workflow input", BLACKSMITH_RUNNERS
     if normalized_event == "pull_request" and normalized_author.lower() in allowlist:
-        return True, "pull request author is in .github/blacksmith-allowlist.txt", BLACKSMITH_RUNNERS
+        return (
+            True,
+            "pull request author is in .github/blacksmith-allowlist.txt",
+            BLACKSMITH_RUNNERS,
+        )
     if normalized_event != "pull_request":
         return (
             False,
@@ -71,11 +74,12 @@ def append_outputs(use_blacksmith: bool, reason: str, runners: dict[str, str]) -
     with open(output_path, "a", encoding="utf-8") as output:
         output.write(f"use_blacksmith={str(use_blacksmith).lower()}\n")
         output.write(f"reason={reason}\n")
-        for name, runner in runners.items():
-            output.write(f"{name}={runner}\n")
+        output.writelines(f"{name}={runner}\n" for name, runner in runners.items())
 
 
-def append_summary(use_blacksmith: bool, reason: str, event_name: str, author: str) -> None:
+def append_summary(
+    use_blacksmith: bool, reason: str, event_name: str, author: str
+) -> None:
     """Append a human-readable runner policy summary."""
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary_path:

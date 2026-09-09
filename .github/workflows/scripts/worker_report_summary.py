@@ -5,7 +5,6 @@ import json
 import os
 import sys
 
-
 COUNT_KEYS = [
     ("passed", "pass"),
     ("failed", "fail"),
@@ -56,9 +55,7 @@ def main() -> int:
             if evidence:
                 out.write(
                     "  top evidence: "
-                    + " | ".join(
-                        format_top_evidence(entry) for entry in evidence[:2]
-                    )
+                    + " | ".join(format_top_evidence(entry) for entry in evidence[:2])
                     + "\n"
                 )
     return 0

@@ -1,6 +1,5 @@
-from pathlib import Path
 import unittest
-
+from pathlib import Path
 
 WORKFLOW = Path(__file__).resolve().parents[1] / "dispatch-labeled-pr-suite.yml"
 

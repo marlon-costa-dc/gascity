@@ -43,7 +43,7 @@ import json
 import os
 import re
 import sys
-from typing import Iterable, Mapping
+from collections.abc import Iterable, Mapping
 
 FULL = "full"
 FILTERED = "filtered"
@@ -101,8 +101,8 @@ def _glob_to_regex_body(pattern: str) -> str:
     return "".join(parts)
 
 
-@functools.lru_cache(maxsize=None)
-def _glob_to_regex(pattern: str) -> "re.Pattern[str]":
+@functools.cache
+def _glob_to_regex(pattern: str) -> re.Pattern[str]:
     """Compile a dorny-style glob into a fully anchored regex.
 
     Translating to a regex (rather than hand-casing a few prefixes) keeps the
@@ -173,7 +173,10 @@ def _emit_classification(shared_result: str) -> None:
 def main(argv: list[str]) -> int:
     if len(argv) >= 2 and argv[1] == "classify":
         if len(argv) != 3:
-            print("usage: ci_suite_coverage.py classify <shared-filter-result>", file=sys.stderr)
+            print(
+                "usage: ci_suite_coverage.py classify <shared-filter-result>",
+                file=sys.stderr,
+            )
             return 2
         _emit_classification(argv[2])
         return 0
