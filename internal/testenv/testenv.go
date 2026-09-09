@@ -118,6 +118,7 @@ var LeakVectorVars = []string{
 	"BEADS_DIR",
 	"BEADS_DOLT_PASSWORD",
 	"BEADS_DOLT_PORT",
+	"BEADS_DOLT_SERVER_DATABASE",
 	"BEADS_DOLT_SERVER_HOST",
 	"BEADS_DOLT_SERVER_PORT",
 	"BEADS_DOLT_SERVER_USER",
@@ -340,5 +341,20 @@ func init() {
 		if !keep[name] {
 			_ = os.Unsetenv(name)
 		}
+	}
+	// Scrub host mise shims from PATH. Test children (gc/bd/stubs) resolving
+	// commands through the user's mise shims inside virtualized environments
+	// can hang on mise resolution (rate-limited latest lookups under a locked
+	// config) and pile up thousands of shim processes. The versioned install
+	// dirs remain on PATH, so mise-managed tools still resolve directly.
+	if path := os.Getenv("PATH"); path != "" {
+		var kept []string
+		for _, dir := range filepath.SplitList(path) {
+			if strings.Contains(dir, filepath.Join(".local", "share", "mise", "shims")) {
+				continue
+			}
+			kept = append(kept, dir)
+		}
+		_ = os.Setenv("PATH", strings.Join(kept, string(filepath.ListSeparator)))
 	}
 }
