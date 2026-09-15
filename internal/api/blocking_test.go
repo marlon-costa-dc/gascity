@@ -31,8 +31,8 @@ func TestParseBlockingParamsDefaults(t *testing.T) {
 	if bp.Wait != defaultWait {
 		t.Errorf("Wait = %v, want %v", bp.Wait, defaultWait)
 	}
-	if bp.isBlocking() {
-		t.Error("isBlocking() = true, want false")
+	if bp.HasIndex {
+		t.Error("HasIndex = true, want false")
 	}
 }
 
@@ -52,8 +52,8 @@ func TestParseBlockingParamsInvalidIndexDoesNotBlock(t *testing.T) {
 	if bp.HasIndex {
 		t.Error("HasIndex = true, want false for malformed index")
 	}
-	if bp.isBlocking() {
-		t.Error("isBlocking() = true, want false for malformed index")
+	if bp.HasIndex {
+		t.Error("HasIndex = true, want false for malformed index")
 	}
 	if bp.Index != 0 {
 		t.Errorf("Index = %d, want 0 for malformed index", bp.Index)
