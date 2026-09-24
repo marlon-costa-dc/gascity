@@ -32,30 +32,6 @@ export function Odometer({
   );
 }
 
-export function StatTile({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: string | null;
-  note?: string | undefined;
-}) {
-  return (
-    <div
-      role="status"
-      aria-label={`${label}: ${value === null ? 'unavailable' : value}`}
-      className="min-w-28 text-center"
-    >
-      <div aria-hidden className="text-title text-fg tnum">
-        {value === null ? '—' : value}
-      </div>
-      <div className="mt-1 text-label uppercase tracking-wider text-fg-faint">{label}</div>
-      {note && <InstrumentNote>{note}</InstrumentNote>}
-    </div>
-  );
-}
-
 export function Gauge({
   label,
   value,
@@ -291,14 +267,9 @@ export function RunRings({ runs }: { runs: readonly RunRingModel[] }) {
                   transform="rotate(-90 36 36)"
                 />
               </svg>
-              <span className="absolute inset-0 flex flex-col items-center justify-center px-3 text-center text-label text-fg tnum">
-                <span>
-                  {run.stage}/{run.totalStages}
-                </span>
-                <span
-                  className={`w-full truncate ${retry ? 'text-warn' : 'text-fg-faint'}`}
-                  title={retry ? `retry ${run.attempt}` : run.stageWord}
-                >
+              <span className="absolute inset-0 flex flex-col items-center justify-center text-label text-fg tnum">
+                {run.stage}/{run.totalStages}
+                <span className={retry ? 'text-warn' : 'text-fg-faint'}>
                   {retry ? `retry ${run.attempt}` : run.stageWord}
                 </span>
               </span>

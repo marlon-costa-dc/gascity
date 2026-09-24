@@ -214,7 +214,7 @@ func TestMain(m *testing.M) {
 		testscript.Main(m, map[string]func(){
 			"gc": func() {
 				configureTestscriptEnvDefaults()
-				os.Exit(mainExitCode(os.Args[1:], os.Stdout, os.Stderr))
+				os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 			},
 			"bd": bdTestCmd,
 		})
@@ -243,27 +243,11 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("TMPDIR", testTempRoot); err != nil {
 		panic(err)
 	}
-	tmuxSocketParentRoot := os.Getenv(testTmuxSocketParentRootEnv)
-	if tmuxSocketParentRoot == "" {
-		tmuxSocketParentRoot = "/tmp"
-	}
-	tmuxSocketRoot, tmuxSocketCleanupRoot, tmuxSentinel, err := cmdGCTmuxSocketRoot(testTempRoot, tmuxSocketParentRoot)
+	tmuxSocketRoot, tmuxSocketCleanupRoot, tmuxSentinel, err := cmdGCTmuxSocketRoot(testTempRoot)
 	if err != nil {
 		panic(err)
 	}
 	tmuxSocketAliveSentinel = tmuxSentinel
-	// testscript.Main below exits via os.Exit, which skips defers, so the
-	// normal path removes the tmux socket parent through cleanupTestingM. A
-	// setup panic before testscript.Main is reached still unwinds through
-	// defers, so cover that window here or it leaks /tmp/gct-<pid>-* until a
-	// later aged sweep. cmdGCTmuxSocketRoot returns an empty cleanup root when
-	// it fell back to a dir under TMPDIR (swept separately), so only the real
-	// /tmp parent is removed here.
-	defer func() {
-		if tmuxSocketCleanupRoot != "" {
-			_ = os.RemoveAll(tmuxSocketCleanupRoot)
-		}
-	}()
 	if err := tmuxtest.ConfigureProcessEnv(tmuxSocketRoot); err != nil {
 		panic(err)
 	}
@@ -303,18 +287,13 @@ func TestMain(m *testing.M) {
 	configureFSPressureForTests()
 	configureSupervisorHooksForTests()
 	var testRunner testscript.TestingM = newDoltLeakGuardedTestingM(m, testTempRoot, testTempRoot, gcHome, runtimeDir, providerStubDir, sharedTestFixtureRoot)
-	// The tmux leak guard wraps outside the dolt guard and inside
-	// cleanupTestingM: it must observe and kill leaked tmux servers while the
-	// per-run socket root still exists (dip-73cr05 — city-name sockets like
-	// -L test-city have exit-empty off and outlive their sessions forever).
-	testRunner = newTmuxLeakGuardedTestingM(testRunner, tmuxSocketRoot)
 	if tmuxSocketCleanupRoot != "" {
 		testRunner = cleanupTestingM{m: testRunner, paths: []string{tmuxSocketCleanupRoot}}
 	}
 	testscript.Main(testRunner, map[string]func(){
 		"gc": func() {
 			configureTestscriptEnvDefaults()
-			os.Exit(mainExitCode(os.Args[1:], os.Stdout, os.Stderr))
+			os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 		},
 		"bd": bdTestCmd,
 	})
@@ -776,11 +755,6 @@ func TestResolveCityFlag(t *testing.T) {
 	})
 
 	t.Run("flag_empty_fallback", func(t *testing.T) {
-		t.Skip("ga-klo4gz: this subtest's purpose is exercising resolveCity's " +
-			"ambient cwd-based fallback (step 10), which is now unconditionally " +
-			"refused inside test binaries; an explicit override would make it a " +
-			"no-op test rather than a fix")
-
 		// With empty flag, should fall back to cwd-based discovery.
 		// Clear GC_CITY so the cwd fallback is actually exercised.
 		t.Setenv("GC_CITY", "")
@@ -2860,7 +2834,7 @@ version = "` + config.BundledPackImportVersion + `"
 [imports.core]
 source = "https://github.com/gastownhall/gascity/tree/main/internal/bootstrap/packs/core"
 version = "` + config.BundledPackImportVersion + `"
-[imports.gc]
+[imports.gascity]
 source = "https://github.com/gastownhall/gascity-packs/tree/main/gascity"
 version = "` + config.PublicGascityPackVersion + `"
 
@@ -4412,10 +4386,6 @@ func TestDoInitPreservesExistingPackToml(t *testing.T) {
 // pins the wrapper's default-path behavior itself.
 func TestCmdInitFromFileWithOptionsUsesCWDWhenArgsEmpty(t *testing.T) {
 	configureIsolatedRuntimeEnv(t)
-
-	old := stdinIsRealTerminal
-	stdinIsRealTerminal = func() bool { return true }
-	t.Cleanup(func() { stdinIsRealTerminal = old })
 
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -6120,7 +6090,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrime([]string{"mayor"}, &stdout, &stderr)
@@ -6162,7 +6131,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 	t.Setenv("GC_AGENT", "mayor")
 
 	var stdout, stderr bytes.Buffer
@@ -6202,7 +6170,6 @@ name = "test-city"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrime([]string{"ada"}, &stdout, &stderr)
@@ -6237,7 +6204,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrime([]string{"nonexistent"}, &stdout, &stderr)
@@ -6274,7 +6240,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrimeWithMode([]string{"nonexistent"}, &stdout, &stderr, false, true)
@@ -6321,7 +6286,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
@@ -6383,7 +6347,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrimeWithMode(nil, &stdout, &stderr, false, true)
@@ -6430,7 +6393,6 @@ max_active_sessions = 1
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
@@ -6472,7 +6434,6 @@ prompt_template = "prompts/does-not-exist.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
@@ -6517,7 +6478,6 @@ prompt_template = %q
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
@@ -6572,7 +6532,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	// Clear GC_RIG so .RigName evaluates to empty and the conditional
 	// short-circuits. Without this, an ambient GC_RIG would produce output.
@@ -6615,7 +6574,6 @@ name = "mayor"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	t.Setenv("GC_SESSION_ID", "test-session-123")
 	t.Setenv("GC_PROVIDER_SESSION_ID", "provider-session-123")
@@ -6683,7 +6641,6 @@ prompt_template = "prompts/does-not-exist.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	t.Setenv("GC_SESSION_ID", sessionBead.ID)
 	t.Setenv("GC_PROVIDER_SESSION_ID", "provider-session-missing-template")
@@ -6740,7 +6697,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	t.Setenv("GC_SESSION_ID", "test-session-456")
 
@@ -6801,7 +6757,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrimeWithMode([]string{"mayor"}, &stdout, &stderr, false, true)
@@ -6844,7 +6799,6 @@ suspended = true
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	t.Setenv("GC_SESSION_ID", "test-session-suspended")
 
@@ -6920,7 +6874,6 @@ max = 3
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrime([]string{"polecat"}, &stdout, &stderr)
@@ -6964,7 +6917,6 @@ max = -1
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrime([]string{"polecat"}, &stdout, &stderr)
@@ -7020,7 +6972,6 @@ max = -1
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 
 	var stdout, stderr bytes.Buffer
 	code := doPrime([]string{"worker"}, &stdout, &stderr)
@@ -7078,7 +7029,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 	t.Setenv("GC_AGENT", "mayor")
 
 	reader, writer, err := os.Pipe()
@@ -7178,7 +7128,6 @@ prompt_template = "prompts/probe.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 	t.Setenv("GC_AGENT", "probe")
 	t.Setenv("GC_SESSION_ID", sessionBead.ID)
 	t.Setenv("GEMINI_SESSION_ID", "gemini-provider-session")
@@ -7258,7 +7207,6 @@ prompt_template = "prompts/probe.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 	t.Setenv("GC_AGENT", "probe")
 	t.Setenv("GC_SESSION_ID", sessionBead.ID)
 	t.Setenv("GC_PROVIDER_SESSION_ID", "omp-provider-session")
@@ -7311,7 +7259,7 @@ base = "builtin:codex"`)
 	}
 }
 
-func TestDoPrimeClaudeHookPersistsProviderSessionKeyFromHookStdin(t *testing.T) {
+func TestDoPrimeHookIgnoresProviderSessionKeyFromHookStdinForNonCodex(t *testing.T) {
 	dir, sessionID := setupPrimeHookProviderSessionKeyTest(t, "claude", `[providers.claude]
 base = "builtin:claude"`)
 	setPrimeHookStdinJSON(t, map[string]string{
@@ -7334,36 +7282,8 @@ base = "builtin:claude"`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(updated.Metadata["session_key"]); got != "claude-provider-session" {
-		t.Fatalf("session_key = %q, want Claude provider session id from hook stdin", got)
-	}
-}
-
-func TestDoPrimeHookIgnoresProviderSessionKeyFromHookStdinForUnsupportedProvider(t *testing.T) {
-	dir, sessionID := setupPrimeHookProviderSessionKeyTest(t, "gemini", `[providers.gemini]
-base = "builtin:gemini"`)
-	setPrimeHookStdinJSON(t, map[string]string{
-		"session_id":      "gemini-provider-session",
-		"hook_event_name": "SessionStart",
-		"source":          "startup",
-	})
-
-	var stdout, stderr bytes.Buffer
-	code := doPrimeWithMode(nil, &stdout, &stderr, true, false)
-	if code != 0 {
-		t.Fatalf("doPrimeWithMode = %d, want 0; stderr: %s", code, stderr.String())
-	}
-
-	updatedStore, err := openCityStoreAt(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	updated, err := updatedStore.Get(sessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if got := strings.TrimSpace(updated.Metadata["session_key"]); got != "" {
-		t.Fatalf("session_key = %q, want empty for hook stdin session id from a provider outside the hook-stdin allowlist (gemini surfaces its id via env)", got)
+		t.Fatalf("session_key = %q, want empty for non-Codex hook stdin session id", got)
 	}
 }
 
@@ -7460,7 +7380,6 @@ prompt_template = "prompts/probe.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 	t.Setenv("GC_AGENT", "probe")
 	t.Setenv("GC_SESSION_ID", sessionBead.ID)
 	t.Setenv("GC_SESSION_NAME", "probe")
@@ -7519,7 +7438,6 @@ prompt_template = "prompts/probe.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 	t.Setenv("GC_ALIAS", "probe-live")
 	t.Setenv("GC_TEMPLATE", "probe")
 
@@ -7585,7 +7503,6 @@ prompt_template = "prompts/probe.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 	t.Setenv("GC_ALIAS", "probe-live")
 	t.Setenv("GC_SESSION_ID", sessionBead.ID)
 	t.Setenv("GC_TEMPLATE", "")
@@ -7635,7 +7552,6 @@ prompt_template = "prompts/mayor.md"
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GC_CITY_PATH", dir)
 	t.Setenv("GC_AGENT", "bl-9jl") // bead ID, not an agent name
 	t.Setenv("GC_ALIAS", "mayor")
 

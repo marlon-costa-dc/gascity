@@ -58,8 +58,8 @@ func ReadCachedPackImports(source, commit string) (map[string]config.Import, err
 	}
 	var imports map[string]config.Import
 	if err := config.WithRepoCacheReadLock(root, func() error {
-		if repository, known := builtinpacks.RepositoryForSource(source); known && config.IsBundledSourceAtCanonicalPin(source, commit) {
-			if err := builtinpacks.ValidateSyntheticRepo(cachePath, repository, commit); err != nil {
+		if config.IsBundledSourceAtCanonicalPin(source, commit) {
+			if err := builtinpacks.ValidateSyntheticRepo(cachePath, commit); err != nil {
 				gitInfo, gitErr := os.Stat(filepath.Join(cachePath, ".git"))
 				if gitutil.MissingCheckoutMarker(gitInfo, gitErr) {
 					return fmt.Errorf("synthetic cache is invalid: %w", err)
@@ -144,8 +144,7 @@ func EnsureBundledPacksCurrent(cityRoot string) error {
 		if err != nil {
 			return err
 		}
-		repository, known := builtinpacks.RepositoryForSource(source)
-		if known && builtinpacks.ValidateSyntheticRepoFast(cachePath, repository, pack.Commit) == nil {
+		if builtinpacks.ValidateSyntheticRepoFast(cachePath, pack.Commit) == nil {
 			continue
 		}
 		if _, err := EnsureRepoInCache(cityRoot, source, pack.Commit); err != nil {

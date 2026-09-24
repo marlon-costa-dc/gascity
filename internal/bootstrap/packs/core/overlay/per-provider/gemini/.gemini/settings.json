@@ -22,10 +22,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "gc hook run --when-managed-session -- handoff --auto --hook-format gemini \"context cycle\""
-          },
-          {
-            "type": "command",
             "command": "gc prime --hook --hook-format gemini"
           }
         ]

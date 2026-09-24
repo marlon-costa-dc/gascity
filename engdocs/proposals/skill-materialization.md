@@ -199,7 +199,7 @@ workdir, or a sidecar init step).
 | Provider   | Skill sink           | v0.15.1 status    |
 |------------|----------------------|-------------------|
 | `claude`   | `.claude/skills/`    | materialize       |
-| `codex`    | `.agents/skills/`    | materialize       |
+| `codex`    | `.codex/skills/`     | materialize       |
 | `gemini`   | `.gemini/skills/`    | materialize       |
 | `opencode` | `.opencode/skills/`  | materialize       |
 | `copilot`  | —                    | skip (no sink)    |
@@ -463,7 +463,7 @@ scope root:
   .claude/skills/           # materialized for claude agents
     gc-work/ -> ...
     plan/ -> ...
-  .agents/skills/           # materialized for codex agents
+  .codex/skills/            # materialized for codex agents
     gc-work/ -> ...
     plan/ -> ...
 ```

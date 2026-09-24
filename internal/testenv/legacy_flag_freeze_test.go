@@ -79,7 +79,7 @@ func TestLegacyFormulaV2MechanismFrozen(t *testing.T) {
 			// testdata/ holds uncompiled fixture .go files that go build never
 			// sees; scanning them would inject phantom coupling (or silently defeat
 			// the freeze if a fixture names a needle).
-			if skipRepoLintDir(path, root, d.Name()) || d.Name() == "testdata" {
+			if skipRepoLintDir(d.Name()) || d.Name() == "testdata" || (path != root && isNestedWorktreeRoot(path)) {
 				return filepath.SkipDir
 			}
 			return nil

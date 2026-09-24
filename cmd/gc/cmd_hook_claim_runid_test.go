@@ -38,15 +38,7 @@ func claimOpsForRunMap(beadID string, claimedMeta map[string]string, spy *publis
 		},
 		ResolveWorkBranch: func(string) string { return "" },
 		StampWorkMeta:     noopStampWorkMeta,
-		ReadWorkMeta: func(_ context.Context, _ string, _ []string, id, assignee string) (beads.Bead, error) {
-			meta := map[string]string{}
-			for k, v := range claimedMeta {
-				meta[k] = v
-			}
-			meta["gc.session_id"] = "session-1"
-			return beads.Bead{ID: id, Status: "in_progress", Assignee: assignee, Metadata: meta}, nil
-		},
-		PublishRunMap: spy.fn,
+		PublishRunMap:     spy.fn,
 	}
 	opts := hookClaimOptions{
 		Assignee:           "worker-1",

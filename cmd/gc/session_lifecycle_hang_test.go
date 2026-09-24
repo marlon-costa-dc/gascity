@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
@@ -22,42 +21,23 @@ type hangingProvider struct {
 	mu       sync.Mutex
 	released bool
 	releaseC chan struct{}
-	attempts map[string]map[string]int
 }
 
 func newHangingProvider() *hangingProvider {
 	return &hangingProvider{
 		Fake:     runtime.NewFake(),
 		releaseC: make(chan struct{}),
-		attempts: make(map[string]map[string]int),
 	}
 }
 
 func (p *hangingProvider) Stop(name string) error {
-	p.recordAttempt("Stop", name)
 	<-p.releaseC
 	return p.Fake.Stop(name)
 }
 
 func (p *hangingProvider) Interrupt(name string) error {
-	p.recordAttempt("Interrupt", name)
 	<-p.releaseC
 	return p.Fake.Interrupt(name)
-}
-
-func (p *hangingProvider) recordAttempt(method, name string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.attempts[method] == nil {
-		p.attempts[method] = make(map[string]int)
-	}
-	p.attempts[method][name]++
-}
-
-func (p *hangingProvider) attemptCount(method, name string) int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.attempts[method][name]
 }
 
 func (p *hangingProvider) release() {
@@ -125,23 +105,27 @@ func TestExecuteTargetWave_BoundedByPerTargetTimeout(t *testing.T) {
 // forever. Without per-target timeouts the goroutines that run them never
 // signal completion and the wave drainer hangs indefinitely.
 func TestGracefulStopAll_HangingProviderDoesNotWedge(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		sp := newHangingProvider()
-		defer sp.release()
+	origStop := stopPerTargetTimeoutDefault
+	stopPerTargetTimeoutDefault = 200 * time.Millisecond
+	t.Cleanup(func() { stopPerTargetTimeoutDefault = origStop })
 
-		names := []string{"alpha", "bravo", "charlie"}
-		for _, name := range names {
-			if err := sp.Start(context.Background(), name, runtime.Config{}); err != nil {
-				t.Fatal(err)
-			}
-		}
-		cfg := &config.City{
-			Daemon: config.DaemonConfig{ShutdownTimeout: "50ms"},
-		}
+	sp := newHangingProvider()
+	t.Cleanup(sp.release)
 
-		var stdout, stderr bytes.Buffer
+	for _, name := range []string{"alpha", "bravo", "charlie"} {
+		if err := sp.Start(context.Background(), name, runtime.Config{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := &config.City{
+		Daemon: config.DaemonConfig{ShutdownTimeout: "50ms"},
+	}
+
+	var stdout, stderr bytes.Buffer
+	done := make(chan struct{})
+	go func() {
 		gracefulStopAll(
-			names,
+			[]string{"alpha", "bravo", "charlie"},
 			sp,
 			cfg.Daemon.ShutdownTimeoutDuration(),
 			events.Discard,
@@ -150,33 +134,14 @@ func TestGracefulStopAll_HangingProviderDoesNotWedge(t *testing.T) {
 			&stdout,
 			&stderr,
 		)
+		close(done)
+	}()
 
-		for _, operation := range []struct {
-			method string
-			logOp  string
-		}{
-			{method: "Interrupt", logOp: "interrupt"},
-			{method: "Stop", logOp: "stop"},
-		} {
-			for _, name := range names {
-				if got := sp.attemptCount(operation.method, name); got != 1 {
-					t.Errorf("%s attempts for %q = %d, want 1", operation.method, name, got)
-				}
-				matched := 0
-				for _, line := range strings.Split(stderr.String(), "\n") {
-					if strings.Contains(line, "session lifecycle:") &&
-						strings.Contains(line, "op="+operation.logOp+" ") &&
-						strings.Contains(line, "session="+name+" ") &&
-						strings.Contains(line, "outcome=timed_out") {
-						matched++
-					}
-				}
-				if matched != 1 {
-					t.Errorf("%s timed_out outcomes for %q = %d, want 1; stderr:\n%s", operation.logOp, name, matched, stderr.String())
-				}
-			}
-		}
-	})
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("gracefulStopAll did not return within 5s — unbounded wait regression")
+	}
 }
 
 // TestInterruptTargetsBounded_PoolManagedStopDoesNotWedge verifies that

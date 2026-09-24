@@ -23,25 +23,9 @@ func ScanBySessionID(id string) ([]runtime.LiveRuntime, error) {
 	if err != nil {
 		return []runtime.LiveRuntime{}, err
 	}
-	return scanRecordsBySessionID(records, id), nil
-}
-
-// scanRecordsBySessionID is the pure half of ScanBySessionID, over an
-// already-read process table.
-func scanRecordsBySessionID(records map[int]psRecord, id string) []runtime.LiveRuntime {
 	var out []runtime.LiveRuntime
 	for _, record := range records {
 		if record.pid <= 1 {
-			continue
-		}
-		// A process that is itself infrastructure is never an agent root,
-		// whoever its parent is. The tmux server a session's first new-session
-		// call founded inherits that session's GC_SESSION_ID and reparents to
-		// launchd, so the parent-envelope test below cannot exclude it; reported
-		// as a root, it is handed to the orphan sweep, which kills the one server
-		// every agent in the city shares — one socket per city is the default
-		// topology, so that is the whole city (gastownhall/gascity#5392).
-		if isInfrastructureCommand(record.command) {
 			continue
 		}
 		sessionID := record.env["GC_SESSION_ID"]
@@ -72,14 +56,11 @@ func scanRecordsBySessionID(records map[int]psRecord, id string) []runtime.LiveR
 	if out == nil {
 		out = []runtime.LiveRuntime{}
 	}
-	return out
+	return out, nil
 }
 
-// IsScanRoot reports whether pid should be treated as an agent root. A root
-// carries a GC_SESSION_ID, is not itself infrastructure — a tmux server or
-// client is never a root, whoever its parent is — and sits outside its
-// parent's envelope: the parent is gone, carries a different GC_SESSION_ID,
-// or is infrastructure.
+// IsScanRoot reports whether pid is outside its GC_SESSION_ID parent's
+// envelope and should be treated as an agent root.
 func IsScanRoot(pid int) bool {
 	if err := liveScanGuard(); err != nil {
 		return false
@@ -99,16 +80,6 @@ func IsScanRoot(pid int) bool {
 	}
 	record, ok := records[pid]
 	if !ok {
-		return false
-	}
-	return isRecordScanRoot(records, record)
-}
-
-// isRecordScanRoot is the pure half of IsScanRoot. Infrastructure is never a
-// root (see scanRecordsBySessionID), so a kill path that asks about the tmux
-// server is told no.
-func isRecordScanRoot(records map[int]psRecord, record psRecord) bool {
-	if isInfrastructureCommand(record.command) {
 		return false
 	}
 	sessionID := record.env["GC_SESSION_ID"]

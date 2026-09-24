@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/gastownhall/gascity/internal/git"
-	"github.com/gastownhall/gascity/internal/pathutil"
 )
 
 // Source abstracts how formula files are located and read. The default
@@ -151,7 +150,15 @@ func (g *GitRefSource) repoTopAndRelPath(path string) (string, string, bool) {
 }
 
 func canonicalExistingPath(path string) string {
-	return pathutil.NormalizePathForCompare(path)
+	path = filepath.Clean(path)
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return filepath.Clean(resolved)
+	}
+	dir := filepath.Dir(path)
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		return filepath.Join(filepath.Clean(resolved), filepath.Base(path))
+	}
+	return path
 }
 
 // Stat reports whether a regular blob exists at the configured ref

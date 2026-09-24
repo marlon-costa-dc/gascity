@@ -76,15 +76,9 @@ if (( ${#manifest_files[@]} == 0 )); then
     exit 1
 fi
 
-manifest_set=$'\n'
-in_manifest() {
-    case "$manifest_set" in
-        *$'\n'"$1"$'\n'*) return 0 ;;
-        *) return 1 ;;
-    esac
-}
+declare -A in_manifest=()
 for rel in "${manifest_files[@]}"; do
-    manifest_set+="$rel"$'\n'
+    in_manifest["$rel"]=1
     f="$repo_root/$rel"
     if [[ ! -f "$f" ]]; then
         echo "MANIFEST FILE MISSING: $rel (listed in the manifest but not on disk)"
@@ -102,7 +96,7 @@ done
 shopt -s nullglob
 for test_file in "$cmd_dir"/cmd_*_test.go; do
     rel="cmd/gc/$(basename "$test_file")"
-    in_manifest "$rel" && continue
+    [[ -n "${in_manifest[$rel]:-}" ]] && continue
     present=$(count_rows "$test_file")
     if (( present == 0 )); then
         continue
@@ -119,7 +113,7 @@ if (( violations > 0 )); then
     echo "---"
     echo "Six-row matrix violations: $violations"
     echo "A matrix test file MUST contain all six rows and be listed in scripts/routed-test-rows.manifest."
-    echo "See the six-row matrix definition in this script's header comment (bead ga-h6w)."
+    echo "See docs/plans/ga-h6w-read-path-api-routing.md."
     exit 1
 fi
 

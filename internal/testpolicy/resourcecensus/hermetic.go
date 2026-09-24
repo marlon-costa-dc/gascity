@@ -7,7 +7,6 @@ import (
 	"go/token"
 	"go/types"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -28,15 +27,15 @@ type hermeticSourceIndex struct {
 	fileSet             *token.FileSet
 	files               []parsedFile
 	packageDeclarations map[packageKey]map[string]struct{}
-	packageFunctions    map[packageKey]map[string]struct{}
 }
 
 type hermeticFile struct {
-	source     parsedFile
-	index      int
-	bindings   bindingInfo
-	resolved   bool
-	resolveErr error
+	source         parsedFile
+	index          int
+	bindings       bindingInfo
+	testingObjects map[types.Object]bool
+	resolved       bool
+	resolveErr     error
 }
 
 type hermeticFunction struct {
@@ -48,7 +47,6 @@ type hermeticAnalyzer struct {
 	fileSet             *token.FileSet
 	importer            *emptyPackageImporter
 	packageDeclarations map[packageKey]map[string]struct{}
-	packageFunctions    map[packageKey]map[string]struct{}
 	functions           map[packageKey]map[string][]*hermeticFunction
 	slowHelpers         map[packageKey]types.Object
 }
@@ -270,23 +268,14 @@ func newHermeticAnalyzer(sourceIndex *hermeticSourceIndex, rows []ReviewedHermet
 	})
 
 	declarations := sourceIndex.packageDeclarations
-	functionDeclarations := sourceIndex.packageFunctions
 	if declarations == nil {
 		declarations = make(map[packageKey]map[string]struct{})
-		functionDeclarations = make(map[packageKey]map[string]struct{})
 		for _, source := range files {
 			key := source.groupKey()
 			if declarations[key] == nil {
 				declarations[key] = make(map[string]struct{})
 			}
 			recordPackageDeclarations(source.file, declarations[key])
-			catalogNames := listenerHelperPackageNames(key)
-			if len(catalogNames) > 0 {
-				if functionDeclarations[key] == nil {
-					functionDeclarations[key] = make(map[string]struct{})
-				}
-				recordPackageFunctionDeclarations(source.file, functionDeclarations[key], catalogNames)
-			}
 		}
 	}
 
@@ -294,7 +283,6 @@ func newHermeticAnalyzer(sourceIndex *hermeticSourceIndex, rows []ReviewedHermet
 		fileSet:             sourceIndex.fileSet,
 		importer:            newEmptyPackageImporter(),
 		packageDeclarations: declarations,
-		packageFunctions:    functionDeclarations,
 		functions:           make(map[packageKey]map[string][]*hermeticFunction),
 		slowHelpers:         make(map[packageKey]types.Object),
 	}
@@ -355,13 +343,14 @@ func (a *hermeticAnalyzer) resolveFile(file *hermeticFile) error {
 	}
 	bindings := resolveBindings(a.fileSet, file.source.file, a.importer, fmt.Sprintf("resourcecensus.hermetic/file%d", file.index))
 	bindings.packageDeclarations = a.packageDeclarations[file.source.groupKey()]
-	bindings.packageFunctions = a.packageFunctions[file.source.groupKey()]
 	bindings.unresolvedImportQualifiers = unresolvedDefaultImportQualifiers(file.source.file)
-	if _, err := testingParameterObjects(file.source.file, bindings); err != nil {
+	testingObjects, err := testingParameterObjects(file.source.file, bindings)
+	if err != nil {
 		file.resolveErr = fmt.Errorf("scanning testing parameters in %s: %w", file.source.name, err)
 		return file.resolveErr
 	}
 	file.bindings = bindings
+	file.testingObjects = testingObjects
 	return nil
 }
 
@@ -487,7 +476,7 @@ func (a *hermeticAnalyzer) analyzeFunction(key packageKey, function *hermeticFun
 			return false
 		}
 		if call, ok := node.(*ast.CallExpr); ok {
-			matched, err := matchedResourcesForCall(call, key, function.file.bindings, a.slowHelpers[key])
+			matched, err := matchedResourcesForCall(call, function.file.bindings, function.file.testingObjects, a.slowHelpers[key])
 			if err != nil {
 				inspectErr = fmt.Errorf("%s: %w", function.file.source.name, err)
 				return false
@@ -593,7 +582,7 @@ func nonValueIdentifier(identifier *ast.Ident, parent ast.Node) bool {
 
 // matchedResourcesForCall is the single mapping from a syntax-owned call to
 // the resource identities recognized by both the census and hermetic review.
-func matchedResourcesForCall(call *ast.CallExpr, key packageKey, bindings bindingInfo, slowHelperObject types.Object) ([]Resource, error) {
+func matchedResourcesForCall(call *ast.CallExpr, bindings bindingInfo, testingObjects map[types.Object]bool, slowHelperObject types.Object) ([]Resource, error) {
 	var resources []Resource
 	appendImported := func(resource Resource, importPath string, names ...string) error {
 		matched, err := isImportedCall(call, bindings, importPath, names...)
@@ -605,7 +594,7 @@ func matchedResourcesForCall(call *ast.CallExpr, key packageKey, bindings bindin
 		}
 		return nil
 	}
-	if err := appendImported(ResourceNetListen, "net", "Listen", "ListenTCP", "ListenUnix"); err != nil {
+	if err := appendImported(ResourceNetListen, "net", "Listen"); err != nil {
 		return nil, err
 	}
 	matched, err := isNetListenConfigCall(call, bindings)
@@ -615,7 +604,7 @@ func matchedResourcesForCall(call *ast.CallExpr, key packageKey, bindings bindin
 	if matched {
 		resources = append(resources, ResourceNetListenConfig)
 	}
-	if err := appendImported(ResourceNetListenPacket, "net", "ListenPacket", "ListenUDP", "ListenIP", "ListenUnixgram", "ListenMulticastUDP"); err != nil {
+	if err := appendImported(ResourceNetListenUnixgram, "net", "ListenUnixgram"); err != nil {
 		return nil, err
 	}
 	if err := appendImported(ResourceSyscallListen, "syscall", "Listen"); err != nil {
@@ -624,52 +613,8 @@ func matchedResourcesForCall(call *ast.CallExpr, key packageKey, bindings bindin
 	if err := appendImported(ResourceHTTPTestServer, "net/http/httptest", "NewServer", "NewTLSServer", "NewUnstartedServer"); err != nil {
 		return nil, err
 	}
-	for _, identity := range listenerHelperPackageIdentities {
-		if identity.importPath == "" {
-			continue
-		}
-		if err := appendImported(ResourceListenerHelper, identity.importPath, identity.names...); err != nil {
-			return nil, err
-		}
-	}
-	if isListenerHelperPackageCall(call, key, bindings) {
-		resources = append(resources, ResourceListenerHelper)
-	}
 	if err := appendImported(ResourceSubprocess, "os/exec", "Command", "CommandContext"); err != nil {
 		return nil, err
-	}
-	for _, callFamily := range []struct {
-		importPath string
-		names      []string
-	}{
-		{
-			importPath: "github.com/gastownhall/gascity/test/tmuxtest",
-			names:      []string{"ConfigureProcessEnv", "KillAllTestSessions", "NewGuard", "NewGuardWithSocket", "RequireTmux"},
-		},
-		{
-			importPath: "github.com/gastownhall/gascity/internal/runtime/tmux",
-			names:      []string{"NewProvider", "NewProviderWithConfig", "NewSeamBackedWithConfig", "NewTmux", "NewTmuxWithConfig"},
-		},
-	} {
-		if err := appendImported(ResourceTmux, callFamily.importPath, callFamily.names...); err != nil {
-			return nil, err
-		}
-	}
-	for _, command := range []struct {
-		name     string
-		argument int
-	}{
-		{name: "Command", argument: 0},
-		{name: "CommandContext", argument: 1},
-		{name: "LookPath", argument: 0},
-	} {
-		matched, err := isImportedCallWithLiteralArgument(call, bindings, "os/exec", command.argument, "tmux", command.name)
-		if err != nil {
-			return nil, err
-		}
-		if matched {
-			resources = append(resources, ResourceTmux)
-		}
 	}
 	if err := appendImported(ResourceFixedSleep, "time", "Sleep"); err != nil {
 		return nil, err
@@ -680,34 +625,22 @@ func matchedResourcesForCall(call *ast.CallExpr, key packageKey, bindings bindin
 	if err := appendImported(ResourceCWD, "os", "Chdir"); err != nil {
 		return nil, err
 	}
-	// A testing.T/TB Setenv/Chdir auto-restores at test end, unlike os.Setenv/
-	// os.Chdir, so it is excluded here; checkTestingReceiverBinding's fail-closed
-	// error (an unbound receiver identifier) still applies and must still
-	// propagate.
-	if err := checkTestingReceiverBinding(call, bindings, "Setenv"); err != nil {
+	matched, err = isTestingCall(call, bindings, testingObjects, "Setenv")
+	if err != nil {
 		return nil, err
 	}
-	if err := checkTestingReceiverBinding(call, bindings, "Chdir"); err != nil {
+	if matched {
+		resources = append(resources, ResourceEnvironment)
+	}
+	matched, err = isTestingCall(call, bindings, testingObjects, "Chdir")
+	if err != nil {
 		return nil, err
+	}
+	if matched {
+		resources = append(resources, ResourceCWD)
 	}
 	if isSlowHelperCall(call, bindings, slowHelperObject) {
 		resources = append(resources, ResourceSlowProcessGate)
 	}
 	return resources, nil
-}
-
-func isImportedCallWithLiteralArgument(call *ast.CallExpr, bindings bindingInfo, importPath string, argument int, want string, names ...string) (bool, error) {
-	matched, err := isImportedCall(call, bindings, importPath, names...)
-	if err != nil || !matched || argument >= len(call.Args) {
-		return false, err
-	}
-	literal, ok := unparen(call.Args[argument]).(*ast.BasicLit)
-	if !ok || literal.Kind != token.STRING {
-		return false, nil
-	}
-	value, err := strconv.Unquote(literal.Value)
-	if err != nil {
-		return false, fmt.Errorf("decoding resource command literal %s: %w", literal.Value, err)
-	}
-	return value == want, nil
 }

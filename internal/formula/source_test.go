@@ -8,8 +8,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/gastownhall/gascity/internal/testutil"
 )
 
 // TestFSSourceMatchesLegacyBehavior asserts FSSource is a faithful
@@ -323,7 +321,7 @@ func TestGitRepoAwareFallbackPreservesRefStabilityForInRepoPaths(t *testing.T) {
 // under opt-in GC_FORMULA_REF.
 func TestGitRepoAwareFallbackUsesFilesystemForOutOfRepoPaths(t *testing.T) {
 	gitOK(t)
-	outsideDir := tempDirOutsideGit(t)
+	outsideDir := t.TempDir()
 	loose := filepath.Join(outsideDir, "loose.toml")
 	if err := os.WriteFile(loose, []byte("z = 3\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -511,37 +509,6 @@ func gitOK(t *testing.T) {
 	}
 }
 
-func tempDirOutsideGit(t *testing.T) string {
-	t.Helper()
-	candidate, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	for {
-		candidate = filepath.Dir(candidate)
-		cmd := exec.Command("git", "-C", candidate, "rev-parse", "--show-toplevel")
-		if err := cmd.Run(); err != nil {
-			dir, mkdirErr := os.MkdirTemp(candidate, "gascity-formula-source-")
-			if mkdirErr != nil {
-				t.Fatalf("create temporary directory outside Git: %v", mkdirErr)
-			}
-			t.Cleanup(func() {
-				if removeErr := os.RemoveAll(dir); removeErr != nil {
-					t.Errorf("remove temporary directory %s: %v", dir, removeErr)
-				}
-			})
-			verify := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
-			if out, verifyErr := verify.CombinedOutput(); verifyErr == nil {
-				t.Fatalf("temporary directory %s unexpectedly belongs to Git repo %s", dir, strings.TrimSpace(string(out)))
-			}
-			return dir
-		}
-		if candidate == filepath.Dir(candidate) {
-			t.Fatal("could not locate a writable temporary parent outside Git")
-		}
-	}
-}
-
 func initRepo(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -617,36 +584,4 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
-}
-
-// TestCanonicalExistingPathResolvesSymlinkedGrandparentWithTwoMissingLevels
-// pins the ga-iawy13.6 canonical-path-at-ingest fix: canonicalExistingPath
-// must walk up past more than one missing path component to find a
-// resolvable symlinked ancestor, matching pathutil.NormalizePathForCompare.
-// Today it only tries the immediate parent, so a path missing at both the
-// leaf and the immediate-parent level resolves through the unresolved
-// symlink instead of its real target.
-func TestCanonicalExistingPathResolvesSymlinkedGrandparentWithTwoMissingLevels(t *testing.T) {
-	root := t.TempDir()
-	realDir := filepath.Join(root, "real")
-	if err := os.MkdirAll(realDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	aliasDir := filepath.Join(root, "alias")
-	if err := os.Symlink(realDir, aliasDir); err != nil {
-		t.Skipf("symlink unsupported: %v", err)
-	}
-
-	missing := filepath.Join(aliasDir, "missing-parent", "missing-leaf")
-	got := canonicalExistingPath(missing)
-
-	// Canonicalize the expectation through the production normalizer rather
-	// than bare EvalSymlinks: on macOS the two disagree on whether the temp
-	// root is spelled /var/... or /private/var/..., and only the former is
-	// what canonicalExistingPath returns. The comparison stays exact.
-	resolvedAlias := testutil.CanonicalPath(aliasDir)
-	want := filepath.Join(resolvedAlias, "missing-parent", "missing-leaf")
-	if got != want {
-		t.Errorf("canonicalExistingPath(%q) = %q, want %q (resolved through symlinked grandparent, 2 missing levels)", missing, got, want)
-	}
 }

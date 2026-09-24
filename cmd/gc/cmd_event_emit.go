@@ -127,7 +127,7 @@ func loadEventBeadPayload(beadID string) (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading bead: %w", err)
 	}
-	payload, err := beads.EncodeBeadEventPayload(bead)
+	payload, err := json.Marshal(map[string]beads.Bead{"bead": bead})
 	if err != nil {
 		return nil, fmt.Errorf("marshaling bead payload: %w", err)
 	}

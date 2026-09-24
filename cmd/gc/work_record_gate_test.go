@@ -106,86 +106,6 @@ func TestValidateWorkRecordOnClose(t *testing.T) {
 	}
 }
 
-// TestPreferredReachabilityRef exercises the ref-selection decision behind
-// gastownhall/gascity#5037 via an injected resolver rather than a real git
-// repository — this package's tracked test-resource census
-// (internal/testpolicy/resourcecensus, test/test-resources.toml) ratchets the
-// untagged subprocess call/file count down and forbids growing it without a
-// council-reviewed policy change, so a real end-to-end git fixture isn't the
-// right shape for this unit; see docs/reference/specs — the actual
-// git-merge-base call this feeds stays covered by the same trust level it
-// had before this fix (it was already untested and unchanged). Per the
-// issue's own guidance, this asserts the *resolved ref* rather than relying
-// on "no warning" as a proxy — the pre-fix code was fail-closed and silently
-// wrong for some bead types, so absence of a warning was never sufficient
-// evidence.
-func TestPreferredReachabilityRef(t *testing.T) {
-	tests := []struct {
-		name           string
-		branch         string
-		remoteResolves map[string]bool
-		want           string
-	}{
-		{
-			name:           "prefers the remote-tracking ref when it resolves",
-			branch:         "main",
-			remoteResolves: map[string]bool{"refs/remotes/origin/main": true},
-			want:           "refs/remotes/origin/main",
-		},
-		{
-			name:           "falls back to the bare branch name when no remote-tracking ref exists",
-			branch:         "main",
-			remoteResolves: map[string]bool{},
-			want:           "main",
-		},
-		{
-			name:           "does not confuse a different branch's remote-tracking ref for this one",
-			branch:         "main",
-			remoteResolves: map[string]bool{"refs/remotes/origin/release": true},
-			want:           "main",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := preferredReachabilityRef(tc.branch, func(ref string) bool { return tc.remoteResolves[ref] })
-			if got != tc.want {
-				t.Fatalf("preferredReachabilityRef(%q, ...) = %q, want %q", tc.branch, got, tc.want)
-			}
-		})
-	}
-}
-
-// TestCommitReachableOnEitherRef pins the union: the remote-tracking ref is
-// preferred, but a commit reachable only from the local branch still passes.
-func TestCommitReachableOnEitherRef(t *testing.T) {
-	tests := []struct {
-		name           string
-		remoteResolves map[string]bool
-		reachable      map[string]bool
-		want           bool
-	}{
-		{"remote resolves and contains the commit", map[string]bool{"refs/remotes/origin/main": true}, map[string]bool{"refs/remotes/origin/main": true}, true},
-		{"remote is stale, local branch contains the commit", map[string]bool{"refs/remotes/origin/main": true}, map[string]bool{"main": true}, true},
-		{"neither ref contains the commit", map[string]bool{"refs/remotes/origin/main": true}, map[string]bool{}, false},
-		{"no remote-tracking ref, local branch contains the commit", map[string]bool{}, map[string]bool{"main": true}, true},
-		{"no remote-tracking ref, local branch does not", map[string]bool{}, map[string]bool{}, false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			probes := map[string]int{}
-			got := commitReachableOnEitherRef("main",
-				func(ref string) bool { return tc.remoteResolves[ref] },
-				func(ref string) bool { probes[ref]++; return tc.reachable[ref] })
-			if got != tc.want {
-				t.Fatalf("commitReachableOnEitherRef = %v, want %v", got, tc.want)
-			}
-			if probes["main"] > 1 {
-				t.Fatalf("local ref probed %d times, want at most 1", probes["main"])
-			}
-		})
-	}
-}
-
 func TestIsWorkRecordGatedBead(t *testing.T) {
 	tests := []struct {
 		name string
@@ -401,7 +321,7 @@ func TestEvaluateWorkRecordCloseGate(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var stderr strings.Builder
-			block := evaluateWorkRecordCloseGate(tc.args, newStore(), nil, t.TempDir(), tc.enforce, &stderr)
+			block := evaluateWorkRecordCloseGate(tc.args, newStore(), t.TempDir(), tc.enforce, &stderr)
 			if block != tc.wantBlock {
 				t.Fatalf("block = %v, want %v; stderr=%s", block, tc.wantBlock, stderr.String())
 			}
@@ -448,60 +368,11 @@ func TestEvaluateWorkRecordCloseGateAtomicShippedUpdate(t *testing.T) {
 		"--status=closed",
 	}
 	var stderr strings.Builder
-	if block := evaluateWorkRecordCloseGate(args, store, nil, repoDir, true, &stderr); block {
+	if block := evaluateWorkRecordCloseGate(args, store, repoDir, true, &stderr); block {
 		t.Fatalf("valid atomic shipped close blocked; stderr=%s", stderr.String())
 	}
 	if got := stderr.String(); got != "" {
 		t.Fatalf("valid atomic shipped close warned: %q", got)
-	}
-}
-
-// panicOnGetStore embeds a nil beads.Store and overrides Get to panic. It
-// proves a code path never falls back to the store for a given ID — used to
-// assert the close gate actually consumes preFetched beads instead of
-// re-reading them: gc bd close previously paid for the same store.Get twice,
-// once in the write-ID guard and once in this gate.
-type panicOnGetStore struct{ beads.Store }
-
-func (panicOnGetStore) Get(id string) (beads.Bead, error) {
-	panic("store.Get called for id " + id + ": preFetched bead should have been used")
-}
-
-func TestEvaluateWorkRecordCloseGateUsesPreFetchedBead(t *testing.T) {
-	preFetched := map[string]beads.Bead{
-		"wr-shipped-nocommit": {ID: "wr-shipped-nocommit", Type: "task", Status: "in_progress", Metadata: map[string]string{beadmeta.WorkOutcomeMetadataKey: beadmeta.WorkOutcomeShipped}},
-	}
-	var stderr strings.Builder
-	block := evaluateWorkRecordCloseGate([]string{"close", "wr-shipped-nocommit"}, panicOnGetStore{}, preFetched, t.TempDir(), true, &stderr)
-	if !block {
-		t.Fatalf("expected block=true for shipped-without-commit, got false; stderr=%s", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "work-record gate (enforced)") {
-		t.Fatalf("expected enforced gate output, got %q", stderr.String())
-	}
-}
-
-// TestRunWorkRecordCloseGateReusesPreOpenedStore proves runWorkRecordCloseGate
-// never calls openStoreAtForCity when handed a preOpened store — it's the IO
-// wrapper's half of the dedup (evaluateWorkRecordCloseGate proves the
-// preFetched-bead half above). cityPath is deliberately bogus: opening a
-// real store at it would fail, causing the gate to fail open (block=false, no
-// stderr) — indistinguishable from a no-op success. Asserting a violation
-// fires instead proves preOpened/preFetched were actually used, not silently
-// bypassed by a failed fallback open.
-func TestRunWorkRecordCloseGateReusesPreOpenedStore(t *testing.T) {
-	preFetched := map[string]beads.Bead{
-		"wr-shipped-nocommit": {ID: "wr-shipped-nocommit", Type: "task", Status: "in_progress", Metadata: map[string]string{beadmeta.WorkOutcomeMetadataKey: beadmeta.WorkOutcomeShipped}},
-	}
-	var stderr strings.Builder
-	const bogusCityPath = "/nonexistent/does-not-exist"
-	t.Setenv(workRecordEnforceEnvVar, "1")
-	block := runWorkRecordCloseGate([]string{"close", "wr-shipped-nocommit"}, t.TempDir(), bogusCityPath, nil, panicOnGetStore{}, preFetched, &stderr)
-	if !block {
-		t.Fatalf("expected block=true for shipped-without-commit, got false (fallback store open may have silently swallowed the preOpened store); stderr=%s", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "work-record gate (enforced)") {
-		t.Fatalf("expected enforced gate output, got %q", stderr.String())
 	}
 }
 

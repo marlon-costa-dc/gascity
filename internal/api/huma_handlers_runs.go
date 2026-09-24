@@ -13,7 +13,6 @@ import (
 	"github.com/gastownhall/gascity/internal/api/apierr"
 	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
-	"github.com/gastownhall/gascity/internal/molecule"
 	"github.com/gastownhall/gascity/internal/runproj"
 	"github.com/gastownhall/gascity/internal/sourceworkflow"
 )
@@ -252,8 +251,7 @@ func (s *Server) humaHandleRunSteps(ctx context.Context, input *RunStepsInput) (
 	if !fold.ready {
 		return nil, apierr.ServiceUnavailable.Msg("run projection is warming")
 	}
-	lane, ok := runproj.BuildRunLane(fold.beads, input.RunID)
-	if !ok {
+	if _, ok := runproj.BuildRunLane(fold.beads, input.RunID); !ok {
 		if fold.partial {
 			return nil, apierr.ServiceUnavailable.Msg("run projection is incomplete")
 		}
@@ -264,19 +262,7 @@ func (s *Server) humaHandleRunSteps(ctx context.Context, input *RunStepsInput) (
 	}
 	s.forgetRunProjectionMiss(ctx, input.RunID)
 
-	// Derive the run's canonical lifecycle status exactly as laneToRun/deriveRunStatus
-	// do (root-terminality wins over lingering members), then clamp each step through
-	// it: a completed run must not report a step as eternally active when its close
-	// event was lost. A non-terminal run yields an inactive clamp (raw statuses stand).
-	byID := beadsByID(fold.beads)
-	root, rootFound := byID[input.RunID]
-	var rootPtr *beads.Bead
-	if rootFound {
-		rootPtr = &root
-	}
-	runStatus := runproj.CanonicalRunStatusForLane(lane, rootPtr, countStartedMembers(fold.beads, lane.ID))
-
-	members := topoSortRunSteps(runMemberBeads(fold.beads, input.RunID))
+	members := runMemberBeads(fold.beads, input.RunID)
 	out := &RunStepsOutput{}
 	out.Body.RunID = input.RunID
 	out.Body.Steps = make([]RunStep, 0, len(members))
@@ -285,11 +271,10 @@ func (s *Server) humaHandleRunSteps(ctx context.Context, input *RunStepsInput) (
 		if m.ID == input.RunID {
 			continue // the root is the run, not a step
 		}
-		status := RunStepStatus(runproj.ClampStepStatusForRun(runStatus, string(deriveRunStepStatus(m))))
 		out.Body.Steps = append(out.Body.Steps, RunStep{
 			ID:       m.ID,
 			Title:    runStepTitle(m),
-			Status:   status,
+			Status:   deriveRunStepStatus(m),
 			Kind:     m.Type,
 			Assignee: strings.TrimSpace(m.Assignee),
 		})
@@ -357,13 +342,9 @@ type cancelRunResult struct {
 // persists neither and never strands an open, half-marked root; on a non-atomic
 // store the marker is durably recorded so the returned 5xx's retry completes the
 // wind-down. Already-terminal runs (and already-closed members) are left
-// untouched — closing a completed member would rewrite its recorded outcome. The
-// run's teardown tail (molecule.TeardownTailExclusion) is excluded from this
-// close: it runs AFTER the root reaches a terminal state by contract, and its
-// pass condition may read ROOT_OUTCOME, which this cancel's own close just
-// stamped — force-closing it unexecuted would strand the resources it releases.
-// Any store read/write failure is returned so the caller reports a 5xx rather
-// than a phantom success.
+// untouched — closing a completed member would rewrite its recorded outcome. Any
+// store read/write failure is returned so the caller reports a 5xx rather than a
+// phantom success.
 func (s *Server) cancelRun(runID string) (cancelRunResult, error) {
 	var res cancelRunResult
 	for _, info := range s.workflowStores() {
@@ -379,17 +360,12 @@ func (s *Server) cancelRun(runID string) (cancelRunResult, error) {
 			if isClosedStatus(root.Status) {
 				continue // already terminal — nothing to wind down
 			}
-			exclude, err := molecule.TeardownTailExclusion(info.store, root.ID)
-			if err != nil {
-				return res, err
-			}
-			n, err := sourceworkflow.CloseWorkflowSubtreeAsExcept(
+			n, err := sourceworkflow.CloseWorkflowSubtreeAs(
 				info.store,
 				root.ID,
 				beadmeta.OutcomeCanceled,
 				runCanceledCloseReason,
 				map[string]string{beadmeta.CancelRequestedMetadataKey: "true"},
-				exclude,
 			)
 			if err != nil {
 				return res, err

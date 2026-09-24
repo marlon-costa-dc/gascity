@@ -1,7 +1,6 @@
 package tmux
 
 import (
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,7 +24,7 @@ func TestMain(m *testing.M) {
 	// unreachable os.Files, which would close the descriptor and release
 	// the lock, letting a concurrent sibling's sweep reclaim this still-
 	// active directory (ga-djbcqt).
-	tmuxSocketParent, sentinel, err := tmuxtest.NewSocketParentDir("/tmp", io.Discard)
+	tmuxSocketParent, sentinel, err := tmuxtest.NewSocketParentDir("/tmp")
 	if err != nil {
 		panic("tmux tests: creating socket parent: " + err.Error())
 	}

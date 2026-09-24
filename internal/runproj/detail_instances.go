@@ -11,12 +11,11 @@ import (
 // buildRunDisplayNode projects one semantic group into a display node, including
 // its execution instances, iteration/attempt summaries, and control badges.
 // Port of TS buildRunDisplayNode (execution-instances.ts). latestLoopIteration's
-// bool mirrors `number | undefined`. clamp collapses non-terminal step statuses
-// when the run root is terminal (an inactive clamp is a no-op).
-func buildRunDisplayNode(group runNodeGroup, controlBadges []RunControlBadge, latestLoopIteration int, hasLatestLoopIteration bool, ctx runSessionLinkContext, clamp terminalRootClamp) RunDisplayNode {
+// bool mirrors `number | undefined`.
+func buildRunDisplayNode(group runNodeGroup, controlBadges []RunControlBadge, latestLoopIteration int, hasLatestLoopIteration bool, ctx runSessionLinkContext) RunDisplayNode {
 	instances := make([]RunExecutionInstance, 0, len(group.beads))
 	for index := range group.beads {
-		instances = append(instances, buildExecutionInstance(group.semanticNodeID, group.beads[index], index, ctx, clamp))
+		instances = append(instances, buildExecutionInstance(group.semanticNodeID, group.beads[index], index, ctx))
 	}
 	sortExecutionInstances(instances)
 
@@ -67,15 +66,8 @@ func buildRunDisplayNode(group runNodeGroup, controlBadges []RunControlBadge, la
 	}
 	visible := &instances[len(instances)-1]
 
-	// Clamp each badge status through the same terminal-root clamp: a hidden
-	// construct (finalize / scope-check) whose close event was lost must not read
-	// "running" under a terminal root. Build a FRESH slice — controlBadges aliases
-	// the badgesByTarget map storage and must never be mutated in place. A len-0
-	// make yields the non-nil empty slice the wire expects when there are no badges.
-	clampedBadges := make([]RunControlBadge, len(controlBadges))
-	for i, badge := range controlBadges {
-		badge.Status = clamp.apply(badge.Status)
-		clampedBadges[i] = badge
+	if controlBadges == nil {
+		controlBadges = []RunControlBadge{}
 	}
 
 	return RunDisplayNode{
@@ -93,7 +85,7 @@ func buildRunDisplayNode(group runNodeGroup, controlBadges []RunControlBadge, la
 		AttemptSummary:             attemptSummaryFor(instances, group.beads),
 		VisibleExecutionInstanceID: visible.ID,
 		ExecutionInstances:         instances,
-		ControlBadges:              clampedBadges,
+		ControlBadges:              controlBadges,
 	}
 }
 
@@ -119,21 +111,16 @@ func latestIterationsByLoop(groups []runNodeGroup) map[string]int {
 }
 
 // buildExecutionInstance projects one physical bead into an execution instance.
-// Port of TS buildExecutionInstance, extended with the terminal-root clamp: the
-// session link and session-attachment reason resolve from the bead's REAL recorded
-// status (so a step that ran keeps its transcript link), while the presented
-// Status is the clamped value — a completed run's leftover "active" step reads
-// completed, not eternally running.
-func buildExecutionInstance(semanticNodeID string, bead runSnapshotBead, index int, ctx runSessionLinkContext, clamp terminalRootClamp) RunExecutionInstance {
+// Port of TS buildExecutionInstance.
+func buildExecutionInstance(semanticNodeID string, bead runSnapshotBead, index int, ctx runSessionLinkContext) RunExecutionInstance {
 	beadID := nonEmpty(bead.id)
 	if beadID == "" {
 		panic("runproj: run node " + semanticNodeID + " has a bead with an empty id")
 	}
 	iteration, hasIteration := iterationFor(bead)
 	attempt, hasAttempt := attemptFor(bead)
-	recordedStatus := presentationStatus(bead)
-	status := clamp.apply(recordedStatus)
-	sessionLink, hasLink := runSessionLinkFor(bead, recordedStatus, ctx)
+	status := presentationStatus(bead)
+	sessionLink, hasLink := runSessionLinkFor(bead, status, ctx)
 
 	id := beadID
 	if id == "" {
@@ -156,7 +143,7 @@ func buildExecutionInstance(semanticNodeID string, bead runSnapshotBead, index i
 		Attempt:          attemptState(attempt, hasAttempt),
 		Label:            instanceLabel(iteration, hasIteration, attempt, hasAttempt),
 		Status:           status,
-		Session:          sessionState(recordedStatus, sessionLink, hasLink),
+		Session:          sessionState(status, sessionLink, hasLink),
 		CurrentIteration: true,
 		Historical:       false,
 	}

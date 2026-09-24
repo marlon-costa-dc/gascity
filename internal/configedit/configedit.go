@@ -280,12 +280,8 @@ func SetRigSuspendedOnStart(cfg *config.City, name string, suspended bool) error
 // exists, fn is called on it. Otherwise a new patch is created.
 func AddOrUpdateAgentPatch(cfg *config.City, name string, fn func(p *config.AgentPatch)) error {
 	dir, base := config.ParseQualifiedName(name)
-	// Match on the canonical target identity so an existing rig-keyed patch
-	// (Rig set, Dir empty) is updated in place rather than shadowed by a new
-	// Dir-keyed duplicate. Creation stays on the legacy Dir key, the shape the
-	// suspend/resume path has always produced.
 	for i := range cfg.Patches.Agents {
-		if cfg.Patches.Agents[i].TargetQualifiedName() == name {
+		if cfg.Patches.Agents[i].Dir == dir && cfg.Patches.Agents[i].Name == base {
 			fn(&cfg.Patches.Agents[i])
 			return nil
 		}
@@ -485,10 +481,11 @@ func agentDeclaredInCityPack(fs fsys.FS, cityRoot, dir, name string) (bool, erro
 // leaving an identity-only [[patches.agent]] block in city.toml.
 // Returns true if any patch was modified.
 func StripAgentPatchSuspended(cfg *config.City, name string) bool {
+	dir, base := config.ParseQualifiedName(name)
 	modified := false
 	kept := cfg.Patches.Agents[:0:0]
 	for _, p := range cfg.Patches.Agents {
-		if p.TargetQualifiedName() == name && p.Suspended != nil {
+		if p.Dir == dir && p.Name == base && p.Suspended != nil {
 			p.Suspended = nil
 			modified = true
 			if isAgentPatchOnlyIdentity(p) {
@@ -504,11 +501,12 @@ func StripAgentPatchSuspended(cfg *config.City, name string) bool {
 }
 
 func stripAgentPatchUpdate(cfg *config.City, name string, patch AgentUpdate) bool {
+	dir, base := config.ParseQualifiedName(name)
 	modified := false
 	kept := cfg.Patches.Agents[:0:0]
 	for _, p := range cfg.Patches.Agents {
 		patchModified := false
-		if p.TargetQualifiedName() == name {
+		if p.Dir == dir && p.Name == base {
 			if patch.Provider != "" && p.Provider != nil {
 				p.Provider = nil
 				patchModified = true
@@ -537,10 +535,11 @@ func stripAgentPatchUpdate(cfg *config.City, name string, patch AgentUpdate) boo
 }
 
 func removeAgentPatch(cfg *config.City, name string) bool {
+	dir, base := config.ParseQualifiedName(name)
 	modified := false
 	kept := cfg.Patches.Agents[:0:0]
 	for _, p := range cfg.Patches.Agents {
-		if p.TargetQualifiedName() == name {
+		if p.Dir == dir && p.Name == base {
 			modified = true
 			continue
 		}
@@ -553,15 +552,14 @@ func removeAgentPatch(cfg *config.City, name string) bool {
 }
 
 // isAgentPatchOnlyIdentity reports whether every field of p other than
-// the targeting keys (Dir, Rig, Name) is the zero value — i.e., the patch
-// carries no overrides. Reflection avoids drift as new fields are added to
-// AgentPatch.
+// Dir and Name is the zero value — i.e., the patch carries no overrides.
+// Reflection avoids drift as new fields are added to AgentPatch.
 func isAgentPatchOnlyIdentity(p config.AgentPatch) bool {
 	v := reflect.ValueOf(p)
 	t := v.Type()
 	for i := 0; i < v.NumField(); i++ {
 		switch t.Field(i).Name {
-		case "Dir", "Rig", "Name":
+		case "Dir", "Name":
 			continue
 		}
 		if !v.Field(i).IsZero() {
@@ -1371,12 +1369,11 @@ func (e *Editor) DeleteProvider(name string) error {
 // SetAgentPatch creates or replaces an agent patch in [[patches.agent]].
 func (e *Editor) SetAgentPatch(patch config.AgentPatch) error {
 	return e.Edit(func(cfg *config.City) error {
-		if err := patch.Validate(); err != nil {
-			return err
+		if patch.Name == "" {
+			return fmt.Errorf("agent patch: name is required")
 		}
-		target := patch.TargetQualifiedName()
 		for i := range cfg.Patches.Agents {
-			if cfg.Patches.Agents[i].TargetQualifiedName() == target {
+			if cfg.Patches.Agents[i].Dir == patch.Dir && cfg.Patches.Agents[i].Name == patch.Name {
 				cfg.Patches.Agents[i] = patch
 				return nil
 			}
@@ -1386,13 +1383,12 @@ func (e *Editor) SetAgentPatch(patch config.AgentPatch) error {
 	})
 }
 
-// DeleteAgentPatch removes an agent patch from [[patches.agent]]. The name is
-// the patch's qualified target identity ("name", "rig/name", or "*/name"), the
-// same form SetAgentPatch and the HTTP API resolve patches by.
+// DeleteAgentPatch removes an agent patch from [[patches.agent]].
 func (e *Editor) DeleteAgentPatch(name string) error {
 	return e.Edit(func(cfg *config.City) error {
+		dir, base := config.ParseQualifiedName(name)
 		for i := range cfg.Patches.Agents {
-			if cfg.Patches.Agents[i].TargetQualifiedName() == name {
+			if cfg.Patches.Agents[i].Dir == dir && cfg.Patches.Agents[i].Name == base {
 				cfg.Patches.Agents = append(cfg.Patches.Agents[:i], cfg.Patches.Agents[i+1:]...)
 				return nil
 			}

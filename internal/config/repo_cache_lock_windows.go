@@ -3,7 +3,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,8 +15,7 @@ const (
 	repoCacheLockExclusive = 1
 )
 
-func withRepoCacheLock(root string, opts repoCacheLockOptions, fn func() error) error {
-	createRoot := opts.createRoot
+func withRepoCacheLock(root string, mode int, createRoot bool, fn func() error) error {
 	if createRoot {
 		if err := os.MkdirAll(root, 0o755); err != nil {
 			return fmt.Errorf("creating repo cache root: %w", err)
@@ -36,20 +34,11 @@ func withRepoCacheLock(root string, opts repoCacheLockOptions, fn func() error) 
 	defer lockFile.Close() //nolint:errcheck
 
 	var flags uint32
-	if opts.mode == repoCacheLockExclusive {
+	if mode == repoCacheLockExclusive {
 		flags = windows.LOCKFILE_EXCLUSIVE_LOCK
-	}
-	if opts.nonBlocking {
-		flags |= windows.LOCKFILE_FAIL_IMMEDIATELY
 	}
 	var overlapped windows.Overlapped
 	if err := windows.LockFileEx(windows.Handle(lockFile.Fd()), flags, 0, 1, 0, &overlapped); err != nil {
-		// LOCKFILE_FAIL_IMMEDIATELY reports contention as ERROR_LOCK_VIOLATION.
-		// Everything else is a real failure and must not be mistaken for a
-		// busy cache.
-		if opts.nonBlocking && errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
-			return ErrRepoCacheBusy
-		}
 		return fmt.Errorf("locking repo cache: %w", err)
 	}
 	defer windows.UnlockFileEx(windows.Handle(lockFile.Fd()), 0, 1, 0, &overlapped) //nolint:errcheck

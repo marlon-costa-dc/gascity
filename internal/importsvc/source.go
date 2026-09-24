@@ -45,36 +45,31 @@ func hasRepositoryRefInSource(source string) bool {
 // normalizeImportAddSource canonicalizes the user-supplied source. Remote git
 // sources pass through unchanged; local paths are validated as pack targets and
 // promoted to file:// repo sources when they sit at the HEAD of a git worktree.
-// The first boolean reports whether the resolved source is git-backed; the
-// second reports whether it was promoted from a local git worktree, which
-// means the default version (absent an explicit constraint) must lock to
-// HEAD rather than the repo's latest semver tag -- the worktree is what the
-// user pointed at, and a tag cut before the pack existed in the tree would
-// resolve to a checkout missing it entirely (gastownhall/gascity#3659).
-func normalizeImportAddSource(fs fsys.FS, cityPath, source string) (string, bool, bool, error) {
+// The boolean reports whether the resolved source is git-backed.
+func normalizeImportAddSource(fs fsys.FS, cityPath, source string) (string, bool, error) {
 	if isRemoteImportSource(source) {
 		if err := rejectSourceUserinfo(source); err != nil {
-			return "", false, false, err
+			return "", false, err
 		}
-		return source, true, false, nil
+		return source, true, nil
 	}
 
 	targetDir, err := resolveImportAddPath(cityPath, source)
 	if err != nil {
-		return "", false, false, err
+		return "", false, err
 	}
 	if err := validateImportPackTarget(fs, targetDir); err != nil {
-		return "", false, false, err
+		return "", false, err
 	}
 
 	canonical, ok, err := canonicalizeLocalGitImportSource(targetDir)
 	if err != nil {
-		return "", false, false, err
+		return "", false, err
 	}
 	if ok {
-		return canonical, true, true, nil
+		return canonical, true, nil
 	}
-	return source, false, false, nil
+	return source, false, nil
 }
 
 // rejectSourceUserinfo refuses a URL-scheme source that embeds credentials in

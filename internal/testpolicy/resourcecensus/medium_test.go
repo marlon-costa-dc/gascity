@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
-
-	"github.com/gastownhall/gascity/internal/testpolicy/waiverclock"
 )
 
 func TestScanAttributesResourcesToExactRunnableOwners(t *testing.T) {
@@ -178,13 +176,8 @@ func TestValidateMediumOwnersRequiresExactLiveCompleteRows(t *testing.T) {
 	blankPackageName.PackageName = " "
 	blankMetadata := validMain
 	blankMetadata.OwnerBead = ""
-	// A lapsed date is no longer decided here — it depends on an enforcement
-	// mode only the top-level caller knows, and it is collected once per ledger
-	// row rather than at each site that reaches one. See waiver_clock_test.go.
-	// A malformed date is still this function's problem: it needs a code change
-	// to appear, so it fails whoever made that change.
-	malformedExpiry := validMain
-	malformedExpiry.Expires = "07/12/2026"
+	expired := validMain
+	expired.Expires = "2026-07-12"
 
 	tests := []struct {
 		name string
@@ -201,12 +194,12 @@ func TestValidateMediumOwnersRequiresExactLiveCompleteRows(t *testing.T) {
 		{name: "unknown resource", rows: []MediumOwner{validMediumOwner("sample", "sample", "TestMain", Resource("quantum_vm"))}, want: `medium owner package_dir=sample package_name=sample owner=TestMain: unknown resource "quantum_vm"`},
 		{name: "blank package clause", rows: []MediumOwner{blankPackageName}, want: `package_name is required`},
 		{name: "blank metadata", rows: []MediumOwner{blankMetadata}, want: `owner_bead is required`},
-		{name: "malformed expiry", rows: []MediumOwner{malformedExpiry}, want: `expiry "07/12/2026" must use YYYY-MM-DD`},
+		{name: "expired", rows: []MediumOwner{expired}, want: `expired 2026-07-12`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateMediumOwners(tt.rows, census)
+			err := validateMediumOwners(tt.rows, census, fixedNow())
 			if tt.want == "" {
 				if err != nil {
 					t.Fatalf("validateMediumOwners: %v", err)
@@ -289,7 +282,7 @@ func TestValidateUsesRawAuditAndExactMediumFilteredSmallDebt(t *testing.T) {
 		Medium:        []MediumOwner{medium},
 		SmallDebt:     []Baseline{validDebt(ScopeUntagged, ResourceSubprocess, 1, 1)},
 	}
-	if _, err := validateAgainstPolicy(policy, cloneLedger(policy), census, fixedNow(), waiverclock.ModeStrict); err != nil {
+	if err := validateAgainstPolicy(policy, cloneLedger(policy), census, fixedNow()); err != nil {
 		t.Fatalf("validateAgainstPolicy: %v", err)
 	}
 
@@ -297,7 +290,7 @@ func TestValidateUsesRawAuditAndExactMediumFilteredSmallDebt(t *testing.T) {
 		grown := cloneLedger(policy)
 		grown.AuditBaseline[0].BaselineCalls = 1
 		grown.AuditBaseline[0].BaselineFiles = 1
-		_, err := validateAgainstPolicy(grown, cloneLedger(grown), census, fixedNow(), waiverclock.ModeStrict)
+		err := validateAgainstPolicy(grown, cloneLedger(grown), census, fixedNow())
 		requireErrorContains(t, err, "source resource census grew: scope=all resource=subprocess calls=2 (baseline 1), files=2 (baseline 1)")
 	})
 
@@ -305,7 +298,7 @@ func TestValidateUsesRawAuditAndExactMediumFilteredSmallDebt(t *testing.T) {
 		grown := cloneLedger(policy)
 		grown.SmallDebt[0].BaselineCalls = 0
 		grown.SmallDebt[0].BaselineFiles = 0
-		_, err := validateAgainstPolicy(grown, cloneLedger(grown), census, fixedNow(), waiverclock.ModeStrict)
+		err := validateAgainstPolicy(grown, cloneLedger(grown), census, fixedNow())
 		requireErrorContains(t, err, "Small resource census grew: scope=untagged resource=subprocess calls=1 (baseline 0), files=1 (baseline 0)")
 	})
 
@@ -313,7 +306,7 @@ func TestValidateUsesRawAuditAndExactMediumFilteredSmallDebt(t *testing.T) {
 		stale := cloneLedger(policy)
 		stale.SmallDebt[0].BaselineCalls = 2
 		stale.SmallDebt[0].BaselineFiles = 2
-		_, err := validateAgainstPolicy(stale, cloneLedger(stale), census, fixedNow(), waiverclock.ModeStrict)
+		err := validateAgainstPolicy(stale, cloneLedger(stale), census, fixedNow())
 		requireErrorContains(t, err, "Small resource census baseline is stale: scope=untagged resource=subprocess calls=1 (baseline 2), files=1 (baseline 2); lower the checked baseline to bank the improvement")
 	})
 }
@@ -383,7 +376,7 @@ func TestValidateRejectsMediumPolicyDriftBeforeLiveCensus(t *testing.T) {
 			t.Parallel()
 			ledger := cloneLedger(policy)
 			tt.mutate(&ledger.Medium[0])
-			_, err := validateAgainstPolicy(policy, ledger, census, fixedNow(), waiverclock.ModeStrict)
+			err := validateAgainstPolicy(policy, ledger, census, fixedNow())
 			requireErrorContains(t, err, tt.want)
 			if strings.Contains(err.Error(), "resource census") {
 				t.Fatalf("live census was compared before Medium policy drift was rejected: %v", err)
@@ -443,7 +436,7 @@ func TestValidateRequiresExactMediumAndSmallDebtRowSets(t *testing.T) {
 			t.Parallel()
 			ledger := cloneLedger(policy)
 			tt.mutate(&ledger)
-			_, err := validateAgainstPolicy(policy, ledger, census, fixedNow(), waiverclock.ModeStrict)
+			err := validateAgainstPolicy(policy, ledger, census, fixedNow())
 			requireErrorContains(t, err, tt.want)
 			if strings.Contains(err.Error(), "resource census") {
 				t.Fatalf("live census was compared before row-set drift was rejected: %v", err)

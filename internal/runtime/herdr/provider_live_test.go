@@ -2,6 +2,7 @@ package herdr
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -10,11 +11,16 @@ import (
 )
 
 // TestProviderLive drives the herdr Provider against a real herdr binary in an
-// isolated session. Opt-in live tier: see requireLiveHerdr.
+// isolated session. Skipped when herdr is unavailable or in -short mode.
 func TestProviderLive(t *testing.T) {
-	requireLiveHerdr(t)
+	if testing.Short() {
+		t.Skip("skipping live herdr test in -short mode")
+	}
+	if _, err := exec.LookPath("herdr"); err != nil {
+		t.Skip("herdr not installed")
+	}
 
-	p := New("gctest-live", t.TempDir(), t.TempDir(), 0, 0)
+	p := New("gctest-live", t.TempDir(), t.TempDir(), 0)
 	_ = p.Stop("smoke") // clear any leftover from a crashed prior run
 	t.Cleanup(func() { _ = p.Stop("smoke"); _ = p.TeardownServer() })
 

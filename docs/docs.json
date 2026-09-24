@@ -213,8 +213,7 @@
             "group": "Operate",
             "pages": [
               "runbooks/managed-city-endpoints",
-              "runbooks/remote-hardened-city",
-              "runbooks/split-storage-classes"
+              "runbooks/remote-hardened-city"
             ]
           }
         ]
@@ -247,8 +246,7 @@
               "reference/specs/pack-spec",
               "reference/specs/formula-spec-v1",
               "reference/specs/formula-spec-v2",
-              "reference/specs/service-protocol-v0",
-              "reference/specs/identity-separator-contract-v1"
+              "reference/specs/service-protocol-v0"
             ]
           },
           {

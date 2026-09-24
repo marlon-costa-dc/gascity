@@ -36,8 +36,9 @@ func (s *Server) humaHandleAgentPatchGetQualified(_ context.Context, input *Agen
 
 func (s *Server) agentPatchByName(name string) (*IndexOutput[config.AgentPatch], error) {
 	cfg := s.state.Config()
+	dir, base := config.ParseQualifiedName(name)
 	for _, p := range cfg.Patches.Agents {
-		if p.TargetQualifiedName() == name {
+		if p.Dir == dir && p.Name == base {
 			return &IndexOutput[config.AgentPatch]{
 				Index: s.latestIndex(),
 				Body:  p,
@@ -56,7 +57,6 @@ func (s *Server) humaHandleAgentPatchSet(_ context.Context, input *AgentPatchSet
 
 	patch := config.AgentPatch{
 		Dir:       input.Body.Dir,
-		Rig:       input.Body.Rig,
 		Name:      input.Body.Name,
 		Provider:  input.Body.Provider,
 		WorkDir:   input.Body.WorkDir,
@@ -66,20 +66,18 @@ func (s *Server) humaHandleAgentPatchSet(_ context.Context, input *AgentPatchSet
 		Env:       input.Body.Env,
 	}
 
-	// Validate at the edge so a patch that would hard-fail the next config
-	// load — a missing name, or a mutually-exclusive dir+rig combination
-	// (including rig="*") — is rejected fail-fast rather than persisted and
-	// deferred to composition. This mirrors the guard in Editor.SetAgentPatch
-	// so the HTTP and CLI write paths reject the same invalid patches.
-	if err := patch.Validate(); err != nil {
-		return nil, apierr.InvalidRequest.Msg(err.Error())
+	if patch.Name == "" {
+		return nil, apierr.InvalidRequest.Msg("name is required")
 	}
 
 	if err := sm.SetAgentPatch(patch); err != nil {
 		return nil, mutationError(err)
 	}
 
-	qn := patch.TargetQualifiedName()
+	qn := patch.Name
+	if patch.Dir != "" {
+		qn = patch.Dir + "/" + patch.Name
+	}
 	resp := &PatchOKResponse{}
 	resp.Body.Status = "ok"
 	resp.Body.AgentPatch = qn

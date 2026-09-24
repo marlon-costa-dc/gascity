@@ -130,7 +130,7 @@ func rigNameCandidates(toComplete string) []string {
 		if err != nil {
 			return
 		}
-		cfg, err := loadCityConfigAdvisory(cityPath)
+		cfg, err := loadCityConfigWithoutBuiltinPackRefreshFS(fsys.OSFS{}, filepath.Join(cityPath, "city.toml"), io.Discard)
 		if err != nil {
 			return
 		}
@@ -179,25 +179,14 @@ func resolveCityForCompletionContext(honorRigFlag bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ctx, ok, err := lookupRigFromCwd(cwd, completionResolutionMode)
-	if err != nil {
-		return "", err
-	}
-	if ok {
+	if ctx, ok := lookupRigFromCwd(cwd); ok {
 		return ctx.CityPath, nil
 	}
 	return findCity(cwd)
 }
 
-// completionResolutionMode marks every completion-time resolution advisory,
-// matching the loadCityConfigAdvisory loads above. Completion runs on a
-// keystroke against input the user has not submitted yet, so it already
-// tolerates stale pack state; waiting on another process's repo-cache clone
-// would hang the user's shell instead.
-var completionResolutionMode = contextResolutionMode{advisory: true}
-
 func resolveRigForCompletion(nameOrPath string) (resolvedContext, error) {
-	matches, _, err := registeredRigBindingsByName(nameOrPath, false, completionResolutionMode)
+	matches, _, err := registeredRigBindingsByName(nameOrPath, false)
 	if err != nil {
 		return resolvedContext{}, err
 	}
@@ -209,7 +198,7 @@ func resolveRigForCompletion(nameOrPath string) (resolvedContext, error) {
 	if err != nil {
 		return resolvedContext{}, err
 	}
-	matches, _, err = registeredRigBindingsByPath(abs, false, completionResolutionMode)
+	matches, _, err = registeredRigBindingsByPath(abs, false)
 	if err != nil {
 		return resolvedContext{}, err
 	}
@@ -226,7 +215,7 @@ func loadOrdersForCompletion() []orders.Order {
 		if err != nil {
 			return
 		}
-		cfg, err := loadCityConfigAdvisory(cityPath)
+		cfg, err := loadCityConfigWithoutBuiltinPackRefresh(cityPath, io.Discard)
 		if err != nil {
 			return
 		}
@@ -253,7 +242,7 @@ func loadSessionsForCompletion() []session.Info {
 		if err != nil {
 			return
 		}
-		cfg, err := loadCityConfigAdvisory(cityPath)
+		cfg, err := loadCityConfigWithoutBuiltinPackRefresh(cityPath, io.Discard)
 		if err != nil {
 			return
 		}

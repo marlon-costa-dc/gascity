@@ -1,28 +1,22 @@
 package extmsg
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 
+	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/session"
 )
 
-// resolveLiveSession maps a stable session name to the current live session
-// session record, returning session.ErrSessionNotFound when no open session
-// owns the name. It is a package-level var so tests can substitute a
-// deterministic resolver without standing up real session records (mirrors
-// timeNow).
-var resolveLiveSession = func(directory session.AddressDirectory, name string) (session.Info, error) {
-	return directory.ResolveAddress(name, false)
-}
+// resolveLiveSessionID maps a stable session name to the current live session
+// bead ID, returning session.ErrSessionNotFound when no open session owns the
+// name. It is a package-level var so tests can substitute a deterministic
+// resolver without standing up real session beads (mirrors timeNow).
+var resolveLiveSessionID = session.ResolveSessionID
 
 // overlayLiveSessionID re-points *target at the current live bead for the
 // given stable session name. It is a no-op when the stored bead is still the
-// active owner of the name (fast path avoiding name-resolution round-trips).
-// ErrSessionNotFound is the only compatibility miss: it leaves *target
-// unchanged. Backend, ambiguity, and other indeterminate directory failures
-// are returned so callers never route using a stale identity.
+// active owner of the name (fast path avoiding name-resolution round-trips) or
+// when name resolution fails. It mutates *target in place.
 //
 // "Not closed" alone does not prove the stored bead still owns the name: a
 // retired named session is archived without being closed
@@ -31,79 +25,40 @@ var resolveLiveSession = func(directory session.AddressDirectory, name string) (
 // bead no longer owns the name, so it must fall through to name resolution;
 // otherwise routing keeps targeting the retired bead instead of its respawned
 // replacement.
-func overlayLiveSessionID(directory session.AddressDirectory, name, currentID string, target *string) error {
+func overlayLiveSessionID(store beads.Store, name, currentID string, target *string) {
 	if name == "" {
-		return nil
+		return
 	}
-	if nilAddressDirectory(directory) {
-		return errors.New("session address directory is required")
+	if b, err := store.Get(currentID); err == nil && b.Status != "closed" &&
+		!session.LifecycleIdentityReleased(b.Status, b.Metadata) {
+		return
 	}
-	if currentID != "" {
-		current, err := directory.ResolveAddress(currentID, false)
-		switch {
-		case err == nil && strings.TrimSpace(current.ID) == "":
-			return fmt.Errorf("%w: session directory returned an empty current session ID", ErrInvariantViolation)
-		case err == nil && !current.Closed && !session.LifecycleIdentityReleasedInfo(current):
-			return nil
-		case err == nil:
-			// A closed or identity-released record no longer owns the stable
-			// name. Fall through to resolve its replacement.
-		case errors.Is(err, session.ErrSessionNotFound):
-			// A retired or closed current ID is the expected respawn shape.
-			// Fall through to the stable-name lookup.
-		default:
-			return newSafeOperationError("resolve current session address", err)
-		}
-	}
-	live, err := resolveLiveSession(directory, name)
-	switch {
-	case errors.Is(err, session.ErrSessionNotFound):
-		return nil
-	case err != nil:
-		return newSafeOperationError("resolve replacement session address", err)
-	}
-	liveID, err := resolvedLiveSessionID(live)
-	if err != nil {
-		return err
+	liveID, err := resolveLiveSessionID(store, name)
+	if err != nil || liveID == "" {
+		return
 	}
 	*target = liveID
-	return nil
 }
 
 // sessionNameForSelector resolves a bind selector (a session bead ID, alias,
 // or session name) to the stable session name recorded on the target bead.
 // Bindings store this name so they can follow the session across respawn.
 //
-// ErrSessionNotFound intentionally falls back to the legacy pure-session-ID
-// shape. Any other lookup failure is returned because persisting an empty
-// stable name during an indeterminate directory failure would strand the
-// binding or participant across respawn. A non-empty result is always the
-// record's recorded session_name, never the raw selector.
-func sessionNameForSelector(directory session.AddressDirectory, selector string) (string, error) {
+// It is best-effort: on any lookup failure it returns the empty string and the
+// binding falls back to pure session-ID behavior. A non-empty result is always
+// the bead's recorded session_name, never the raw selector.
+func sessionNameForSelector(store beads.Store, selector string) string {
 	selector = strings.TrimSpace(selector)
-	if selector == "" {
-		return "", nil
+	if store == nil || selector == "" {
+		return ""
 	}
-	if nilAddressDirectory(directory) {
-		return "", errors.New("session address directory is required")
+	id, err := session.ResolveSessionIDAllowClosed(store, selector)
+	if err != nil {
+		return ""
 	}
-	info, err := directory.ResolveAddress(selector, true)
-	switch {
-	case errors.Is(err, session.ErrSessionNotFound):
-		return "", nil
-	case err != nil:
-		return "", err
+	bead, err := store.Get(id)
+	if err != nil {
+		return ""
 	}
-	return strings.TrimSpace(info.SessionNameMetadata), nil
-}
-
-func resolvedLiveSessionID(info session.Info) (string, error) {
-	id := strings.TrimSpace(info.ID)
-	if id == "" {
-		return "", fmt.Errorf("%w: session directory returned an empty live session ID", ErrInvariantViolation)
-	}
-	if info.Closed || session.LifecycleIdentityReleasedInfo(info) {
-		return "", fmt.Errorf("%w: session directory returned a non-live session", ErrInvariantViolation)
-	}
-	return id, nil
+	return strings.TrimSpace(bead.Metadata["session_name"])
 }

@@ -6,8 +6,6 @@ func profileFamily(profile Profile) string {
 	switch profile {
 	case ProfileCodexTmuxCLI:
 		return "codex"
-	case ProfileCursorTmuxCLI:
-		return "cursor"
 	case ProfileGeminiTmuxCLI:
 		return "gemini"
 	case ProfileKimiTmuxCLI:
@@ -16,8 +14,6 @@ func profileFamily(profile Profile) string {
 		return "opencode"
 	case ProfileMimoCodeTmuxCLI:
 		return "mimocode"
-	case ProfileZCodeTmuxCLI:
-		return "zcode"
 	case ProfilePiTmuxCLI:
 		return "pi"
 	case ProfileClaudeTmuxCLI:

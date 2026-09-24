@@ -8,6 +8,8 @@ import (
 )
 
 func TestPreflightResultRedactsBeforeSerialization(t *testing.T) {
+	hasDSN := true
+	hasSplit := false
 	result := NewPreflightResult(PreflightResult{
 		Verdict: PreflightVerdictBlocked,
 		Scope:   "/tmp/gascity",
@@ -15,18 +17,18 @@ func TestPreflightResultRedactsBeforeSerialization(t *testing.T) {
 			NewPreflightCheckResult(
 				PreflightCheckMetadataBackend,
 				PreflightCheckFail,
-				`Metadata backend "postgres" is unsupported; the native store serves dolt only`,
+				"Metadata backend is postgres (postgres_dsn form)",
 				PreflightDetails{
-					MetadataBackend:   "postgres",
-					AuthToken:         "token-value",
-					APIKey:            "key-value",
-					MetadataProjectID: "gc-local-visible",
-					DBProjectID:       "db-visible",
+					MetadataBackend:     "postgres",
+					HasPostgresDSN:      &hasDSN,
+					HasSplitFields:      &hasSplit,
+					PostgresDSNRedacted: "postgres://operator:swordfish@db.example.com/gascity",
+					PostgresPassword:    "swordfish",
+					AuthToken:           "token-value",
+					APIKey:              "key-value",
+					MetadataProjectID:   "gc-local-visible",
+					DBProjectID:         "db-visible",
 					AdditionalDiagnostics: []PreflightDetailField{
-						// A diagnostic contributed for a backend gc does not
-						// implement travels through the extension field, which
-						// is exactly where the redaction rules have to hold.
-						{Key: "storage_dsn", Value: "postgres://operator:swordfish@db.example.com/gascity"},
 						{Key: "session_passwd", Value: "passwd-value"},
 						{Key: "client_secret", Value: "secret-value"},
 						{Key: "routing_token", Value: "routing-token-value"},

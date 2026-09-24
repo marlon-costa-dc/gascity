@@ -211,7 +211,7 @@ func (c *CachingStore) cachedListOnly(query ListQuery) ([]Bead, error) {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if !c.cacheServableForListQueryLocked(query) || len(c.dirty) > 0 {
+	if (c.state != cacheLive && c.state != cachePartial) || c.primePartialErr != nil || len(c.dirty) > 0 {
 		return nil, fmt.Errorf("listing beads from cache: %w", ErrCacheUnavailable)
 	}
 	rows := make([]Bead, 0, len(c.beads))
@@ -247,8 +247,7 @@ func (c *CachingStore) cachedReadyCompleteOnly(ctx context.Context, query ReadyQ
 	if !c.mu.TryRLock() {
 		return nil, fmt.Errorf("reading complete ready projection from busy cache: %w", ErrCacheUnavailable)
 	}
-	if c.state != cacheLive || !c.depsComplete || c.primePartialErr != nil || len(c.dirty) > 0 ||
-		c.readyReadsMustGoLive() {
+	if c.state != cacheLive || !c.depsComplete || c.primePartialErr != nil || len(c.dirty) > 0 {
 		c.mu.RUnlock()
 		return nil, fmt.Errorf("reading complete ready projection from cache: %w", ErrCacheUnavailable)
 	}
@@ -268,10 +267,6 @@ func (c *CachingStore) cachedReadyCompleteOnly(ctx context.Context, query ReadyQ
 		if query.Assignee != "" && b.Assignee != query.Assignee {
 			continue
 		}
-		if c.readyProjectionUnknownLocked(b.ID) {
-			c.mu.RUnlock()
-			return nil, fmt.Errorf("reading complete ready projection for %s from cache: %w", b.ID, ErrCacheUnavailable)
-		}
 		openBeads = append(openBeads, cloneBead(b))
 	}
 	depsByID := make(map[string][]Dep, len(openBeads))
@@ -286,12 +281,11 @@ func (c *CachingStore) cachedReadyCompleteOnly(ctx context.Context, query ReadyQ
 
 	// The maps above are a consistent snapshot, so sorting and dependency
 	// evaluation need not hold the cache lock or delay writers.
-	return cachedReadyRows(ctx, query, statusByID, openBeads, depsByID, true, true)
+	return cachedReadyRows(ctx, query, statusByID, openBeads, depsByID, true)
 }
 
 func (c *CachingStore) cachedReadyLocked(query ReadyQuery) ([]Bead, error) {
-	if (c.state != cacheLive && c.state != cachePartial) || c.primePartialErr != nil ||
-		len(c.dirty) > 0 || c.readyReadsMustGoLive() {
+	if (c.state != cacheLive && c.state != cachePartial) || c.primePartialErr != nil || len(c.dirty) > 0 {
 		return nil, fmt.Errorf("reading ready beads from cache: %w", ErrCacheUnavailable)
 	}
 
@@ -306,14 +300,9 @@ func (c *CachingStore) cachedReadyLocked(query ReadyQuery) ([]Bead, error) {
 		if query.Assignee != "" && b.Assignee != query.Assignee {
 			continue
 		}
-		if c.readyProjectionUnknownLocked(b.ID) {
-			return nil, fmt.Errorf("reading ready beads for %s from cache: %w", b.ID, ErrCacheUnavailable)
-		}
 		openBeads = append(openBeads, cloneBead(b))
 	}
-	return cachedReadyRows(
-		context.Background(), query, statusByID, openBeads, c.deps, c.depsComplete, c.state == cacheLive,
-	)
+	return cachedReadyRows(context.Background(), query, statusByID, openBeads, c.deps, c.depsComplete)
 }
 
 func cachedReadyRows(
@@ -323,7 +312,6 @@ func cachedReadyRows(
 	openBeads []Bead,
 	depsByID map[string][]Dep,
 	depsComplete bool,
-	nonclosedStatusesComplete bool,
 ) ([]Bead, error) {
 	cancellable := ctx != nil && ctx.Done() != nil
 	// Sort candidates before the limit-bounded loop below: the cache source is
@@ -349,9 +337,6 @@ func cachedReadyRows(
 			deps = nil
 		default:
 			return nil, fmt.Errorf("reading ready deps from cache: %w", ErrCacheUnavailable)
-		}
-		if !nonclosedStatusesComplete && !cachedReadyDependencyStatusesKnown(b, statusByID, deps) {
-			return nil, fmt.Errorf("reading ready dependency statuses from cache: %w", ErrCacheUnavailable)
 		}
 		if !cachedBeadReady(b, statusByID, deps) {
 			continue

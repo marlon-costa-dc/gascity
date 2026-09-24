@@ -73,7 +73,6 @@ prefix = "FE"
 		t.Fatal(err)
 	}
 	chdirProviderAwareTest(t, cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	store, code := openRigAwareStore([]string{"FE-42"}, &bytes.Buffer{})
 	if code != 0 {
@@ -157,7 +156,6 @@ trigger = "manual"
 		t.Fatal(err)
 	}
 	chdirProviderAwareTest(t, cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
 	code := cmdOrderHistory("digest", "", &stdout, &stderr)
@@ -400,7 +398,6 @@ trigger = "manual"
 		t.Fatal(err)
 	}
 	chdirProviderAwareTest(t, cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
 	code := cmdOrderRun("poll", "", false, nil, &stdout, &stderr)
@@ -447,7 +444,6 @@ pool = "dog"
 		t.Fatal(err)
 	}
 	chdirProviderAwareTest(t, cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout, stderr bytes.Buffer
 	code := cmdOrderRun("digest", "", false, nil, &stdout, &stderr)

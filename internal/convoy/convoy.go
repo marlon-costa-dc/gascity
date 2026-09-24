@@ -8,13 +8,12 @@ import (
 	"github.com/gastownhall/gascity/internal/events"
 )
 
-// ConvoyDeps bundles the ambient dependencies for convoy operations. Store
-// handles are not among them: an operation names the classes it spans in its
-// MemberClasses argument, so there is no store lookup by rig name and no
-// find-the-store-for-this-id callback to route through.
+// ConvoyDeps bundles dependencies for convoy operations.
 type ConvoyDeps struct {
-	Cfg      *config.City
-	Recorder events.Recorder
+	Cfg       *config.City
+	GetStore  func(rig string) (beads.Store, error)
+	FindStore func(beadID string) (beads.Store, error)
+	Recorder  events.Recorder
 }
 
 // ConvoyCreateInput holds the parameters for creating a convoy.
@@ -42,11 +41,12 @@ type ConvoyProgressResult struct {
 // ConvoyCreate creates a convoy bead, applies metadata, links child items,
 // and emits a ConvoyCreated event.
 //
-// The convoy bead and its tracks edges are created in classes.Convoy. The
-// linked items are resolved across every class the caller named; a class it did
-// not name is not searched, and an item owned by a class other than the
-// convoy's own is refused before any edge is written.
-func ConvoyCreate(deps ConvoyDeps, classes MemberClasses, input ConvoyCreateInput) (ConvoyCreateResult, error) {
+// The convoy bead is created in store and its tracks edges are written to
+// store. The linked items may live in different per-class stores; memberStores
+// supplies the additional stores to probe when verifying each linked item
+// exists. On origin/main the one store collapses memberStores to its empty
+// default, reproducing today's single-store linking exactly.
+func ConvoyCreate(deps ConvoyDeps, store beads.Store, input ConvoyCreateInput, memberStores ...beads.Store) (ConvoyCreateResult, error) {
 	b := beads.Bead{
 		Title:  input.Title,
 		Type:   "convoy",
@@ -54,14 +54,14 @@ func ConvoyCreate(deps ConvoyDeps, classes MemberClasses, input ConvoyCreateInpu
 	}
 	ApplyConvoyFields(&b, input.Fields)
 
-	convoy, err := classes.Convoy.Create(b)
+	convoy, err := store.Create(b)
 	if err != nil {
 		return ConvoyCreateResult{}, fmt.Errorf("creating convoy: %w", err)
 	}
 
 	linked := 0
 	for _, itemID := range input.Items {
-		if err := TrackItemIn(classes, convoy.ID, itemID); err != nil {
+		if err := TrackItem(store, convoy.ID, itemID, memberStores...); err != nil {
 			return ConvoyCreateResult{Convoy: convoy, LinkedCount: linked},
 				fmt.Errorf("linking item %s: %w", itemID, err)
 		}
@@ -80,13 +80,12 @@ func ConvoyCreate(deps ConvoyDeps, classes MemberClasses, input ConvoyCreateInpu
 
 // ConvoyProgress returns the completion progress of a convoy.
 //
-// The convoy bead is read from classes.Convoy and its members are materialized
-// across the classes the caller named. A member owned by a class the caller did
-// not name stays unresolved, and an unresolved member is never counted as
-// closed — an unspanned class contributes an empty result, and an empty result
-// must not read as completed work.
-func ConvoyProgress(_ ConvoyDeps, classes MemberClasses, id string) (ConvoyProgressResult, error) {
-	b, err := classes.Convoy.Get(id)
+// The convoy bead is read from store; its tracked members may live in different
+// per-class stores, so memberStores supplies the additional stores Members
+// probes. On origin/main the one store collapses memberStores to its empty
+// default and progress is computed over the single store exactly as today.
+func ConvoyProgress(_ ConvoyDeps, store beads.Store, id string, memberStores ...beads.Store) (ConvoyProgressResult, error) {
+	b, err := store.Get(id)
 	if err != nil {
 		return ConvoyProgressResult{}, fmt.Errorf("getting convoy %s: %w", id, err)
 	}
@@ -94,7 +93,7 @@ func ConvoyProgress(_ ConvoyDeps, classes MemberClasses, id string) (ConvoyProgr
 		return ConvoyProgressResult{}, fmt.Errorf("bead %s is not a convoy (type: %s)", id, b.Type)
 	}
 
-	children, err := MembersIn(classes, id, true)
+	children, err := Members(store, id, true, memberStores...)
 	if err != nil {
 		return ConvoyProgressResult{}, fmt.Errorf("listing tracked items of %s: %w", id, err)
 	}
@@ -117,10 +116,12 @@ func ConvoyProgress(_ ConvoyDeps, classes MemberClasses, id string) (ConvoyProgr
 
 // ConvoyAddItems links beads to an existing convoy.
 //
-// The convoy bead and the new tracks edges are read from and written to
-// classes.Convoy; each item is resolved across the classes the caller named.
-func ConvoyAddItems(_ ConvoyDeps, classes MemberClasses, convoyID string, items []string) error {
-	b, err := classes.Convoy.Get(convoyID)
+// The convoy bead and the new tracks edges are read from and written to store.
+// The linked items may live in different per-class stores; memberStores
+// supplies the additional stores to probe when verifying each item exists. On
+// origin/main the one store collapses memberStores to its empty default.
+func ConvoyAddItems(_ ConvoyDeps, store beads.Store, convoyID string, items []string, memberStores ...beads.Store) error {
+	b, err := store.Get(convoyID)
 	if err != nil {
 		return fmt.Errorf("getting convoy %s: %w", convoyID, err)
 	}
@@ -129,7 +130,7 @@ func ConvoyAddItems(_ ConvoyDeps, classes MemberClasses, convoyID string, items 
 	}
 
 	for _, itemID := range items {
-		if err := TrackItemIn(classes, convoyID, itemID); err != nil {
+		if err := TrackItem(store, convoyID, itemID, memberStores...); err != nil {
 			return fmt.Errorf("linking item %s to convoy %s: %w", itemID, convoyID, err)
 		}
 	}

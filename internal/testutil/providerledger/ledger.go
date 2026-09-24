@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/gastownhall/gascity/internal/testpolicy/waiverclock"
 )
 
 const moduleImportPath = "github.com/gastownhall/gascity"
@@ -67,8 +65,6 @@ const (
 	// runtimeDoubleBoundaryPath is the designated runtime.Provider double source.
 	runtimeDoubleBoundaryPath = "internal/runtime/fake.go"
 	// runtimeContractWaiverOwner owns the remaining production-runtime gaps.
-	// It is pinned by TestRuntimeWaiverOwnerIsPinnedAndWellFormed: changing it
-	// re-owns every runtime waiver at once, so it needs to be a deliberate edit.
 	runtimeContractWaiverOwner = "ga-80po0c.3"
 
 	// MarkdownStart begins the generated TESTING.md table.
@@ -186,8 +182,7 @@ func Catalog() []Entry {
 			"acp", "exact:acp", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/acp", "NewSeamBacked"),
-				time.Date(2026, time.October, 8, 0, 0, 0, 0, time.UTC),
-				"NewSeamBacked always uses shared os.TempDir()/gc-acp-<euid> state; the WithDir proof does not exercise that composition",
+				"NewSeamBacked always uses shared os.TempDir()/gc-acp state; the WithDir proof does not exercise that composition",
 			),
 			provedRuntime(
 				repoSymbol("internal/runtime/acp", "NewSeamBackedWithDir"),
@@ -203,7 +198,6 @@ func Catalog() []Entry {
 			"t3bridge", "exact:t3bridge", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/t3bridge", "NewSeamBacked"),
-				time.Date(2026, time.November, 5, 0, 0, 0, 0, time.UTC),
 				"the production T3 bridge composition has focused tests but no full shared runtime contract",
 			),
 		),
@@ -211,7 +205,6 @@ func Catalog() []Entry {
 			"k8s", "exact:k8s", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/k8s", "NewSeamBacked"),
-				time.Date(2026, time.November, 12, 0, 0, 0, 0, time.UTC),
 				"the actual K8s production composition has no full shared runtime contract",
 			),
 		),
@@ -219,15 +212,13 @@ func Catalog() []Entry {
 			"herdr", "exact:herdr", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/herdr", "New"),
-				time.Date(2026, time.September, 24, 0, 0, 0, 0, time.UTC),
-				"the full conformance run is an opt-in live journey (make test-herdr-live, or GC_FAST_UNIT=0) and skips in the unit lane, in short mode, and when the herdr executable is absent",
+				"the existing full conformance run skips in short mode or when the herdr executable is absent",
 			),
 		),
 		builtin(
 			"hybrid", "exact:hybrid", nil,
 			waivedRuntime(
 				repoSymbol("cmd/gc", "newHybridProvider"),
-				time.Date(2026, time.October, 22, 0, 0, 0, 0, time.UTC),
 				"cmd/gc.newHybridProvider is the selected registry construction boundary; its internal tmux, K8s, and hybrid constructors are not claimed here, and the wrapper has no full shared runtime contract",
 			),
 		),
@@ -243,7 +234,6 @@ func Catalog() []Entry {
 			),
 			waivedRuntime(
 				repoSymbol("internal/runtime/t3bridge", "NewSeamBacked"),
-				time.Date(2026, time.November, 5, 0, 0, 0, 0, time.UTC),
 				"the legacy gc-session-t3 prefix branch selects the T3 bridge composition, which has no full shared runtime contract",
 			),
 		),
@@ -251,7 +241,6 @@ func Catalog() []Entry {
 			"ssh", "prefix:ssh:", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/ssh", "NewSeamBacked"),
-				time.Date(2026, time.November, 19, 0, 0, 0, 0, time.UTC),
 				"the production SSH composition has no full shared runtime contract",
 			),
 		),
@@ -259,7 +248,6 @@ func Catalog() []Entry {
 			"tmux", "exact:tmux", nil,
 			waivedRuntime(
 				repoSymbol("internal/runtime/tmux", "NewSeamBackedWithConfig"),
-				time.Date(2026, time.September, 17, 0, 0, 0, 0, time.UTC),
 				"the existing full conformance run skips when the tmux executable is absent",
 			),
 		),
@@ -336,25 +324,23 @@ func provedRuntimeScoped(constructor SymbolRef, file, test, scope string, allowe
 	return claim
 }
 
-// waivedRuntime builds a claim that defers proof of the runtime.Provider
-// contract to a dated waiver. Each call site supplies its own expires
-// literal rather than a shared expiry: a single shared expiry previously
-// caused every remaining waiver to lapse in lockstep and turn the whole
-// ledger check red at once (GitHub #5195), which was "fixed" by pushing
-// the one shared date forward instead of dating each gap independently.
+// runtimeWaiverExpiry dates the eight legacy runtime.Provider waivers owned by
+// runtimeContractWaiverOwner on the 1.4 branch. Their 2026-08-26 expiry blocked
+// the Beads 1.3 hotfix gate. The release owner approved this two-week renewal
+// on 2026-09-18, through 2026-10-02, to qualify that compatibility fix.
 //
-// Prefer a short horizon (weeks, not the 90-day maxWaiverHorizon the
-// validator allows): a long horizon hides a stalled contract behind a
-// green run, while a short one puts the question back in front of the
-// owner while the context is still fresh.
-func waivedRuntime(constructor SymbolRef, expires time.Time, reason string) ContractClaim {
+// These contract gaps remain test debt; this renewal does not claim that the
+// missing contracts landed. Keep the bounded expiry and the existing owner.
+var runtimeWaiverExpiry = time.Date(2026, time.October, 2, 0, 0, 0, 0, time.UTC)
+
+func waivedRuntime(constructor SymbolRef, reason string) ContractClaim {
 	return ContractClaim{
 		Constructor: constructor,
 		Contract:    ContractRuntimeProvider,
 		Disposition: DispositionWaived,
 		Waiver: &Waiver{
 			Owner:   runtimeContractWaiverOwner,
-			Expires: expires,
+			Expires: runtimeWaiverExpiry,
 			Reason:  reason,
 		},
 	}
@@ -370,15 +356,8 @@ func notApplicableRuntime(constructor SymbolRef, reason string) ContractClaim {
 }
 
 // Validate checks ledger structure and waiver policy at the supplied time.
-//
-// Structural problems always fail, in every mode: they can only appear with a
-// code change, so they belong to whoever made it. A lapsed waiver is different
-// — the clock moves on its own, so it fails under mode, and the returned
-// warnings carry the lapses that are being tolerated for now. See
-// internal/testpolicy/waiverclock for why that split exists.
-func Validate(entries []Entry, now time.Time, mode waiverclock.Mode) (warnings []string, err error) {
+func Validate(entries []Entry, now time.Time) error {
 	var problems []string
-	var expiries []waiverclock.Expiry
 	seenIDs := make(map[string]bool)
 	seenCatalogKeys := make(map[string]string)
 	seenSourceRefs := make(map[string]string)
@@ -501,9 +480,7 @@ func Validate(entries []Entry, now time.Time, mode waiverclock.Mode) (warnings [
 				problems = append(problems, claimPrefix+" is duplicated")
 			}
 			seenClaims[key] = true
-			claimProblems, claimExpiries := validateClaim(claimPrefix, claim, now)
-			problems = append(problems, claimProblems...)
-			expiries = append(expiries, claimExpiries...)
+			problems = append(problems, validateClaim(claimPrefix, claim, now)...)
 		}
 		for _, constructor := range entry.Constructors {
 			if !seenClaims[claimKey{constructor: constructor, contract: ContractRuntimeProvider}] {
@@ -512,8 +489,7 @@ func Validate(entries []Entry, now time.Time, mode waiverclock.Mode) (warnings [
 		}
 	}
 
-	report := waiverclock.Check(expiries, now, mode)
-	return report.Warnings, joinProblems(append(problems, report.Fatal...))
+	return joinProblems(problems)
 }
 
 func hasRole(roles []Role, want Role) bool {
@@ -525,11 +501,8 @@ func hasRole(roles []Role, want Role) bool {
 	return false
 }
 
-// validateClaim reports the claim's structural problems and hands back any
-// dated waiver for the clock policy to classify. It deliberately does not
-// decide whether a waiver has lapsed: that verdict depends on the enforcement
-// mode, which only the caller knows.
-func validateClaim(prefix string, claim ContractClaim, now time.Time) (problems []string, expiries []waiverclock.Expiry) {
+func validateClaim(prefix string, claim ContractClaim, now time.Time) []string {
+	var problems []string
 	payloads := 0
 	if claim.Proof != nil {
 		payloads++
@@ -590,22 +563,15 @@ func validateClaim(prefix string, claim ContractClaim, now time.Time) (problems 
 		if waiver.Expires.IsZero() {
 			problems = append(problems, prefix+" waiver expiry is required")
 		} else {
-			// The horizon stays fatal in every mode. It reads the clock but is
-			// self-healing — time passing can only bring a distant date inside
-			// the horizon — so unlike a lapse it can never red a bystander.
+			if !waiver.Expires.After(now) {
+				problems = append(problems, fmt.Sprintf("%s waiver owned by %s expired %s", prefix, waiver.Owner, waiver.Expires.Format("2006-01-02")))
+			}
 			if waiver.Expires.After(now.Add(maxWaiverHorizon)) {
 				problems = append(problems, fmt.Sprintf("%s waiver owned by %s exceeds the %s horizon", prefix, waiver.Owner, maxWaiverHorizon))
 			}
-			if strings.TrimSpace(waiver.Owner) != "" {
-				expiries = append(expiries, waiverclock.Expiry{
-					Label:   prefix,
-					Owner:   waiver.Owner,
-					Expires: waiver.Expires,
-				})
-			}
 		}
 	}
-	return problems, expiries
+	return problems
 }
 
 func validateSymbolRef(ref SymbolRef) error {
@@ -766,38 +732,19 @@ func markdownCell(value string) string {
 
 // CheckMarkdown checks the single generated TESTING.md ledger block.
 func CheckMarkdown(document string, entries []Entry) error {
-	start, end, err := markerBlockBounds(document)
-	if err != nil {
-		return err
+	if strings.Count(document, MarkdownStart) != 1 || strings.Count(document, MarkdownEnd) != 1 {
+		return errors.New("TESTING.md must contain exactly one checked runtime provider ledger marker pair")
 	}
+	start := strings.Index(document, MarkdownStart)
+	end := strings.Index(document[start:], MarkdownEnd)
+	if end < 0 {
+		return errors.New("TESTING.md checked runtime provider ledger markers are out of order")
+	}
+	end += start + len(MarkdownEnd)
 	if got, want := document[start:end], RenderMarkdown(entries); got != want {
 		return fmt.Errorf("TESTING.md checked runtime provider table does not match the provider ledger; replace the marker block with:\n%s", want)
 	}
 	return nil
-}
-
-// ReplaceMarkdownBlock swaps the marked ledger block for replacement, leaving
-// the rest of the document byte-identical.
-func ReplaceMarkdownBlock(document, replacement string) (string, error) {
-	start, end, err := markerBlockBounds(document)
-	if err != nil {
-		return "", err
-	}
-	return document[:start] + replacement + document[end:], nil
-}
-
-// markerBlockBounds locates the single marked ledger block, returning the
-// half-open byte range that covers it including both markers.
-func markerBlockBounds(document string) (start, end int, err error) {
-	if strings.Count(document, MarkdownStart) != 1 || strings.Count(document, MarkdownEnd) != 1 {
-		return 0, 0, errors.New("TESTING.md must contain exactly one checked runtime provider ledger marker pair")
-	}
-	start = strings.Index(document, MarkdownStart)
-	end = strings.Index(document[start:], MarkdownEnd)
-	if end < 0 {
-		return 0, 0, errors.New("TESTING.md checked runtime provider ledger markers are out of order")
-	}
-	return start, end + start + len(MarkdownEnd), nil
 }
 
 func joinProblems(problems []string) error {

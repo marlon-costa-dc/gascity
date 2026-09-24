@@ -29,10 +29,7 @@ are done. If the result action is `work`, use `bead_id` as the work bead.
 3. Execute exactly that bead's description.
 4. On success, close it:
    ```bash
-   gc bd update <id> \
-     --set-metadata gc.outcome=pass \
-     --set-metadata gc.work_outcome=shipped \
-     --status closed
+   gc bd update <id> --set-metadata gc.outcome=pass --status closed
    ```
 5. On transient failure, mark it transient and close it:
    ```bash
@@ -40,7 +37,6 @@ are done. If the result action is `work`, use `bead_id` as the work bead.
      --set-metadata gc.outcome=fail \
      --set-metadata gc.failure_class=transient \
      --set-metadata gc.failure_reason=<short_reason> \
-     --set-metadata gc.work_outcome=blocked \
      --status closed
    ```
 6. On unrecoverable failure, mark it hard-failed and close it:
@@ -49,30 +45,13 @@ are done. If the result action is `work`, use `bead_id` as the work bead.
      --set-metadata gc.outcome=fail \
      --set-metadata gc.failure_class=hard \
      --set-metadata gc.failure_reason=<short_reason> \
-     --set-metadata gc.work_outcome=abandoned \
      --status closed
    ```
-7. If the step produced no work (no-op), stamp both outcome and work disposition:
-   ```bash
-   gc bd update <id> \
-     --set-metadata gc.outcome=pass \
-     --set-metadata gc.work_outcome=no-op \
-     --status closed
-   ```
-8. After closing, check for more assigned work:
+7. After closing, check for more assigned work:
    ```bash
    gc hook --claim --json
    ```
-9. If more work exists, go to step 2. If not, re-check briefly (see below).
-
-**Always set both `gc.outcome` and `gc.work_outcome` in the same `gc bd update`
-call with `--status closed`.** `gc.outcome` is the control-plane result
-(pass/fail/skipped/canceled) that the retry classifier consults; `gc.work_outcome`
-is the work-record disposition (shipped/no-op/blocked/abandoned) that the close
-gate consults. Stamping both atomically in one command makes the close-contract
-ordering automatic — never set `gc.work_outcome` after the bead is already
-closed, or the controller may observe a bare close without an outcome and spawn
-a spurious retry before the work-outcome metadata is stamped.
+8. If more work exists, go to step 2. If not, poll briefly (see below).
 
 **Never use wide filesystem searches when a CLI command exists.** Wide
 traversals (`find /`, `find ~`, `find /Users`, `find $HOME`) walk
@@ -89,34 +68,26 @@ bead with `gc.root_bead_id` and `gc.continuation_group`, it preassigns other
 open, unassigned siblings in that group to `$GC_SESSION_NAME` so they stay with
 your live context. The JSON result lists them in `continuation_assigned`.
 
-## Re-checking Before Drain
+## Polling Before Drain
 
 After closing a bead, if `gc hook --claim --json` returns no work, do NOT drain
-on the first empty answer. The workflow controller may need a few seconds to
-process control beads and unlock your next step.
+immediately. The workflow controller may need a few seconds to process control
+beads and unlock your next step.
 
-Re-check a few times — but **one hook invocation per tool call**. Run exactly
-this, and nothing else, in its own tool call:
+Poll up to 60 seconds (6 attempts, 10 seconds apart):
 
 ```bash
-gc hook --claim --json
+for i in $(seq 1 6); do
+  NEXT=$(gc hook --claim --json 2>/dev/null || true)
+  if printf '%s\n' "$NEXT" | grep -q '"action":"work"'; then
+    # Found work — continue working
+    break
+  fi
+  sleep 10
+done
 ```
 
-Then end the tool call and decide from its output:
-
-- `"action":"work"` — you have a bead. Go to step 2.
-- `"action":"drain"` — no work yet. If you have re-checked fewer than three
-  times, re-check once more in a new tool call. Otherwise drain (below).
-
-**Never wrap the claim in a `sleep`/retry loop inside one tool call.** A claim
-command that is still running when the provider ends or kills your tool call
-survives as an orphan: it can win a claim that no turn is left to execute, and
-that bead is then held by a session that will never work it. `gc hook --claim`
-now refuses any claim that outlives its invoking turn, so a loop like that
-cannot claim anyway — it can only burn your tool budget. The wait between
-re-checks is the turn boundary itself, not a `sleep`.
-
-When you have re-checked and there is still no work, drain:
+If no work appears after 60 seconds, drain:
 
 ```bash
 gc hook --claim --drain-ack --json
