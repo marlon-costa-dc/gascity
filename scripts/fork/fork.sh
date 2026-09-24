@@ -23,7 +23,9 @@ die() {
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
-repo_json=$(gh repo view --json nameWithOwner,parent,defaultBranchRef)
+# Resolve this fork from origin explicitly: with an "upstream" remote present,
+# a bare `gh repo view` may pick the parent repository instead.
+repo_json=$(gh repo view "$(git remote get-url origin)" --json nameWithOwner,parent,defaultBranchRef)
 self=$(jq -r '.nameWithOwner' <<<"$repo_json")
 upstream=$(jq -r 'if .parent then "\(.parent.owner.login)/\(.parent.name)" else "" end' <<<"$repo_json")
 integration=$(jq -r '.defaultBranchRef.name' <<<"$repo_json")
