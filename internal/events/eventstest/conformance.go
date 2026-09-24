@@ -13,19 +13,7 @@ import (
 	"time"
 
 	"github.com/gastownhall/gascity/internal/events"
-	"github.com/gastownhall/gascity/internal/testutil"
 )
-
-// hangBudget is the wall-clock ceiling for hang-detector waits in this file.
-// It is a HANG DETECTOR, not a latency assertion: nextWithin returns the
-// instant the watcher yields an event, so raising this value would not slow
-// a passing run and lowering it would not make the suite stricter — it only
-// changes how long a genuinely wedged watcher takes to report.
-//
-// testutil.GoroutineRaceTimeout is a FLOOR, not a target (TESTING.md "Floors,
-// ceilings, and inputs"). Mirrors the reference implementation in
-// cmd/gc/hangbudget_test.go (hangBudget = 6 * testutil.GoroutineRaceTimeout).
-const hangBudget = 6 * testutil.GoroutineRaceTimeout
 
 // rotatableProvider is the small interface a Provider must satisfy
 // for the rotation subtest. Providers that don't expose rotation
@@ -745,15 +733,7 @@ func RunRotationTests(t *testing.T, newProvider func(t *testing.T) (events.Provi
 
 		// Phase 2: start a watcher BEFORE rotation. Drain any backlog
 		// so the watcher's offset is at end-of-active before we rotate.
-		//
-		// The watcher's own context is cancel-only, not deadline-bound:
-		// ForceRotate's fsync+rename and the gzip+reap behind res.Done below
-		// are this subtest's heaviest I/O, and sit between here and the
-		// post-rotate reads. A shared deadline charges that setup I/O
-		// against the read's budget instead of the read itself — nextWithin
-		// gives each blocking read its own fresh deadline so a slow disk
-		// slows the test instead of failing it.
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		w, err := p.Watch(ctx, 0)
 		if err != nil {
@@ -761,24 +741,9 @@ func RunRotationTests(t *testing.T, newProvider func(t *testing.T) (events.Provi
 		}
 		defer w.Close() //nolint:errcheck // test cleanup
 
-		nextWithin := func(d time.Duration) (events.Event, error) {
-			type result struct {
-				e   events.Event
-				err error
-			}
-			ch := make(chan result, 1)
-			go func() { e, err := w.Next(); ch <- result{e, err} }()
-			select {
-			case r := <-ch:
-				return r.e, r.err
-			case <-time.After(d):
-				return events.Event{}, context.DeadlineExceeded
-			}
-		}
-
 		seen := make([]events.Event, 0, 5)
 		for i := 0; i < 5; i++ {
-			e, err := nextWithin(hangBudget)
+			e, err := w.Next()
 			if err != nil {
 				t.Fatalf("Next pre %d: %v", i, err)
 			}
@@ -811,7 +776,7 @@ func RunRotationTests(t *testing.T, newProvider func(t *testing.T) (events.Provi
 		// (c) The watcher should yield the anchor + the post-rotate
 		// events without gap.
 		for i := 0; i < 4; i++ { // 1 anchor + 3 post-rotate
-			e, err := nextWithin(hangBudget)
+			e, err := w.Next()
 			if err != nil {
 				t.Fatalf("Next post %d: %v", i, err)
 			}

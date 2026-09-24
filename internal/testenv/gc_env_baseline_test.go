@@ -40,7 +40,7 @@ func TestGCEnvReadBaseline(t *testing.T) {
 		if d.IsDir() {
 			// testdata/ holds uncompiled fixture .go that go build never sees;
 			// a fixture with a GC_ literal would inject a phantom vocabulary entry.
-			if skipRepoLintDir(path, root, d.Name()) || d.Name() == "testdata" {
+			if skipRepoLintDir(d.Name()) || d.Name() == "testdata" || (path != root && isNestedWorktreeRoot(path)) {
 				return filepath.SkipDir
 			}
 			return nil

@@ -19,14 +19,11 @@ const (
 	// approximating shell semantics: any execution change requires explicit
 	// policy review, while workflow, job, step, and input descriptions remain
 	// free to change. A failure prints the projection and candidate digest.
-	expectedCITriggersHash = "d1a8bcd089019589658d8f154af9c26a70877285d84a384c2dcea299efc9554a"
-	// Why: dc-use@7c845b2d9 carries the draft-PR runner-policy skip in ci.yml;
-	// the pinned execution shape predates it, so the fleet's own integration
-	// lane failed this pin. Re-pinned to the shipped dc-use shape (bfc5abe9).
-	expectedCIExecutionHash      = "bfc5abe9ef4887a57c2985854e0ebf8094a08b6e521df9389256691dd36b6681"
+	expectedCITriggersHash       = "d1a8bcd089019589658d8f154af9c26a70877285d84a384c2dcea299efc9554a"
+	expectedCIExecutionHash      = "953e240fa408e96d7936ae963a2df87742ba5191a84a190daa2b1698401fa001" // reviewed delta: BD_VERSION v1.2.2 -> v1.3.0 in the matrix env blocks (beads pin hotfix)
 	expectedNightlyTriggersHash  = "0a4400a09ac567e90adf8be1232eef1f14e36efd8dba3e143aa6e36f5b7a36f5"
-	expectedNightlyExecutionHash = "a2c68532e85598b527a2cff2d2057c99ed5c65208fa34ea143869d8375f99a84"
-	expectedSetupActionHash      = "8f2d6b3a57f11d4f33a41211b1d3d5362d1437ba40c7b6db068abb98e731e5ac"
+	expectedNightlyExecutionHash = "bb189242fe7f197de366d1b3a6a42227a8ee55f7a8b14c5f9cc3c9387830755f" // reviewed delta: BD_VERSION v1.2.2 -> v1.3.0 (beads pin hotfix)
+	expectedSetupActionHash      = "b7864038195cd054aee7fccfa903cab335b375bcab1a35239c17c5da7d32c07e"
 )
 
 var requiredFilterPaths = map[string][]string{
@@ -64,7 +61,6 @@ var requiredFilterPaths = map[string][]string{
 		"Makefile",
 		"internal/worker/**",
 		"internal/sessionlog/**",
-		"internal/modelwindow/**",
 		"internal/runtime/**",
 		"internal/config/**",
 		"cmd/gc/template_resolve*.go",
@@ -78,7 +74,6 @@ var requiredFilterPaths = map[string][]string{
 		"Makefile",
 		"internal/worker/**",
 		"internal/sessionlog/**",
-		"internal/modelwindow/**",
 		"internal/runtime/**",
 		"internal/config/**",
 		"cmd/gc/**",
@@ -107,7 +102,6 @@ var requiredFilterPaths = map[string][]string{
 		"**/*.go",
 		"scripts/test-integration-shard",
 		"scripts/test-go-test-shard",
-		"scripts/runtime-tmux-tests.manifest",
 		"scripts/go-test-observable",
 		"examples/gastown/**",
 	},

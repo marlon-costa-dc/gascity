@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gastownhall/gascity/internal/runproj"
+	"github.com/gastownhall/gascity/internal/testutil"
 )
 
 // enrichmentCacheTestServer stands up a fake supervisor that counts sessions and
@@ -107,7 +108,7 @@ func TestRunTailerManagerRebindDiscardsInFlightEnrichment(t *testing.T) {
 	}()
 	select {
 	case <-started:
-	case <-time.After(hangBudget):
+	case <-time.After(testutil.GoroutineRaceTimeout):
 		t.Fatal("old enrichment compute did not start")
 	}
 
@@ -115,7 +116,7 @@ func TestRunTailerManagerRebindDiscardsInFlightEnrichment(t *testing.T) {
 	unblock()
 	select {
 	case <-oldDone:
-	case <-time.After(hangBudget):
+	case <-time.After(testutil.GoroutineRaceTimeout):
 		t.Fatal("old enrichment compute did not finish")
 	}
 

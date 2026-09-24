@@ -15,7 +15,6 @@ import (
 	"github.com/gastownhall/gascity/internal/doctor"
 	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/migrate"
-	"github.com/gastownhall/gascity/internal/pathutil"
 )
 
 func registerV2DeprecationChecks(d *doctor.Doctor) {
@@ -902,7 +901,25 @@ func absDoctorPathKey(path string) string {
 }
 
 func doctorPathWithinCity(cityPath, path string) bool {
-	return pathutil.PathWithin(cityPath, path)
+	cityAbs := absDoctorPathKey(cityPath)
+	pathAbs := absDoctorPathKey(path)
+	if !cleanedPathWithin(cityAbs, pathAbs) {
+		return false
+	}
+	cityReal, cityErr := filepath.EvalSymlinks(cityAbs)
+	pathReal, pathErr := filepath.EvalSymlinks(pathAbs)
+	if cityErr == nil && pathErr == nil {
+		return cleanedPathWithin(filepath.Clean(cityReal), filepath.Clean(pathReal))
+	}
+	return true
+}
+
+func cleanedPathWithin(base, path string) bool {
+	rel, err := filepath.Rel(base, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && !filepath.IsAbs(rel))
 }
 
 func scanLegacyOrderRoot(root legacyOrderRoot) []string {

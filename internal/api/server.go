@@ -68,10 +68,6 @@ type Server struct {
 	// session JSONL files. Nil means use worker.DefaultSearchPaths().
 	sessionLogSearchPaths []string
 
-	// structuredPeekPoll overrides the structured fallback stream's periodic
-	// history check in tests. Nil uses outputStreamPollInterval.
-	structuredPeekPoll <-chan time.Time
-
 	// idem caches responses for Idempotency-Key replay on create endpoints.
 	idem *idempotencyCache
 
@@ -95,12 +91,6 @@ type Server struct {
 	// nothing material has changed.
 	responseCacheMu      sync.Mutex
 	responseCacheEntries map[string]responseCacheEntry
-
-	// responseRefreshing tracks response-cache keys with a background
-	// stale-while-revalidate refresh already in flight (ra-4u2eqc), guarded
-	// by responseCacheMu alongside responseCacheEntries. See
-	// beginResponseRefresh / endResponseRefresh in response_cache.go.
-	responseRefreshing map[string]bool
 
 	// storeHealth caches the on-disk size walk and maintenance-log read
 	// for /v0/status's StoreHealth block. Refreshed on expiry; missing

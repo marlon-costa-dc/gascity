@@ -350,8 +350,8 @@ func TestInjectedImmutableCommandCatalogRoundTripsWithoutExpandingProduction(t *
 
 	generatedCount := 0
 	generatedCommandIDCatalog(func(commandIDEntry) { generatedCount++ })
-	if generatedCount != 201 {
-		t.Fatalf("generated production catalog has %d entries, want 201", generatedCount)
+	if generatedCount != 191 {
+		t.Fatalf("generated production catalog has %d entries, want 191", generatedCount)
 	}
 
 	injected := func(yield func(commandIDEntry)) {

@@ -328,10 +328,9 @@ the flock requirement entirely.
 
 ## Cursor MCP Tools Still Prompt or Appear Unavailable
 
-The built-in `cursor` provider starts `cursor-agent` with `-f --trust` so an
-unattended worker does not stop at Cursor's workspace-trust dialog. Use it only
-for workspaces whose contents you trust. The flag does not approve MCP servers;
-Cursor's MCP approval prompt remains enabled by default.
+The built-in `cursor` provider starts `cursor-agent` with `-f` and leaves
+Cursor's MCP approval prompt enabled by default. This avoids silently approving
+user or global MCP servers that Cursor can also see through `~/.cursor/mcp.json`.
 
 For unattended Cursor pool workers, opt in only after confirming that every
 workspace and user/global MCP server visible to Cursor is trusted. The
@@ -345,8 +344,8 @@ mcp_approval = "approve"
 ```
 
 If you override Cursor `args` directly, the override replaces the built-in
-args. Include `-f --trust` yourself and add `--approve-mcps` only for the same
-explicit MCP trust decision. Agent-level `args` overrides behave the same way.
+args. Include `-f` yourself and add `--approve-mcps` only for the same explicit
+trust decision. Agent-level `args` overrides behave the same way.
 
 Existing Cursor sessions keep the command fingerprint they were created with.
 The supervisor reconciler restarts sessions automatically after the fingerprint
@@ -360,47 +359,45 @@ of a clean version string, upgrade to Gas City v0.13.4 or later. This was a
 bug where remote pack fetches wrote git sideband output to the terminal,
 fixed in [PR #141](https://github.com/gastownhall/gascity/pull/141).
 
-## Provider Credentials in the Supervisor Environment
+## Provider Credentials Dropped When the Supervisor Starts
 
-The generated launchd plist and systemd unit never contain provider credential
-values. On Linux, generated services use systemd encrypted credentials:
-`supervisor.toml` declares non-secret credential IDs, ciphertext paths,
-environment variable names, and the providers allowed to receive each value.
-Installation writes only `LoadCredentialEncrypted=` entries and
-`UnsetEnvironment=` cleanup into the unit.
+Symptom: agents authenticate fine when you launch a city from your normal
+interactive shell, but fail to authenticate (or silently fall back to a
+different provider) when the city is started by the supervisor at login or
+after a reboot.
 
-Example declaration:
+Cause: the supervisor service file (launchd plist / systemd unit) captures
+provider credentials by snapshotting the environment of the shell that ran
+`gc start` (or `gc supervisor install`). A credential that is only present
+in an interactive shell — for example sourced from an rc file that the login
+service manager never reads — is not in that snapshot, so it never reaches
+the supervised process.
 
-```toml
-[credentials]
-[[credentials.encrypted]]
-id = "openai-token"
-path = "/home/user/.gc/credentials/openai-token.cred"
-env = "OPENAI_API_KEY"
-providers = ["codex"]
-```
-
-Provision the ciphertext outside `gc supervisor install`, for example through
-AI Hub or an operator-owned secret flow that runs `systemd-creds encrypt --user`
-with the same credential ID. The plaintext must not appear in `Environment=`,
-`PassEnvironment=`, command arguments, manager environment, logs, or the unit
-file.
-
-At runtime, systemd exposes decrypted credential files through
-`CREDENTIALS_DIRECTORY`. The supervisor reads only that directory, clears
-inherited provider credentials from its own environment, and injects a loaded
-value only into subprocesses whose resolved provider matches the configured
-selector. Missing `CREDENTIALS_DIRECTORY`, missing IDs, invalid files, empty
-values, control characters, or unmapped providers fail at their owner; Gas City
-does not fall back to ambient environment variables.
-
-After adding or rotating a credential, refresh the installed supervisor:
+Fix: put the durable credentials in a machine-local secrets file at
+`${GC_HOME}/secrets.env` (defaults to `~/.gc/secrets.env`). On every service
+file regeneration, `gc` merges this file into the supervisor environment, so
+the value survives a reboot regardless of which shell ran `gc start`.
 
 ```bash
-gc supervisor install
+# ~/.gc/secrets.env  (chmod 600)
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
 ```
 
-Never put credential values in a generated service file.
+The file uses dotenv syntax: `KEY=VALUE` per line, `#` comments, blank lines,
+an optional `export ` prefix, and optional surrounding quotes. Only keys that
+are already eligible for the supervisor environment are merged — provider
+credentials (recognized by their standard prefixes such as `ANTHROPIC_`,
+`OPENAI_`, `GEMINI_`) plus any keys you opt in via `GC_SUPERVISOR_ENV`; any
+other key in the file is ignored. A value exported in the calling shell still
+takes precedence over the file, and `GC_SUPERVISOR_OMIT_PROVIDER_CREDS=1`
+suppresses provider credentials from both sources.
+
+Apply the change by regenerating the service file:
+
+```bash
+gc service restart     # restarts the launchd/systemd service
+```
 
 ## Supervisor Log Written Twice (journald + supervisor.log)
 
@@ -440,11 +437,18 @@ Scope and caveats:
   is the single sink in those shapes. The variable is not captured into
   generated service files automatically; it exists for units you manage by
   hand.
-- **To use journald-only logging**, run the supervisor under a hand-managed or
-  delegated unit that owns `StandardOutput=journal`,
-  `StandardError=journal`, and `GC_SUPERVISOR_LOG_TEE=0`. A hand-edited unit at
-  gc's service path stays journal-only only on hosts where gc never manages the
-  unit.
+- **To persist the variable into a generated service file anyway** — for
+  example as a starting point you then hand-edit to
+  `StandardOutput=journal` — opt it in explicitly and regenerate:
+
+  ```bash
+  export GC_SUPERVISOR_LOG_TEE=0
+  GC_SUPERVISOR_ENV=GC_SUPERVISOR_LOG_TEE gc supervisor install
+  ```
+
+  Note that `gc start` regenerates the service file with the file-redirect
+  defaults, so a hand-edited unit at gc's service path stays journal-only
+  only on hosts where gc never manages the unit.
 
 ## Delegating the Supervisor Lifecycle to an Operator-Managed systemd Unit
 

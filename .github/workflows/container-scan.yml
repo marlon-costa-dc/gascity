@@ -253,9 +253,8 @@ jobs:
             "gc-controller:${IMAGE_TAG}"
             "gc-mcp-mail:${IMAGE_TAG}"
           )
-          overall_rc=0
           for image in "${images[@]}"; do
-            if trivy image \
+            trivy image \
               --scanners vuln \
               --severity HIGH,CRITICAL \
               --ignore-unfixed \
@@ -263,14 +262,8 @@ jobs:
               --exit-code 1 \
               --timeout 15m \
               --format table \
-              "$image"; then
-              echo "PASS: ${image} has no unwaived HIGH/CRITICAL findings"
-            else
-              echo "FAIL: ${image} has unwaived HIGH/CRITICAL findings"
-              overall_rc=1
-            fi
+              "$image"
           done
-          exit "$overall_rc"
 
       - name: Upload base image SARIF
         if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}

@@ -13,7 +13,6 @@ func TestDoConfigShowMissingRemoteImportSuggestsInstall(t *testing.T) {
 	clearGCEnv(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("GC_CITY_PATH", dir)
 	if err := os.MkdirAll(".gc", 0o755); err != nil {
 		t.Fatalf("MkdirAll(.gc): %v", err)
 	}
@@ -41,7 +40,6 @@ func TestConfigShowJSON(t *testing.T) {
 	clearGCEnv(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("GC_CITY_PATH", dir)
 	if err := os.MkdirAll(".gc", 0o755); err != nil {
 		t.Fatalf("MkdirAll(.gc): %v", err)
 	}
@@ -87,7 +85,6 @@ func TestConfigShowValidateJSONReturnsNonzeroForInvalidConfig(t *testing.T) {
 	clearGCEnv(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("GC_CITY_PATH", dir)
 	if err := os.MkdirAll(".gc", 0o755); err != nil {
 		t.Fatalf("MkdirAll(.gc): %v", err)
 	}

@@ -58,12 +58,7 @@ func (s *countingListStore) Count(_ context.Context, q beads.ListQuery, excludeT
 	return n, nil
 }
 
-// seedMoleculeStore builds a store of molecule beads minting under idPrefix.
-// The prefix is a parameter because two rig stores in a real city mint under
-// different prefixes (config.Rig.EffectivePrefix) — two seeded stores sharing
-// one prefix would hold the same ids, which is a bead co-resident in two legs,
-// not two beads.
-func seedMoleculeStore(idPrefix string, total int) ([]beads.Bead, *beads.MemStore) {
+func seedMoleculeStore(total int) ([]beads.Bead, *beads.MemStore) {
 	base := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	seed := make([]beads.Bead, 0, total)
 	for i := 0; i < total; i++ {
@@ -72,7 +67,7 @@ func seedMoleculeStore(idPrefix string, total int) ([]beads.Bead, *beads.MemStor
 			status = "closed"
 		}
 		seed = append(seed, beads.Bead{
-			ID:        fmt.Sprintf("%s-mol-%03d", idPrefix, i),
+			ID:        fmt.Sprintf("gc-mol-%03d", i),
 			Type:      "molecule",
 			Status:    status,
 			Title:     fmt.Sprintf("molecule %d", i),
@@ -105,7 +100,7 @@ func TestBeadListAllTrueBoundsCounterStore(t *testing.T) {
 	const total = 30
 	const limit = 10
 	fs := newFakeState(t)
-	seed, mem := seedMoleculeStore("gc", total)
+	seed, mem := seedMoleculeStore(total)
 	store := &countingListStore{Store: mem}
 	fs.stores["myrig"] = store
 
@@ -150,7 +145,7 @@ func TestBeadListAllTrueBoundsCounterStore(t *testing.T) {
 func TestBeadListAllTrueNoCursorWhenAllFit(t *testing.T) {
 	const total = 8
 	fs := newFakeState(t)
-	_, mem := seedMoleculeStore("gc", total)
+	_, mem := seedMoleculeStore(total)
 	fs.stores["myrig"] = &countingListStore{Store: mem}
 
 	body := fetchBoundedBeads(t, fs, "?type=molecule&all=true&limit=50")
@@ -172,7 +167,7 @@ func TestBeadListAllTrueFallsBackWithoutCounter(t *testing.T) {
 	const total = 30
 	const limit = 10
 	fs := newFakeState(t)
-	_, mem := seedMoleculeStore("gc", total)
+	_, mem := seedMoleculeStore(total)
 	// Plain MemStore is not a Counter, so the handler must not bound it.
 	fs.stores["myrig"] = mem
 
@@ -220,7 +215,7 @@ func TestBeadListAllTrueBoundedTotalExcludesFailedRigList(t *testing.T) {
 	const good = 30
 	const limit = 10
 	fs := newFakeState(t)
-	_, mem := seedMoleculeStore("gc", good)
+	_, mem := seedMoleculeStore(good)
 	fs.stores["myrig"] = &countingListStore{Store: mem}
 	// "zrig" Counts 10 molecules but its List fails with a non-partial error,
 	// so its 10 rows never reach the page. Pre-fix, those 10 stay baked into
@@ -315,9 +310,9 @@ func TestBeadListAllTrueBoundedPartialResultRigKeepsCount(t *testing.T) {
 	const good = 30
 	const partial = 12
 	fs := newFakeState(t)
-	_, goodMem := seedMoleculeStore("gc", good)
+	_, goodMem := seedMoleculeStore(good)
 	fs.stores["myrig"] = &countingListStore{Store: goodMem}
-	_, partMem := seedMoleculeStore("zr", partial)
+	_, partMem := seedMoleculeStore(partial)
 	fs.stores["zrig"] = &countingPartialListStore{countingListStore: &countingListStore{Store: partMem}}
 
 	// Limit covers everything so the whole set must be reachable in one page.

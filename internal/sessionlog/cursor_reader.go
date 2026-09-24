@@ -82,7 +82,6 @@ func ReadCursorFile(path string, _ int) (*Session, error) {
 
 type cursorEvent struct {
 	ID                json.RawMessage `json:"id"`
-	Role              string          `json:"role"`
 	HookEventName     string          `json:"hook_event_name"`
 	EventName         string          `json:"event_name"`
 	Type              string          `json:"type"`
@@ -608,7 +607,7 @@ func cursorNeutralResultKey(key string) string {
 }
 
 func cursorFrameType(event cursorEvent) string {
-	return cursorNormalizeType(firstNonEmpty(event.Type, event.Role))
+	return cursorNormalizeType(event.Type)
 }
 
 func cursorFrameSubtype(event cursorEvent) string {
@@ -777,67 +776,23 @@ func cursorShouldSkipAssistantFrame(event cursorEvent, sawPartialAssistant *bool
 	return sawPartialAssistant != nil && *sawPartialAssistant
 }
 
-// DefaultCursorSearchPaths returns Cursor Agent's native per-project transcript
-// root (~/.cursor/projects).
+// DefaultCursorSearchPaths intentionally returns no local default. Cursor
+// exposes hooks and stream output, but GC should only discover Cursor JSONL
+// from configured capture paths until a stable native transcript store is
+// supported.
 func DefaultCursorSearchPaths() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-	return []string{filepath.Join(home, ".cursor", "projects")}
+	return nil
 }
 
 // FindCursorSessionFileByID resolves a captured Cursor hook/stream JSONL file
 // by session ID when one has been written into configured transcript search
 // paths.
 func FindCursorSessionFileByID(searchPaths []string, workDir, sessionID string) string {
-	if path := findCapturedACPSessionFileByID(searchPaths, DefaultCursorSearchPaths(), workDir, sessionID); path != "" {
-		return path
-	}
-	return findCursorNativeSessionFileByID(mergePaths(DefaultCursorSearchPaths(), searchPaths), sessionID)
+	return findCapturedACPSessionFileByID(searchPaths, DefaultCursorSearchPaths(), workDir, sessionID)
 }
 
 // FindCursorSessionFile searches configured Cursor capture directories for the
 // newest hook/stream JSONL file whose recorded cwd matches workDir.
 func FindCursorSessionFile(searchPaths []string, workDir string) string {
 	return findCapturedACPSessionFile(searchPaths, DefaultCursorSearchPaths(), workDir)
-}
-
-func findCursorNativeSessionFileByID(searchPaths []string, sessionID string) string {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" || strings.Contains(sessionID, "..") || strings.ContainsAny(sessionID, `/\`) {
-		return ""
-	}
-
-	seen := make(map[string]struct{})
-	var matches []string
-	add := func(path string) {
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			return
-		}
-		path = filepath.Clean(path)
-		if _, ok := seen[path]; ok {
-			return
-		}
-		seen[path] = struct{}{}
-		matches = append(matches, path)
-	}
-	for _, root := range searchPaths {
-		add(filepath.Join(root, sessionID, sessionID+".jsonl"))
-		add(filepath.Join(root, "agent-transcripts", sessionID, sessionID+".jsonl"))
-		projects, err := os.ReadDir(root)
-		if err != nil {
-			continue
-		}
-		for _, project := range projects {
-			if project.IsDir() {
-				add(filepath.Join(root, project.Name(), "agent-transcripts", sessionID, sessionID+".jsonl"))
-			}
-		}
-	}
-	if len(matches) != 1 {
-		return ""
-	}
-	return matches[0]
 }

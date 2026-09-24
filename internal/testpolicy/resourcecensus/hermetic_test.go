@@ -6,8 +6,6 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
-
-	"github.com/gastownhall/gascity/internal/testpolicy/waiverclock"
 )
 
 func TestValidateReviewedHermeticBodiesRequiresExactUniqueUntaggedTest(t *testing.T) {
@@ -98,7 +96,7 @@ func TestOwned(t *testing.T) {}
 		ledger := policy
 		ledger.ReviewedHermeticBody = append([]ReviewedHermeticBody(nil), policy.ReviewedHermeticBody...)
 		ledger.ReviewedHermeticBody[0].EffectiveSize = "small"
-		_, err := validateAgainstPolicy(policy, ledger, clean, time.Time{}, waiverclock.ModeStrict)
+		err := validateAgainstPolicy(policy, ledger, clean, time.Time{})
 		requireErrorContains(t, err, `bootstrap policy requires "medium"`)
 	})
 
@@ -113,7 +111,7 @@ func TestOwned(t *testing.T) { helper() }
 func helper() { time.Sleep(0) }
 `)},
 		})
-		_, err := validateAgainstPolicy(policy, policy, withResource, time.Time{}, waiverclock.ModeStrict)
+		err := validateAgainstPolicy(policy, policy, withResource, time.Time{})
 		requireErrorContains(t, err, string(ResourceFixedSleep))
 	})
 }
@@ -130,8 +128,8 @@ func TestValidateReviewedHermeticBodiesRejectsDirectKnownResources(t *testing.T)
 	}{
 		{name: "subprocess", imports: `"os/exec"`, body: `_ = exec.Command("worker")`, resource: ResourceSubprocess},
 		{name: "fixed sleep", imports: `"time"`, body: `time.Sleep(0)`, resource: ResourceFixedSleep},
-		{name: "environment", imports: `"os"`, body: `_ = os.Setenv("KEY", "value")`, resource: ResourceEnvironment},
-		{name: "cwd", imports: `"os"`, body: `_ = os.Chdir("work")`, resource: ResourceCWD},
+		{name: "environment", body: `t.Setenv("KEY", "value")`, resource: ResourceEnvironment},
+		{name: "cwd", body: `t.Chdir("work")`, resource: ResourceCWD},
 		{
 			name:         "slow process gate",
 			declarations: `func skipSlowCmdGCTest(t *testing.T, reason string) {}`,
@@ -140,12 +138,9 @@ func TestValidateReviewedHermeticBodiesRejectsDirectKnownResources(t *testing.T)
 		},
 		{name: "HTTP test server", imports: `"net/http/httptest"`, body: `_ = httptest.NewServer(nil)`, resource: ResourceHTTPTestServer},
 		{name: "net listen", imports: `"net"`, body: `_, _ = net.Listen("tcp", "127.0.0.1:0")`, resource: ResourceNetListen},
-		{name: "net typed stream listen", imports: `"net"`, body: `_, _ = net.ListenTCP("tcp", nil)`, resource: ResourceNetListen},
 		{name: "net listen config", imports: `"net"`, body: `_, _ = (net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")`, resource: ResourceNetListenConfig},
-		{name: "net listen config packet", imports: `"net"`, body: `_, _ = (net.ListenConfig{}).ListenPacket(t.Context(), "udp", "127.0.0.1:0")`, resource: ResourceNetListenConfig},
-		{name: "net packet listen", imports: `"net"`, body: `_, _ = net.ListenUDP("udp", nil)`, resource: ResourceNetListenPacket},
+		{name: "net listen unixgram", imports: `"net"`, body: `_, _ = net.ListenUnixgram("unixgram", nil)`, resource: ResourceNetListenUnixgram},
 		{name: "syscall listen", imports: `"syscall"`, body: `_ = syscall.Listen(0, 0)`, resource: ResourceSyscallListen},
-		{name: "tmux", imports: `tmuxtest "github.com/gastownhall/gascity/test/tmuxtest"`, body: `_ = tmuxtest.NewGuard(t)`, resource: ResourceTmux},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -158,28 +153,6 @@ func TestValidateReviewedHermeticBodiesRejectsDirectKnownResources(t *testing.T)
 			requireErrorContains(t, err, string(tt.resource))
 		})
 	}
-}
-
-func TestValidateReviewedHermeticBodiesRejectsDirectListenerHelper(t *testing.T) {
-	t.Parallel()
-
-	census := scanHermeticFixture(t, fstest.MapFS{
-		"cmd/gc/helpers.go": &fstest.MapFile{Data: []byte(`package main
-func runSupervisor() {}
-`)},
-		"cmd/gc/resource_test.go": &fstest.MapFile{Data: []byte(`package main
-import "testing"
-func TestHermetic(t *testing.T) { ((runSupervisor))() }
-`)},
-	})
-	row := ReviewedHermeticBody{
-		PackageDir:    "cmd/gc",
-		PackageName:   "main",
-		Owner:         "TestHermetic",
-		EffectiveSize: "medium",
-		MediumReason:  "package TestMain mutates process state",
-	}
-	requireErrorContains(t, validateReviewedHermeticBodies([]ReviewedHermeticBody{row}, census), "listener_helper")
 }
 
 func TestValidateReviewedHermeticBodiesFollowsHelpersWithoutShadowFalseMatches(t *testing.T) {

@@ -297,15 +297,15 @@ case "$op" in
           restartPolicy: "Never",
           securityContext: {
             runAsNonRoot: true,
-            runAsUser: 1001,
-            runAsGroup: 1001,
-            fsGroup: 1001,
+            runAsUser: 1000,
+            runAsGroup: 1000,
+            fsGroup: 1000,
             seccompProfile: {type: "RuntimeDefault"}
           },
           containers: [{
             name: "controller",
             image: $image,
-            imagePullPolicy: "IfNotPresent",
+            imagePullPolicy: "Always",
             workingDir: "/city",
             env: (
               [
@@ -336,8 +336,7 @@ case "$op" in
             },
             volumeMounts: [
               {name: "city", mountPath: "/city"},
-              {name: "tmp", mountPath: "/tmp"},
-              {name: "home", mountPath: "/home/gcagent"}
+              {name: "tmp", mountPath: "/tmp"}
             ]
           }],
           volumes: [
@@ -347,10 +346,6 @@ case "$op" in
             },
             {
               name: "tmp",
-              emptyDir: {}
-            },
-            {
-              name: "home",
               emptyDir: {}
             }
           ]

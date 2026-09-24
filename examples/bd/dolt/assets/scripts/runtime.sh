@@ -262,18 +262,14 @@ import sys
 
 limit = float(sys.argv[1])
 cmd = sys.argv[2:]
-
-proc = subprocess.Popen(cmd)
 try:
-    proc.wait(timeout=limit)
-except subprocess.TimeoutExpired:
-    proc.terminate()
-    try:
-        proc.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=limit)
+except subprocess.TimeoutExpired as exc:
+    sys.stdout.write(exc.stdout or "")
+    sys.stderr.write(exc.stderr or "")
     sys.exit(124)
+sys.stdout.write(proc.stdout)
+sys.stderr.write(proc.stderr)
 sys.exit(proc.returncode)
 PY
   else

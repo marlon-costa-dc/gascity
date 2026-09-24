@@ -63,16 +63,11 @@ type cityRegistry struct {
 	initStatus           map[string]cityInitProgress
 	initFailures         map[string]*initFailRecord
 	panicHistory         map[string]*panicRecord
-	pendingRequestIDs    map[string]string                   // city path → request_id for async correlation
-	recentlyUnregistered map[string]recentlyUnregisteredCity // city path → stable name and unregister time
-	supervisorRecorder   events.Recorder                     // supervisor-level event recorder for city lifecycle events
+	pendingRequestIDs    map[string]string    // city path → request_id for async correlation
+	recentlyUnregistered map[string]time.Time // city path → unregister time (grace period for event delivery)
+	supervisorRecorder   events.Recorder      // supervisor-level event recorder for city lifecycle events
 
 	gen uint64 // monotonic generation counter
-}
-
-type recentlyUnregisteredCity struct {
-	name           string
-	unregisteredAt time.Time
 }
 
 // newCityRegistry creates a registry initialized with an empty snapshot.
@@ -83,7 +78,7 @@ func newCityRegistry() *cityRegistry {
 		initFailures:         make(map[string]*initFailRecord),
 		panicHistory:         make(map[string]*panicRecord),
 		pendingRequestIDs:    make(map[string]string),
-		recentlyUnregistered: make(map[string]recentlyUnregisteredCity),
+		recentlyUnregistered: make(map[string]time.Time),
 	}
 	// Initialize with empty snapshot to prevent nil-dereference panic
 	// if an API request arrives before the first reconciliation tick.
@@ -160,11 +155,7 @@ func (r *cityRegistry) SupervisorEventRecorder() events.Recorder {
 func (r *cityRegistry) MarkRecentlyUnregistered(cityPath string) {
 	r.citiesMu.Lock()
 	defer r.citiesMu.Unlock()
-	name := filepath.Base(cityPath)
-	if v, ok := r.snap.Load().byPath[cityPath]; ok && v.Name != "" {
-		name = v.Name
-	}
-	r.recentlyUnregistered[cityPath] = recentlyUnregisteredCity{name: name, unregisteredAt: time.Now()}
+	r.recentlyUnregistered[cityPath] = time.Now()
 }
 
 const recentlyUnregisteredGrace = 2 * time.Minute
@@ -284,27 +275,15 @@ func (r *cityRegistry) Snapshot() *citySnapshot {
 // simply skipped.
 func (r *cityRegistry) TransientCityEventProviders() map[string]events.Provider {
 	snap := r.snap.Load()
-	reg := supervisor.NewRegistry(supervisor.RegistryPath())
-	entries, registryErr := reg.List()
-	registeredNamesByPath := make(map[string]string, len(entries))
-	if registryErr == nil {
-		for _, e := range entries {
-			registeredNamesByPath[pathutil.NormalizePathForCompare(e.Path)] = e.EffectiveName()
-		}
-	}
-
 	// Collect non-Running cities known to the runtime registry.
 	paths := make(map[string]string, len(snap.all))
 	for _, v := range snap.all {
 		if v == nil || v.Started {
 			continue
 		}
-		name, registered := registeredNamesByPath[pathutil.NormalizePathForCompare(v.Path)]
-		if !registered {
-			name = v.Name
-			if name == "" || snap.byName[name] != v {
-				continue
-			}
+		name := v.Name
+		if name == "" {
+			name = filepath.Base(v.Path)
 		}
 		paths[name] = v.Path
 	}
@@ -318,7 +297,8 @@ func (r *cityRegistry) TransientCityEventProviders() map[string]events.Provider 
 			running[name] = struct{}{}
 		}
 	}
-	if registryErr == nil {
+	reg := supervisor.NewRegistry(supervisor.RegistryPath())
+	if entries, err := reg.List(); err == nil {
 		for _, e := range entries {
 			name := e.EffectiveName()
 			if _, already := running[name]; already {
@@ -335,15 +315,12 @@ func (r *cityRegistry) TransientCityEventProviders() map[string]events.Provider 
 	// observe completion events after the city leaves the registry.
 	r.citiesMu.Lock()
 	now := time.Now()
-	for path, city := range r.recentlyUnregistered {
-		if now.Sub(city.unregisteredAt) > recentlyUnregisteredGrace {
+	for path, ts := range r.recentlyUnregistered {
+		if now.Sub(ts) > recentlyUnregisteredGrace {
 			delete(r.recentlyUnregistered, path)
 			continue
 		}
-		name := city.name
-		if name == "" {
-			name = filepath.Base(path)
-		}
+		name := filepath.Base(path)
 		if _, already := running[name]; already {
 			continue
 		}

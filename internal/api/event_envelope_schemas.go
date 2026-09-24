@@ -140,9 +140,8 @@ func typedEventEnvelopeVariantSchema(r huma.Registry, variant typedEventEnvelope
 		"step_id": {
 			Type: huma.TypeString,
 		},
-		"depends_on_step_ids": eventEnvelopeTopologyProperty(),
-		"workflow":            r.Schema(reflect.TypeOf(workflowEventProjection{}), true, "WorkflowEventProjection"),
-		"payload":             r.Schema(variant.payloadType, true, variant.payloadType.Name()),
+		"workflow": r.Schema(reflect.TypeOf(workflowEventProjection{}), true, "WorkflowEventProjection"),
+		"payload":  r.Schema(variant.payloadType, true, variant.payloadType.Name()),
 	}
 	required := []string{"seq", "type", "ts", "actor", "payload"}
 	if cfg.includeCity {
@@ -195,9 +194,8 @@ func customEventEnvelopeVariantSchema(r huma.Registry, cfg typedEventEnvelopeSch
 		"step_id": {
 			Type: huma.TypeString,
 		},
-		"depends_on_step_ids": eventEnvelopeTopologyProperty(),
-		"workflow":            r.Schema(reflect.TypeOf(workflowEventProjection{}), true, "WorkflowEventProjection"),
-		"payload":             {},
+		"workflow": r.Schema(reflect.TypeOf(workflowEventProjection{}), true, "WorkflowEventProjection"),
+		"payload":  {},
 	}
 	required := []string{"seq", "type", "ts", "actor", "payload"}
 	if cfg.includeCity {
@@ -210,13 +208,6 @@ func customEventEnvelopeVariantSchema(r huma.Registry, cfg typedEventEnvelopeSch
 		AdditionalProperties: false,
 		Properties:           properties,
 		Required:             required,
-	}
-}
-
-func eventEnvelopeTopologyProperty() *huma.Schema {
-	return &huma.Schema{
-		Type:  huma.TypeArray,
-		Items: &huma.Schema{Type: huma.TypeString},
 	}
 }
 

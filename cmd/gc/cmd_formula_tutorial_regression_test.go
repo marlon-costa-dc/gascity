@@ -59,7 +59,6 @@ needs = ["cook"]
 `)
 
 	t.Chdir(cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout bytes.Buffer
 	cmd := newFormulaShowCmd(&stdout, &bytes.Buffer{})
@@ -92,7 +91,6 @@ condition = "{{env}} == staging"
 `)
 
 	t.Chdir(cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout bytes.Buffer
 	cmd := newFormulaShowCmd(&stdout, &bytes.Buffer{})
@@ -126,7 +124,6 @@ title = "[{{epic}}] Implement: {{feature}}"
 `)
 
 	t.Chdir(cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout bytes.Buffer
 	cmd := newFormulaShowCmd(&stdout, &bytes.Buffer{})
@@ -164,7 +161,6 @@ title = "[{{epic}}] Implement: {{feature}}"
 `)
 
 	t.Chdir(cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout bytes.Buffer
 	cmd := newFormulaShowCmd(&stdout, &bytes.Buffer{})
@@ -207,7 +203,6 @@ title = "[{{epic}}] Implement: {{feature}}"
 `)
 
 	t.Chdir(cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	var stdout bytes.Buffer
 	cmd := newFormulaShowCmd(&stdout, &bytes.Buffer{})
@@ -244,7 +239,6 @@ title = "[{{epic}}] Deploy {{env}}"
 `)
 
 	t.Chdir(cityDir)
-	t.Setenv("GC_CITY_PATH", cityDir)
 
 	stderr := &bytes.Buffer{}
 	cmd := newFormulaShowCmd(&bytes.Buffer{}, stderr)

@@ -230,11 +230,7 @@ func TestUpdatePack(t *testing.T) {
 	}
 	mustGit(t, pushDir, "add", "-A")
 	mustGit(t, pushDir, "commit", "-m", "v2")
-	// Explicit refspec: a bare `git push` relies on push.default, which ambient
-	// user config commonly sets to "nothing" (refusing the push). Pushing HEAD
-	// to origin is deterministic regardless of push.default and of the default
-	// branch name (master/main), simulating upstream advancement reliably.
-	mustGit(t, pushDir, "push", "origin", "HEAD")
+	mustGit(t, pushDir, "push")
 
 	// Update cache.
 	if err := updatePack(cacheDir, ""); err != nil {
@@ -281,10 +277,7 @@ func TestUpdatePackWithBranchRef(t *testing.T) {
 	}
 	mustGit(t, pushDir, "add", "-A")
 	mustGit(t, pushDir, "commit", "-m", "v2")
-	// Explicit refspec: see TestUpdatePack — a bare `git push` depends on
-	// push.default, which ambient config may set to "nothing". Push HEAD to
-	// origin deterministically, independent of push.default and branch name.
-	mustGit(t, pushDir, "push", "origin", "HEAD")
+	mustGit(t, pushDir, "push")
 
 	// Update cache with explicit branch ref.
 	if err := updatePack(cacheDir, "main"); err != nil {

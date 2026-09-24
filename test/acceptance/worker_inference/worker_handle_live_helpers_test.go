@@ -74,7 +74,6 @@ func newLiveWorkerHandleHarness(t *testing.T) (*liveWorkerHandleHarness, error) 
 		Without("GC_BEADS").
 		Without("GC_DOLT").
 		With("DOLT_ROOT_PATH", gcHome)
-	applyLiveBDBinaryEnv(env)
 
 	authSource, err := stageProviderAuth(gcHome, env, liveSetup.Profile)
 	if err != nil {
@@ -191,8 +190,6 @@ func newLiveWorkerHandleHarness(t *testing.T) (*liveWorkerHandleHarness, error) 
 
 func installLiveHandleProviderHooks(workDir, gcHome string, profile workerpkg.Profile) error {
 	switch profile {
-	case workerpkg.ProfileCursorTmuxCLI:
-		return hooks.Install(fsys.OSFS{}, workDir, workDir, []string{"cursor"})
 	case workerpkg.ProfileOpenCodeTmuxCLI:
 		return hooks.Install(fsys.OSFS{}, workDir, workDir, []string{"opencode"})
 	case workerpkg.ProfileMimoCodeTmuxCLI:
@@ -585,10 +582,7 @@ func livePaneShowsBusyIndicator(lines []string) bool {
 	for _, line := range lines {
 		if strings.Contains(line, "esc to interrupt") ||
 			strings.Contains(line, "Press Esc or Ctrl+C to cancel") ||
-			strings.Contains(line, "[current working directory ") ||
-			// The zcode adapter runs each turn as a headless call, so its pane
-			// has no TUI spinner; it announces the in-flight turn instead.
-			strings.Contains(line, "zcode-repl turn in flight") {
+			strings.Contains(line, "[current working directory ") {
 			return true
 		}
 	}

@@ -85,19 +85,11 @@ func TestClientWaitForEventRequestsReplayCursorForCityStream(t *testing.T) {
 	}
 }
 
-func TestClientWaitForEventSupervisorStreamCursorHandling(t *testing.T) {
-	// One loopback server covers both supervisor-scope cursor cases (kept as a
-	// single server so the untagged http_test_server census does not grow):
-	//   - an empty resume cursor must omit after_cursor so the stream
-	//     head-starts with no backlog, NOT coerce it to after_cursor=0 (which
-	//     now requests a full replay from zero for every provider);
-	//   - a cursor handed back from a 202 — including the literal "0" the
-	//     supervisor returns when no provider existed at capture — is forwarded
-	//     verbatim so an async caller still catches its result.
+func TestClientWaitForEventRequestsReplayCursorForSupervisorStream(t *testing.T) {
 	seen := make(chan url.Values, 1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v0/events/stream" {
-			t.Errorf("path = %q, want /v0/events/stream", r.URL.Path)
+			t.Fatalf("path = %q, want /v0/events/stream", r.URL.Path)
 		}
 		seen <- r.URL.Query()
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -105,15 +97,11 @@ func TestClientWaitForEventSupervisorStreamCursorHandling(t *testing.T) {
 	defer ts.Close()
 
 	c := NewClient(ts.URL)
-
 	_, _ = c.waitForEvent(t.Context(), "req-never", "request.result.city.create", RequestOperationCityCreate, "")
-	if query := <-seen; query.Has("after_cursor") {
-		t.Fatalf("empty cursor: after_cursor = %q, want it omitted for a no-backlog head start", query.Get("after_cursor"))
-	}
 
-	_, _ = c.waitForEvent(t.Context(), "req-never", "request.result.city.create", RequestOperationCityCreate, "0")
-	if query := <-seen; query.Get("after_cursor") != "0" {
-		t.Fatalf("literal 0 cursor: after_cursor = %q, want 0 (accepted cursor forwarded)", query.Get("after_cursor"))
+	query := <-seen
+	if got := query.Get("after_cursor"); got != "0" {
+		t.Fatalf("after_cursor = %q, want 0", got)
 	}
 }
 

@@ -17,7 +17,6 @@ import (
 	"github.com/gastownhall/gascity/internal/beads/contract"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doltauth"
-	"github.com/gastownhall/gascity/internal/doltpool"
 	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/rig"
 	"github.com/go-sql-driver/mysql"
@@ -127,7 +126,7 @@ func doRigSetEndpoint(fs fsys.FS, cityPath, rigName string, opts rigEndpointOpti
 	}
 	if strings.TrimSpace(rig.Path) == "" {
 		// Unbound rig: the downstream helpers join paths against rig.Path
-		// (snapshotRigEndpointFiles, requireCanonicalizedScopeMetadata,
+		// (snapshotRigEndpointFiles, ensureCanonicalScopeMetadataIfPresent,
 		// syncRigManagedPortArtifact, etc.). Empty rig.Path would produce
 		// relative `.beads/...` writes under the current working directory
 		// instead of erroring cleanly.
@@ -187,7 +186,7 @@ func doRigSetEndpoint(fs fsys.FS, cityPath, rigName string, opts rigEndpointOpti
 		fmt.Fprintf(stderr, "gc rig set-endpoint: snapshot canonical files: %v\n", err) //nolint:errcheck // best-effort stderr
 		return 1
 	}
-	if err := requireCanonicalizedScopeMetadata(fs, rig.Path); err != nil {
+	if err := ensureCanonicalScopeMetadataIfPresent(fs, rig.Path); err != nil {
 		writeRigEndpointRollbackError(fs, stderr, snapshots, "canonicalizing metadata", err)
 		return 1
 	}
@@ -308,7 +307,6 @@ func requestedRigEndpointState(rig config.Rig, currentState, cityState contract.
 			EndpointStatus: contract.EndpointStatusVerified,
 			DoltHost:       "127.0.0.1",
 			DoltPort:       strings.TrimSpace(opts.Port),
-			DoltMode:       "server",
 		}
 		if opts.AdoptUnverified {
 			state.EndpointStatus = contract.EndpointStatusUnverified
@@ -328,7 +326,6 @@ func requestedRigEndpointState(rig config.Rig, currentState, cityState contract.
 		DoltHost:       strings.TrimSpace(opts.Host),
 		DoltPort:       strings.TrimSpace(opts.Port),
 		DoltUser:       user,
-		DoltMode:       "server",
 	}
 	if opts.AdoptUnverified {
 		state.EndpointStatus = contract.EndpointStatusUnverified
@@ -363,31 +360,21 @@ func requireCanonicalScopeMetadata(fs fsys.FS, scopeRoot string) error {
 	return nil
 }
 
-// requireCanonicalizedScopeMetadata canonicalizes to server mode the metadata of
-// the scope an endpoint command is reconfiguring: the rig named by
-// `gc rig set-endpoint <rig>`, and the city's own scope in
-// `gc beads city use-managed`/`use-external`.
-//
-// That scope must already carry a usable .beads/metadata.json. It is the store
-// whose topology the operator asked to rewrite, so an absent or unpinned file
-// means there is nothing to rewrite, and the command fails rather than invent a
-// store the operator never initialized.
-//
-// It announces the mode change for the same reason ensureCanonicalScopeMetadata
-// does: this is the identical rewrite through a different door, and a warning
-// that depends on which command performed the flip is a warning an operator
-// cannot rely on.
-func requireCanonicalizedScopeMetadata(fs fsys.FS, scopeRoot string) error {
-	if err := requireCanonicalScopeMetadata(fs, scopeRoot); err != nil {
-		return err
-	}
-	path := scopeMetadataPath(scopeRoot)
-	doltDatabase, _, err := contract.ReadDoltDatabase(fs, path)
+func ensureCanonicalScopeMetadataIfPresent(fs fsys.FS, scopeRoot string) error {
+	path := filepath.Join(scopeRoot, ".beads", "metadata.json")
+	doltDatabase, err := func() (string, error) {
+		if err := requireCanonicalScopeMetadata(fs, scopeRoot); err != nil {
+			return "", err
+		}
+		doltDatabase, _, err := contract.ReadDoltDatabase(fs, path)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(doltDatabase), nil
+	}()
 	if err != nil {
 		return err
 	}
-	doltDatabase = strings.TrimSpace(doltDatabase)
-	announceStorageModeChange(fs, path, "server", doltDatabase)
 	_, err = contract.EnsureCanonicalMetadata(fs, path, contract.MetadataState{
 		Database:     "dolt",
 		Backend:      "dolt",
@@ -395,30 +382,6 @@ func requireCanonicalizedScopeMetadata(fs fsys.FS, scopeRoot string) error {
 		DoltDatabase: doltDatabase,
 	})
 	return err
-}
-
-// canonicalizeScopeMetadataIfPresent is requireCanonicalizedScopeMetadata for a
-// scope the operator did not name: the inherited rigs a city endpoint change
-// sweeps along. A rig registered with the city but never initialized has no
-// .beads/metadata.json, and that is not a reason to refuse to reconfigure the
-// city — hard-failing there took down every start of a city carrying such a rig,
-// with no recovery path (ga-5k989).
-//
-// Absent means absent, and nothing else. A metadata.json that exists but pins no
-// dolt_database is a misconfigured store rather than an uninitialized one, and
-// still fails: the skip must not become a way to lose a real topology error.
-func canonicalizeScopeMetadataIfPresent(fs fsys.FS, scopeRoot string) error {
-	if _, err := fs.Stat(scopeMetadataPath(scopeRoot)); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
-	return requireCanonicalizedScopeMetadata(fs, scopeRoot)
-}
-
-func scopeMetadataPath(scopeRoot string) string {
-	return filepath.Join(scopeRoot, ".beads", "metadata.json")
 }
 
 func syncRigManagedPortArtifact(cityPath, rigPath string, cityState, rigState contract.ConfigState) error {
@@ -621,11 +584,22 @@ func verifyExternalDoltEndpoint(state contract.ConfigState, databaseScopeRoot, a
 	}
 	password := canonicalValidationPassword(host, port, authScopeRoot)
 
-	// Pooled handle owned by internal/doltpool; do not Close.
-	db, err := doltpool.Open(host, port, user, password, strings.TrimSpace(database))
+	cfg := mysql.NewConfig()
+	cfg.User = user
+	cfg.Passwd = password
+	cfg.Net = "tcp"
+	cfg.Addr = net.JoinHostPort(host, port)
+	cfg.DBName = strings.TrimSpace(database)
+	cfg.Timeout = 5 * time.Second
+	cfg.ReadTimeout = 5 * time.Second
+	cfg.WriteTimeout = 5 * time.Second
+	cfg.AllowNativePasswords = true
+
+	db, err := sql.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		return err
 	}
+	defer db.Close() //nolint:errcheck // best-effort cleanup
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -740,21 +714,8 @@ func syncRigEndpointCompatConfig(fs fsys.FS, cityPath string, cfg *config.City, 
 		if !strings.EqualFold(cfg.Rigs[i].Name, rigName) {
 			continue
 		}
-		// An inherited rig must not carry the deprecated per-rig
-		// dolt_host/dolt_port in city.toml. A stamped target makes the beads
-		// reconciler treat the rig as an explicit override and churn its
-		// .beads/config.yaml back to `explicit` (dropping the inherited
-		// dolt.user) on every city start, and drifts into a hard error if the
-		// city endpoint later changes (validateCanonicalCompatDoltDrift). Clear
-		// it so the rig truly inherits — matching the managed-city path.
-		// Explicit and self targets keep their host/port.
-		if state.EndpointOrigin == contract.EndpointOriginInheritedCity {
-			cfg.Rigs[i].DoltHost = ""
-			cfg.Rigs[i].DoltPort = ""
-		} else {
-			cfg.Rigs[i].DoltHost = strings.TrimSpace(state.DoltHost)
-			cfg.Rigs[i].DoltPort = strings.TrimSpace(state.DoltPort)
-		}
+		cfg.Rigs[i].DoltHost = strings.TrimSpace(state.DoltHost)
+		cfg.Rigs[i].DoltPort = strings.TrimSpace(state.DoltPort)
 		return writeCityConfigForEditFS(fs, filepath.Join(cityPath, "city.toml"), cfg)
 	}
 	return fmt.Errorf("rig %q not found in city config", rigName)

@@ -226,17 +226,9 @@ func expandLoopIteration(step *Step, iteration int, iterVars map[string]string) 
 		// Create unique ID for this iteration
 		iterID := fmt.Sprintf("%s.iter%d.%s", step.ID, iteration, bodyStep.ID)
 
-		// Substitute loop variables in title and description while preserving
-		// only the already-resolved path embedded in an oversized
-		// description_file stub (gastownhall/gascity#4860).
+		// Substitute loop variables in title and description
 		title := substituteLoopVars(bodyStep.Title, iterVars)
-		description := substituteDescriptionPreservingPath(
-			bodyStep.Description,
-			bodyStep.DescriptionFileResolvedPath,
-			func(value string) string {
-				return substituteLoopVars(value, iterVars)
-			},
-		)
+		description := substituteLoopVars(bodyStep.Description, iterVars)
 
 		clone := cloneStep(bodyStep)
 		clone.ID = iterID

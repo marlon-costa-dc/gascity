@@ -28,9 +28,8 @@ type phase2ProviderCase struct {
 	wantProcessNames      []string
 	wantEmitsPermission   bool
 	wantAcceptDialogs     *bool
-	overrideOption        string
-	overrideValue         string
-	wantOverrideArgs      []string
+	wantModelOverride     string
+	wantModelOverrideArgs []string
 }
 
 func TestPhase2StartupMaterialization(t *testing.T) {
@@ -65,8 +64,8 @@ func selectedPhase2ProviderCases(t *testing.T) []phase2ProviderCase {
 			wantReadyPromptPrefix: "❯ ",
 			wantProcessNames:      []string{"node", "claude"},
 			wantEmitsPermission:   true,
-			overrideValue:         "sonnet",
-			wantOverrideArgs:      []string{"--model", "claude-sonnet-5"},
+			wantModelOverride:     "sonnet",
+			wantModelOverrideArgs: []string{"--model", "claude-sonnet-5"},
 		},
 		{
 			profileID:             "codex/tmux-cli",
@@ -76,19 +75,8 @@ func selectedPhase2ProviderCases(t *testing.T) []phase2ProviderCase {
 			wantReadyPromptPrefix: "› ",
 			wantProcessNames:      []string{"codex", "codex-raw"},
 			wantEmitsPermission:   false,
-			overrideValue:         "o3",
-			wantOverrideArgs:      []string{"--model", "o3"},
-		},
-		{
-			profileID:             workertest.ProfileCursorTmuxCLI,
-			family:                "cursor",
-			wantCommand:           "cursor-agent -f --trust",
-			wantReadyDelayMs:      10000,
-			wantReadyPromptPrefix: "→ ",
-			wantProcessNames:      []string{"cursor-agent"},
-			overrideOption:        "mcp_approval",
-			overrideValue:         "approve",
-			wantOverrideArgs:      []string{"--approve-mcps"},
+			wantModelOverride:     "o3",
+			wantModelOverrideArgs: []string{"--model", "o3"},
 		},
 		{
 			profileID:             "gemini/tmux-cli",
@@ -98,8 +86,8 @@ func selectedPhase2ProviderCases(t *testing.T) []phase2ProviderCase {
 			wantReadyPromptPrefix: "> ",
 			wantProcessNames:      []string{"gemini", "node"},
 			wantEmitsPermission:   false,
-			overrideValue:         "gemini-2.5-pro",
-			wantOverrideArgs:      []string{"--model", "gemini-2.5-pro"},
+			wantModelOverride:     "gemini-2.5-pro",
+			wantModelOverrideArgs: []string{"--model", "gemini-2.5-pro"},
 		},
 		{
 			profileID:             "kimi/tmux-cli",
@@ -110,41 +98,30 @@ func selectedPhase2ProviderCases(t *testing.T) []phase2ProviderCase {
 			wantReadyPromptPrefix: "",
 			wantProcessNames:      []string{"kimi", "python"},
 			wantAcceptDialogs:     phase2BoolPtr(false),
-			overrideValue:         "kimi-k2.6",
-			wantOverrideArgs:      []string{"--model", "kimi-k2.6"},
+			wantModelOverride:     "kimi-k2.6",
+			wantModelOverrideArgs: []string{"--model", "kimi-k2.6"},
 		},
 		{
-			profileID:         "opencode/tmux-cli",
-			family:            "opencode",
-			wantCommand:       "opencode",
-			wantPromptMode:    "flag",
-			wantPromptFlag:    "--prompt",
-			wantReadyDelayMs:  8000,
-			wantProcessNames:  []string{"opencode", "node", "bun"},
-			wantAcceptDialogs: phase2BoolPtr(false),
-			overrideValue:     "opencode/deepseek-v4-flash-free",
-			wantOverrideArgs:  []string{"--model", "opencode/deepseek-v4-flash-free"},
+			profileID:             "opencode/tmux-cli",
+			family:                "opencode",
+			wantCommand:           "opencode",
+			wantPromptMode:        "flag",
+			wantPromptFlag:        "--prompt",
+			wantReadyDelayMs:      8000,
+			wantProcessNames:      []string{"opencode", "node", "bun"},
+			wantModelOverride:     "opencode/deepseek-v4-flash-free",
+			wantModelOverrideArgs: []string{"--model", "opencode/deepseek-v4-flash-free"},
 		},
 		{
-			profileID:        "mimocode/tmux-cli",
-			family:           "mimocode",
-			wantCommand:      "mimo --never-ask",
-			wantPromptMode:   "flag",
-			wantPromptFlag:   "--prompt",
-			wantReadyDelayMs: 8000,
-			wantProcessNames: []string{"mimo", ".mimocode", "node", "bun"},
-			overrideValue:    "xiaomi-token-plan-sgp/mimo-v2.5-pro",
-			wantOverrideArgs: []string{"--model", "xiaomi-token-plan-sgp/mimo-v2.5-pro"},
-		},
-		{
-			profileID:             "zcode/tmux-cli",
-			family:                "zcode",
-			wantCommand:           "zcode-repl",
-			wantPromptMode:        "none",
-			wantReadyDelayMs:      3000,
-			wantReadyPromptPrefix: "zcode-repl ready",
-			wantProcessNames:      []string{"bash", "node"},
-			wantAcceptDialogs:     phase2BoolPtr(false),
+			profileID:             "mimocode/tmux-cli",
+			family:                "mimocode",
+			wantCommand:           "mimo --never-ask",
+			wantPromptMode:        "flag",
+			wantPromptFlag:        "--prompt",
+			wantReadyDelayMs:      8000,
+			wantProcessNames:      []string{"mimo", ".mimocode", "node", "bun"},
+			wantModelOverride:     "xiaomi-token-plan-sgp/mimo-v2.5-pro",
+			wantModelOverrideArgs: []string{"--model", "xiaomi-token-plan-sgp/mimo-v2.5-pro"},
 		},
 		{
 			profileID:             "antigravity/tmux-cli",

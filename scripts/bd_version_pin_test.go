@@ -39,8 +39,8 @@ func TestBDVersionPins(t *testing.T) {
 		t.Fatal("deps.env missing BD_CURRENT_VERSION (the bleeding-edge contract-matrix cell)")
 	}
 
-	// The current cell has no release tarball, so it is built from a pinned beads
-	// commit. A non-deterministic ref (branch name, short SHA) would make the cell
+	// The current cell is built from a pinned beads commit independently of the
+	// release archive. A non-deterministic ref (branch name, short SHA) would make the cell
 	// irreproducible; require a full 40-char commit SHA.
 	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(bdCurrentRef) {
 		t.Fatalf("deps.env BD_CURRENT_REF = %q, want a full 40-char gastownhall/beads commit SHA", bdCurrentRef)
@@ -48,23 +48,14 @@ func TestBDVersionPins(t *testing.T) {
 	if !regexp.MustCompile(`^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`).MatchString(bdCurrent) {
 		t.Fatalf("deps.env BD_CURRENT_VERSION = %q, want a semver token", bdCurrent)
 	}
-	// The native Go store, the bleeding-edge contract-matrix cell, and the
-	// source-built agent image must all use the same upstream commit. A drift
-	// here can pair one schema catalog with another version's write behavior.
+	// The CLI and native library must carry the same schema catalog.
 	goMod := readFile(t, root, "go.mod")
-	goModMatch := regexp.MustCompile(`(?m)^\s*github\.com/steveyegge/beads\s+v\S+-([0-9a-f]{12})\s*$`).FindStringSubmatch(goMod)
-	if goModMatch == nil {
-		t.Fatal("go.mod missing a pseudo-version pin for github.com/steveyegge/beads")
+	match := regexp.MustCompile(`(?m)^\s*github\.com/steveyegge/beads\s+(v\S+)\s*$`).FindStringSubmatch(goMod)
+	if match == nil || match[1] != bdCurrent {
+		t.Fatalf("go.mod Beads pin must equal BD_CURRENT_VERSION %q", bdCurrent)
 	}
-	if got, want := goModMatch[1], bdCurrentRef[:12]; got != want {
-		t.Fatalf("go.mod beads pseudo-version commit = %q, want BD_CURRENT_REF prefix %q", got, want)
-	}
-	dockerfile := readFile(t, root, "contrib/k8s/Dockerfile.agent")
-	if !strings.Contains(dockerfile, "ARG BD_SOURCE_REF="+bdCurrentRef) {
-		t.Fatalf("contrib/k8s/Dockerfile.agent BD_SOURCE_REF must equal deps.env BD_CURRENT_REF (%s)", bdCurrentRef)
-	}
-	if !strings.Contains(dockerfile, "ARG BD_BUILD="+bdCurrentRef[:10]) {
-		t.Fatalf("contrib/k8s/Dockerfile.agent BD_BUILD must equal the first 10 characters of BD_CURRENT_REF (%s)", bdCurrentRef[:10])
+	if !strings.Contains(readFile(t, root, "contrib/k8s/Dockerfile.agent"), "ARG BD_SOURCE_REF="+bdCurrentRef) {
+		t.Fatal("agent image Beads source must equal BD_CURRENT_REF")
 	}
 
 	// Anchor roles, kept as distinct contracts so a promotion cannot quietly
@@ -134,29 +125,6 @@ func TestBDVersionPins(t *testing.T) {
 	// assignment in both .yml and .yaml workflows: a file-level presence check
 	// would let a stale pin ride along beside a correct one.
 	assertWorkflowPins(t, root, "BD_VERSION", bdVersion)
-
-	// The devcontainer README restates the installed version in prose, which
-	// makes it an anchor like any other -- and it was the only one no test read,
-	// so it sat at v1.0.4 through the promotion to v1.1.0. A doc anchor nothing
-	// asserts is how the next bump goes half-applied.
-	assertDocPinAnchor(t, root, ".devcontainer/README.md", "BD_VERSION", bdVersion)
-}
-
-// assertDocPinAnchor fails when a doc restates a deps.env pin as
-// "`KEY` from `deps.env` (currently VALUE)" and VALUE has drifted. The phrasing
-// is the contract: prose that names the variable without restating the value is
-// not an anchor and is not matched, so a doc can always opt out by dropping the
-// parenthetical rather than by going stale.
-func assertDocPinAnchor(t *testing.T, root, rel, key, want string) {
-	t.Helper()
-	re := regexp.MustCompile("`" + regexp.QuoteMeta(key) + "` from `deps\\.env` \\(currently ([^)]+)\\)")
-	m := re.FindStringSubmatch(readFile(t, root, rel))
-	if m == nil {
-		t.Fatalf("%s no longer restates %s as \"`%s` from `deps.env` (currently <value>)\"; either restore that phrasing or drop this assertion with the anchor", rel, key, key)
-	}
-	if got := strings.TrimSpace(m[1]); got != want {
-		t.Errorf("%s says %s is currently %q, want %q (deps.env)", rel, key, got, want)
-	}
 }
 
 // TestScanPinAssignments proves the workflow pin scanner catches the partial

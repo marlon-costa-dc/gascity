@@ -74,7 +74,7 @@ func (s *Server) resolveMailSendRecipientWithContext(ctx context.Context, recipi
 	if recipient == "human" {
 		return recipient, nil
 	}
-	store := s.state.SessionsBeadStore().Store
+	store := s.state.CityBeadStore()
 	if store == nil {
 		resolved, err := mail.ResolveRecipient(recipient, agentEntries(s.state.Config()))
 		if err != nil {
@@ -116,7 +116,7 @@ func (s *Server) resolveMailQueryRecipientsWithContext(ctx context.Context, reci
 	if recipient == "human" {
 		return []string{"human"}
 	}
-	store := s.state.SessionsBeadStore().Store
+	store := s.state.CityBeadStore()
 	if store == nil {
 		if resolved, err := mail.ResolveRecipient(recipient, agentEntries(s.state.Config())); err == nil {
 			if resolved == recipient {

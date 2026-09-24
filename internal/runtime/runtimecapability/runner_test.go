@@ -58,12 +58,7 @@ func writeRef(t *testing.T, cfg refConfig) string {
 for tprog in gc git; do printf '#!/bin/sh\necho "%s version (ref)\n"' "$tprog" > "$D/bin/$tprog"; chmod +x "$D/bin/$tprog"; done
 printf '#!/bin/sh\nif [ "$1" = ready ]; then [ -n "$GC_BEADS_API" ] || exit 1; command -v curl >/dev/null 2>&1 && exec curl -fsS -o /dev/null "$GC_BEADS_API/v0/beads/ready"; exec wget -q -O /dev/null "$GC_BEADS_API/v0/beads/ready"; fi\necho "bd version (ref)"\n' > "$D/bin/bd"; chmod +x "$D/bin/bd"`
 	if !cfg.installTooling {
-		// "Not provided" must stay false even when the host has the tools
-		// system-wide (a real /usr/bin/bd install, or graphviz's /usr/bin/gc,
-		// whose `gc version` exits 0): shadow the probe's tools with failing
-		// stubs so the sandbox PATH's base-util dirs cannot leak them in.
-		install = `mkdir -p "$D/bin"
-for tprog in gc bd git; do printf '#!/bin/sh\nexit 127\n' > "$D/bin/$tprog"; chmod +x "$D/bin/$tprog"; done`
+		install = `mkdir -p "$D/bin"` // no gc/bd/git installed
 	}
 	inject := `printf 'export GC_SESSION=%s\n' "$sess" > "$D/env"`
 	if !cfg.injectIdentity {
@@ -84,9 +79,6 @@ for tprog in gc bd git; do printf '#!/bin/sh\nexit 127\n' > "$D/bin/$tprog"; chm
 		copyBack = `:` // transcript egress not wired (mutant)
 	}
 
-	failbin := `mkdir -p "$S/failbin"
-for tprog in gc bd git; do printf '#!/bin/sh\nexit 1\n' > "$S/failbin/$tprog"; chmod +x "$S/failbin/$tprog"; done`
-
 	body := fmt.Sprintf(`#!/bin/sh
 S=%q
 op="$1"; name="$2"
@@ -103,7 +95,6 @@ case "$op" in
     %s
     %s
     %s
-    %s
     ;;
   exec)
     cmd=$(cat)
@@ -112,12 +103,7 @@ case "$op" in
     cd "$D/workdir" || exit 1
     # Controlled PATH so the "session" models an isolated sandbox: only the
     # reference-installed tools ($D/bin) + base utils — host gc/bd do not leak.
-    # $S/failbin sits between $D/bin and /usr/bin holding failing gc/bd/git
-    # stubs: a runtime that installs its toolchain ($D/bin) shadows them, while
-    # one that forgets hits the stubs (not the host's real tools in /usr/bin),
-    # so the tooling probe fails for the right reason even on hosts that ship
-    # gc/bd/git in /usr/bin.
-    PATH="$D/bin:$S/failbin:/usr/bin:/bin" sh -c "$cmd"
+    PATH="$D/bin:/usr/bin:/bin" sh -c "$cmd"
     exit $?
     ;;
   stop)
@@ -127,7 +113,7 @@ case "$op" in
   is-running) [ -d "$D" ] && echo true || echo false ;;
   *) exit 2 ;;
 esac
-`, state, capsJSON, failbin, materialize, install, inject, wire, copyBack)
+`, state, capsJSON, materialize, install, inject, wire, copyBack)
 
 	path := filepath.Join(t.TempDir(), "gc-runtime-ref")
 	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {

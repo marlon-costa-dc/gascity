@@ -24,8 +24,7 @@ func TestCachingStoreConditionalWriterConformance(t *testing.T) {
 			// The MemStore backing populates PreconditionFailedError.Current and
 			// CachingStore forwards its errors untouched, so the wrapped row
 			// asserts Current too.
-			RestrictedUpdateFields: true,
-			SuppliesCurrent:        true,
+			SuppliesCurrent: true,
 			// Disabled is a backing-level toggle: the backing still claims the
 			// interface, returns typed unsupported per call, and CachingStore
 			// forwards that verdict.

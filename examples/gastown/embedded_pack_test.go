@@ -90,11 +90,7 @@ func primeBundledGastownCache(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RepoCachePath(%s): %v", pin.source, err)
 		}
-		repository, known := builtinpacks.RepositoryForSource(pin.source)
-		if !known {
-			t.Fatalf("RepositoryForSource(%s): not a bundled source", pin.source)
-		}
-		if err := builtinpacks.MaterializeSyntheticRepo(cachePath, repository, commit); err != nil {
+		if err := builtinpacks.MaterializeSyntheticRepo(cachePath, commit); err != nil {
 			t.Fatalf("MaterializeSyntheticRepo(%s): %v", pin.source, err)
 		}
 	}

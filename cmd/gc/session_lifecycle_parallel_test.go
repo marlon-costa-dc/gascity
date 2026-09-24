@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,7 +17,6 @@ import (
 	"time"
 
 	"github.com/gastownhall/gascity/internal/agent"
-	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/clock"
 	"github.com/gastownhall/gascity/internal/config"
@@ -214,7 +212,7 @@ func (p *gatedStartProvider) release(name string) {
 func (p *gatedStartProvider) waitForStarts(t *testing.T, n int) []string {
 	t.Helper()
 	var names []string
-	timeout := time.After(hangBudget)
+	timeout := time.After(3 * time.Second)
 	for len(names) < n {
 		select {
 		case name := <-p.startSignals:
@@ -232,30 +230,6 @@ func (p *gatedStartProvider) ensureNoFurtherStart(t *testing.T, wait time.Durati
 	case name := <-p.startSignals:
 		t.Fatalf("unexpected extra start signal: %s", name)
 	case <-time.After(wait):
-	}
-}
-
-// TestGatedStartProviderWaitForStartsSurvivesDelayPastOldFixedDeadline proves
-// waitForStarts watches for hangBudget, not a fixed deadline: a start signal
-// arriving after the old 3s literal (but well inside hangBudget) must still
-// be observed rather than reported as a timeout.
-func TestGatedStartProviderWaitForStartsSurvivesDelayPastOldFixedDeadline(t *testing.T) {
-	t.Parallel()
-
-	const oldFixedDeadline = 3 * time.Second
-	if hangBudget <= oldFixedDeadline {
-		t.Fatalf("hangBudget = %s, want > %s (the fixed deadline this helper replaced)", hangBudget, oldFixedDeadline)
-	}
-
-	p := newGatedStartProvider()
-	go func() {
-		<-time.After(oldFixedDeadline + time.Second)
-		p.startSignals <- "late-start"
-	}()
-
-	got := p.waitForStarts(t, 1)
-	if len(got) != 1 || got[0] != "late-start" {
-		t.Fatalf("waitForStarts = %v, want [late-start]", got)
 	}
 }
 
@@ -401,7 +375,7 @@ func (p *gatedStopProvider) releaseInterrupt(name string) {
 func (p *gatedStopProvider) waitForStops(t *testing.T, n int) []string {
 	t.Helper()
 	var names []string
-	timeout := time.After(hangBudget)
+	timeout := time.After(3 * time.Second)
 	for len(names) < n {
 		select {
 		case name := <-p.stopSignals:
@@ -425,7 +399,7 @@ func (p *gatedStopProvider) ensureNoFurtherStop(t *testing.T) {
 func (p *gatedStopProvider) waitForInterrupts(t *testing.T, n int) []string {
 	t.Helper()
 	var names []string
-	timeout := time.After(hangBudget)
+	timeout := time.After(3 * time.Second)
 	for len(names) < n {
 		select {
 		case name := <-p.interrupts:
@@ -794,79 +768,6 @@ func TestPrepareStartCandidate_UsesSessionIDForTaskWorkDir(t *testing.T) {
 	}
 	if prepared.cfg.WorkDir != workDir {
 		t.Fatalf("prepared.cfg.WorkDir = %q, want %q", prepared.cfg.WorkDir, workDir)
-	}
-}
-
-func TestPrepareStartCandidate_UsesTriggerBeadWorkDirBeforeClaim(t *testing.T) {
-	store := beads.NewMemStore()
-	sourceWorkDir := t.TempDir()
-	launcherWorkDir := t.TempDir()
-	source, err := store.Create(beads.Bead{
-		Title: "implementation source anchor",
-		Type:  "task",
-		Metadata: map[string]string{
-			beadmeta.LegacyWorkDirMetadataKey: sourceWorkDir,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err := store.Create(beads.Bead{
-		Title: "drain item workflow",
-		Type:  "task",
-		Metadata: map[string]string{
-			beadmeta.DrainMemberIDMetadataKey: source.ID,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	trigger, err := store.Create(beads.Bead{
-		Title:  "unclaimed implementation step",
-		Type:   "task",
-		Status: "open",
-		Metadata: map[string]string{
-			beadmeta.RootBeadIDMetadataKey: root.ID,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.Create(beads.Bead{
-		Title:  "worker",
-		Type:   sessionBeadType,
-		Labels: []string{sessionBeadLabel, "agent:frontend/worker-1"},
-		Metadata: map[string]string{
-			"template":                              "worker",
-			"session_name":                          "custom-worker-1",
-			"pool_slot":                             "1",
-			beadmeta.TriggerBeadIDMetadataKey:       trigger.ID,
-			beadmeta.TriggerBeadStoreRefMetadataKey: "rig:frontend",
-			beadmeta.WorkDirMetadataKey:             launcherWorkDir,
-			beadmeta.LegacyWorkDirMetadataKey:       launcherWorkDir,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	prepared, err := prepareStartCandidate(startCandidate{
-		info: sessiontest.SeedBead(t, session),
-		tp: TemplateParams{
-			TemplateName: "frontend/worker",
-			SessionName:  "custom-worker-1",
-			WorkDir:      launcherWorkDir,
-		},
-	}, &config.City{
-		Agents: []config.Agent{
-			{Name: "worker", Dir: "frontend", MinActiveSessions: intPtr(1), MaxActiveSessions: intPtr(2)},
-		},
-	}, store, &clock.Fake{Time: time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)})
-	if err != nil {
-		t.Fatalf("prepareStartCandidate: %v", err)
-	}
-	if prepared.cfg.WorkDir != sourceWorkDir {
-		t.Fatalf("prepared.cfg.WorkDir = %q, want trigger source work dir %q", prepared.cfg.WorkDir, sourceWorkDir)
 	}
 }
 
@@ -7125,11 +7026,13 @@ func TestPrepareStartCandidate_PreservesRuntimeConfigAndProviderEnv(t *testing.T
 		t.Fatalf("continuation_epoch metadata = %q: %v", stored.Metadata["continuation_epoch"], err)
 	}
 
-	expectedInfo := sessiontest.SeedBead(t, stored)
-	expectedInfo.SessionName = tp.SessionName
 	expected := templateParamsToConfig(tp)
 	expected.Env = mergeEnv(expected.Env, sessionpkg.RuntimeEnvWithSessionContext(
-		expectedInfo,
+		stored.ID,
+		tp.SessionName,
+		tp.Alias,
+		stored.Metadata["template"],
+		stored.Metadata["session_origin"],
 		generation,
 		continuationEpoch,
 		stored.Metadata["instance_token"],
@@ -7172,6 +7075,7 @@ func TestPrepareStartCandidateUsesBuiltinAncestorForGCProviderEnv(t *testing.T) 
 		Alias:       "mayor",
 		ResolvedProvider: &config.ResolvedProvider{
 			Name:            "claude-max",
+			Kind:            "claude",
 			BuiltinAncestor: "claude",
 		},
 		TemplateName: "mayor",
@@ -7698,69 +7602,5 @@ func TestStaleResumeKeyProbe(t *testing.T) {
 	}
 	if _, probeable := staleResumeKeyProbe("claude", workDir, ""); probeable {
 		t.Fatal("empty key probeable = true, want false")
-	}
-}
-
-// TestPrepareStartCandidateForCity_ClearsStaleNamedTriggerEnv is the
-// launch-layer assertion for gascity#4373. resolvePreservedConfiguredNamedSessionTemplate
-// clearing the stamp is not enough on its own: buildPreparedStartWithWorkDirResolver
-// re-derives GC_TRIGGER_BEAD_ID from candidate.info via sessionTriggerBeadEnv,
-// so unless refreshConfiguredNamedStartCandidate folds the resolver's Info back
-// onto the candidate, the seat starting on the clearing tick still launches
-// aimed at the parked bead. Asserting on the resolved TemplateParams cannot
-// catch that; only prepared.cfg.Env can.
-func TestPrepareStartCandidateForCity_ClearsStaleNamedTriggerEnv(t *testing.T) {
-	store := beads.NewMemStore()
-	cfg := &config.City{
-		Workspace:     config.Workspace{Name: "test-city"},
-		Agents:        []config.Agent{{Name: "worker", StartCommand: "true", MaxActiveSessions: intPtr(2)}},
-		NamedSessions: []config.NamedSession{{Template: "worker", Mode: "on_demand"}},
-	}
-	// The production shape of a parked target: real stores fold bd's raw
-	// `blocked` into "open" and report the park via the IsBlocked projection.
-	blocked := true
-	work, err := store.Create(beads.Bead{Title: "parked work", Status: "open", IsBlocked: &blocked})
-	if err != nil {
-		t.Fatalf("create work bead: %v", err)
-	}
-	sessionName := config.NamedSessionRuntimeName(cfg.Workspace.Name, cfg.Workspace, "worker")
-	session, err := store.Create(beads.Bead{
-		Title:  "worker",
-		Type:   sessionBeadType,
-		Status: "open",
-		Labels: []string{sessionBeadLabel},
-		Metadata: map[string]string{
-			"template":                        "worker",
-			"session_name":                    sessionName,
-			namedSessionMetadataKey:           "true",
-			namedSessionIdentityMetadata:      "worker",
-			namedSessionModeMetadata:          "on_demand",
-			beadmeta.TriggerBeadIDMetadataKey: work.ID,
-		},
-	})
-	if err != nil {
-		t.Fatalf("create session bead: %v", err)
-	}
-
-	prepared, err := prepareStartCandidateForCity(startCandidate{
-		info:  sessiontest.SeedBead(t, session),
-		tp:    TemplateParams{TemplateName: "worker", SessionName: sessionName},
-		order: 0,
-	}, ".", cfg.Workspace.Name, cfg, nil, store, &clock.Fake{Time: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)}, io.Discard, nil)
-	if err != nil {
-		t.Fatalf("prepareStartCandidateForCity: %v", err)
-	}
-	if got := prepared.cfg.Env["GC_TRIGGER_BEAD_ID"]; got != "" {
-		t.Errorf("launched GC_TRIGGER_BEAD_ID = %q, want cleared for a parked target", got)
-	}
-	if got := prepared.cfg.Env["GC_TRIGGER_WORK_BEAD_ID"]; got != "" {
-		t.Errorf("launched GC_TRIGGER_WORK_BEAD_ID = %q, want cleared for a parked target", got)
-	}
-	after, err := store.Get(session.ID)
-	if err != nil {
-		t.Fatalf("Get session bead after prepare: %v", err)
-	}
-	if v := after.Metadata[beadmeta.TriggerBeadIDMetadataKey]; v != "" {
-		t.Errorf("durable trigger stamp = %q, want cleared", v)
 	}
 }

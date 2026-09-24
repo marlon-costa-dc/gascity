@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gastownhall/gascity/internal/execenv"
+	"github.com/gastownhall/gascity/internal/testutil"
 )
 
 func TestProductMetricsDirectChildEnvSessionSubmitPoller(t *testing.T) {
@@ -16,10 +17,7 @@ func TestProductMetricsDirectChildEnvSessionSubmitPoller(t *testing.T) {
 	snapshot := filepath.Join(dir, "child.env")
 	spy := filepath.Join(dir, "gc-child-spy")
 	script := "#!/bin/sh\n" +
-		"snapshot=\"$GC_TEST_PRODUCT_METRICS_CHILD_ENV_SPY\"\n" +
-		"tmp=\"${snapshot}.tmp.$$\"\n" +
-		"printf '%s\\n' \"$GC_DISABLE_USAGE_METRICS\" \"$BD_DISABLE_METRICS\" \"$OTEL_SERVICE_NAME\" > \"$tmp\"\n" +
-		"mv -f \"$tmp\" \"$snapshot\"\n"
+		"printf '%s\\n' \"$GC_DISABLE_USAGE_METRICS\" \"$BD_DISABLE_METRICS\" \"$OTEL_SERVICE_NAME\" > \"$GC_TEST_PRODUCT_METRICS_CHILD_ENV_SPY\"\n"
 	if err := os.WriteFile(spy, []byte(script), 0o700); err != nil {
 		t.Fatalf("write child spy: %v", err)
 	}
@@ -35,7 +33,7 @@ func TestProductMetricsDirectChildEnvSessionSubmitPoller(t *testing.T) {
 	if err := ensureSessionSubmitPoller(dir, "worker", "session-worker"); err != nil {
 		t.Fatalf("ensureSessionSubmitPoller: %v", err)
 	}
-	deadline := time.Now().Add(execHangBudget)
+	deadline := time.Now().Add(testutil.ExecRaceTimeout)
 	var data []byte
 	for {
 		var err error
@@ -47,7 +45,7 @@ func TestProductMetricsDirectChildEnvSessionSubmitPoller(t *testing.T) {
 			t.Fatalf("read child environment snapshot: %v", err)
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("child environment snapshot was not written within %s", execHangBudget)
+			t.Fatalf("child environment snapshot was not written within %s", testutil.ExecRaceTimeout)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

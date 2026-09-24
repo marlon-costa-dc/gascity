@@ -1,12 +1,12 @@
 package resourcecensus
 
 import (
-	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,15 +14,7 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
-
-	"github.com/gastownhall/gascity/internal/testpolicy/waiverclock"
 )
-
-// updateLedgerDoc regenerates the TESTING.md checked resource ledger block
-// from test/test-resources.toml when set. Run:
-//
-//	go test ./internal/testpolicy/resourcecensus -run TestRepositoryLedgerMatchesCensusAndDocumentation -update
-var updateLedgerDoc = flag.Bool("update", false, "regenerate the TESTING.md checked resource ledger block from test/test-resources.toml")
 
 func TestScanUsesImportIdentityAndParsedBuildConstraints(t *testing.T) {
 	t.Parallel()
@@ -105,103 +97,6 @@ func TestLocalNamesAreNotStdlibCalls() {
 	assertCount(t, got, ScopeUntagged, ResourceSubprocess, 2, 1)
 	assertCount(t, got, ScopeAll, ResourceFixedSleep, 3, 3)
 	assertCount(t, got, ScopeUntagged, ResourceFixedSleep, 1, 1)
-}
-
-func TestScanCountsTmuxDependenciesByImportIdentityAndLiteralCommand(t *testing.T) {
-	t.Parallel()
-
-	files := fstest.MapFS{
-		"sample/resources_test.go": &fstest.MapFile{Data: []byte(`package sample
-import (
-	"context"
-	foreign "example.test/tmuxtest"
-	runtimetmux "github.com/gastownhall/gascity/internal/runtime/tmux"
-	tmuxtest "github.com/gastownhall/gascity/test/tmuxtest"
-	shell "os/exec"
-	"testing"
-)
-
-type localTmuxTest struct{}
-func (localTmuxTest) NewGuard(any) {}
-func (localTmuxTest) RequireTmux(any) {}
-
-func TestTmuxResources(t *testing.T) {
-	_ = tmuxtest.NewGuard(t)
-	_ = tmuxtest.NewGuardWithSocket(t, "isolated")
-	tmuxtest.RequireTmux(t)
-	tmuxtest.KillAllTestSessions(t)
-	_ = tmuxtest.ConfigureProcessEnv(t.TempDir())
-	_ = ((shell.Command))(("tmux"), "-V")
-	_ = shell.CommandContext(context.Background(), "tmux", "-V")
-	_, _ = shell.LookPath("tmux")
-	_ = runtimetmux.NewProvider()
-	_ = runtimetmux.NewProviderWithConfig(runtimetmux.DefaultConfig())
-	_ = runtimetmux.NewSeamBackedWithConfig(runtimetmux.DefaultConfig())
-	_ = runtimetmux.NewTmux()
-	_ = runtimetmux.NewTmuxWithConfig(runtimetmux.DefaultConfig())
-
-	// Shared-host socket-parent and PID helpers are a separate resource tail.
-	_, _, _ = tmuxtest.NewSocketParentDir("", nil)
-	_, _ = tmuxtest.HoldAliveSentinel("")
-	_ = tmuxtest.PIDPrefixedTempPattern("")
-	tmuxtest.SweepOrphanPIDPrefixedDirs("", "", nil)
-
-	local := localTmuxTest{}
-	local.NewGuard(t)
-	local.RequireTmux(t)
-	_ = foreign.NewGuard(t)
-	_ = shell.Command("printf", "tmux")
-	_ = shell.CommandContext(context.Background(), "printf", "tmux")
-	command := "tmux"
-	_ = shell.Command(command, "-V")
-	_ = "tmuxtest.NewGuard(t); exec.Command(\"tmux\")"
-	// tmuxtest.NewGuard(t)
-}
-
-func helper(t *testing.T) {
-	tmuxtest.RequireTmux(t)
-}
-`)},
-		"sample/tagged_test.go": &fstest.MapFile{Data: []byte(`//go:build integration
-
-package sample
-import (
-	tmuxtest "github.com/gastownhall/gascity/test/tmuxtest"
-	"testing"
-)
-func TestTaggedTmux(t *testing.T) {
-	_ = tmuxtest.NewGuard(t)
-}
-`)},
-	}
-
-	got, err := ScanFS(files)
-	if err != nil {
-		t.Fatalf("ScanFS: %v", err)
-	}
-	assertCount(t, got, ScopeAll, ResourceTmux, 15, 2)
-	assertCount(t, got, ScopeUntagged, ResourceTmux, 14, 1)
-	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceTmux, "TestTmuxResources", true, false)
-	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceTmux, "helper", false, false)
-	assertOccurrenceOwner(t, got, "sample/tagged_test.go", ResourceTmux, "TestTaggedTmux", true, true)
-}
-
-func TestScanRejectsTmuxResourceDotImports(t *testing.T) {
-	t.Parallel()
-
-	for _, importPath := range []string{
-		"github.com/gastownhall/gascity/internal/runtime/tmux",
-		"github.com/gastownhall/gascity/test/tmuxtest",
-	} {
-		importPath := importPath
-		t.Run(importPath, func(t *testing.T) {
-			t.Parallel()
-			_, err := ScanFS(fstest.MapFS{
-				"sample/resources_test.go": &fstest.MapFile{Data: []byte("package sample\nimport . \"" + importPath + "\"\nfunc TestTmux() {}\n")},
-			})
-			requireErrorContains(t, err, `targeted dot import "`+importPath+`" cannot be counted safely`)
-		})
-	}
 }
 
 func TestScanCountsHTTPTestServerConstructorsByImportIdentity(t *testing.T) {
@@ -295,14 +190,13 @@ func TestNetListen(t *testing.T) {
 	t.Run("nested", func(t *testing.T) {
 		_, _ = (((sockets)).Listen)("unix", "socket")
 	})
-	_, _ = sockets.ListenTCP("tcp", nil)
-	_, _ = sockets.ListenUnix("unix", nil)
 
 	local := localNet{}
 	_, _ = local.Listen("tcp", "local shadow")
 	_, _ = foreign.Listen("tcp", "foreign package")
 	lc := sockets.ListenConfig{}
 	_, _ = lc.Listen(t.Context(), "tcp", "listen config method")
+	_, _ = sockets.ListenTCP("tcp", nil)
 	_ = "sockets.Listen(\"tcp\", \"string literal\")"
 	// sockets.Listen("tcp", "comment")
 }
@@ -338,14 +232,14 @@ func TestSiblingShadow() {
 	if err != nil {
 		t.Fatalf("ScanFS: %v", err)
 	}
-	assertCount(t, got, ScopeAll, ResourceNetListen, 6, 2)
-	assertCount(t, got, ScopeUntagged, ResourceNetListen, 5, 1)
+	assertCount(t, got, ScopeAll, ResourceNetListen, 4, 2)
+	assertCount(t, got, ScopeUntagged, ResourceNetListen, 3, 1)
 	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceNetListen, "TestNetListen", true, false)
 	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceNetListen, "helper", false, false)
 	assertOccurrenceOwner(t, got, "sample/tagged_test.go", ResourceNetListen, "TestTaggedNetListen", true, true)
 }
 
-func TestScanCountsNetListenPacketByImportIdentityAndRunnableOwnership(t *testing.T) {
+func TestScanCountsNetListenUnixgramByImportIdentityAndRunnableOwnership(t *testing.T) {
 	t.Parallel()
 
 	files := fstest.MapFS{
@@ -357,29 +251,23 @@ import (
 )
 
 type localNet struct{}
-func (localNet) ListenPacket(string, string) (any, error) { return nil, nil }
-func (localNet) ListenUDP(string, *sockets.UDPAddr) (any, error) { return nil, nil }
 func (localNet) ListenUnixgram(string, *sockets.UnixAddr) (any, error) { return nil, nil }
 
-func TestNetListenPacket(t *testing.T) {
-	_, _ = ((sockets.ListenPacket))("udp", "127.0.0.1:0")
-	_, _ = sockets.ListenUDP("udp", nil)
-	_, _ = sockets.ListenIP("ip", nil)
+func TestNetListenUnixgram(t *testing.T) {
+	_, _ = ((sockets.ListenUnixgram))("unixgram", nil)
 	t.Run("nested", func(t *testing.T) {
 		_, _ = (((sockets)).ListenUnixgram)("unixgram", nil)
 	})
-	_, _ = sockets.ListenMulticastUDP("udp", nil, nil)
 
 	local := localNet{}
-	_, _ = local.ListenPacket("udp", "local shadow")
-	_, _ = local.ListenUDP("udp", nil)
 	_, _ = local.ListenUnixgram("unixgram", nil)
-	_, _ = foreign.ListenPacket("udp", "foreign package")
+	_, _ = foreign.ListenUnixgram("unixgram", nil)
 	lc := sockets.ListenConfig{}
-	_, _ = lc.ListenPacket(t.Context(), "udp", "listen config method")
+	_, _ = lc.Listen(t.Context(), "unixgram", "listen config method")
 	_, _ = sockets.ListenUnix("unixgram", nil)
-	_ = "sockets.ListenPacket(\"udp\", \"string literal\")"
-	// sockets.ListenUDP("udp", nil)
+	_, _ = sockets.ListenUDP("udp", nil)
+	_ = "sockets.ListenUnixgram(\"unixgram\", nil)"
+	// sockets.ListenUnixgram("unixgram", nil)
 }
 
 func helper() {
@@ -393,8 +281,8 @@ import (
 	sockets "net"
 	"testing"
 )
-func TestTaggedNetListenPacket(t *testing.T) {
-	_, _ = sockets.ListenUDP("udp", nil)
+func TestTaggedNetListenUnixgram(t *testing.T) {
+	_, _ = sockets.ListenUnixgram("unixgram", nil)
 }
 `)},
 		"shadow/shadow.go": &fstest.MapFile{Data: []byte(`package shadow
@@ -413,11 +301,11 @@ func TestSiblingShadow() {
 	if err != nil {
 		t.Fatalf("ScanFS: %v", err)
 	}
-	assertCount(t, got, ScopeAll, ResourceNetListenPacket, 7, 2)
-	assertCount(t, got, ScopeUntagged, ResourceNetListenPacket, 6, 1)
-	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceNetListenPacket, "TestNetListenPacket", true, false)
-	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceNetListenPacket, "helper", false, false)
-	assertOccurrenceOwner(t, got, "sample/tagged_test.go", ResourceNetListenPacket, "TestTaggedNetListenPacket", true, true)
+	assertCount(t, got, ScopeAll, ResourceNetListenUnixgram, 4, 2)
+	assertCount(t, got, ScopeUntagged, ResourceNetListenUnixgram, 3, 1)
+	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceNetListenUnixgram, "TestNetListenUnixgram", true, false)
+	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceNetListenUnixgram, "helper", false, false)
+	assertOccurrenceOwner(t, got, "sample/tagged_test.go", ResourceNetListenUnixgram, "TestTaggedNetListenUnixgram", true, true)
 }
 
 func TestScanCountsSyscallListenByImportIdentityAndRunnableOwnership(t *testing.T) {
@@ -500,7 +388,6 @@ import (
 
 type localListenConfig struct{}
 func (localListenConfig) Listen(any, string, string) (any, error) { return nil, nil }
-func (localListenConfig) ListenPacket(any, string, string) (any, error) { return nil, nil }
 func newListenConfig() sockets.ListenConfig { return sockets.ListenConfig{} }
 func newListenConfigPointer() *sockets.ListenConfig { return &sockets.ListenConfig{} }
 type listenConfigAlias = sockets.ListenConfig
@@ -529,15 +416,9 @@ func TestNetListenConfig(t *testing.T) {
 
 	local := localListenConfig{}
 	_, _ = local.Listen(nil, "tcp", "local shadow")
-	_, _ = local.ListenPacket(nil, "udp", "local shadow")
 	foreignConfig := foreign.ListenConfig{}
 	_, _ = foreignConfig.Listen(nil, "tcp", "foreign package")
-	_, _ = foreignConfig.ListenPacket(nil, "udp", "foreign package")
 	_, _ = value.ListenPacket(nil, "udp", "127.0.0.1:0")
-	_, _ = newListenConfigPointer().ListenPacket(nil, "udp", "127.0.0.1:0")
-	_, _ = new(sockets.ListenConfig).ListenPacket(nil, "udp", "127.0.0.1:0")
-	_, _ = holder.Config.ListenPacket(nil, "udp", "127.0.0.1:0")
-	_, _ = configs[0].ListenPacket(nil, "udp", "127.0.0.1:0")
 	_, _ = sockets.Listen("tcp", "127.0.0.1:0")
 	_ = "value.Listen(nil, \"tcp\", \"string literal\")"
 	// value.Listen(nil, "tcp", "comment")
@@ -556,7 +437,7 @@ import (
 )
 func TestTaggedNetListenConfig(t *testing.T) {
 	config := sockets.ListenConfig{}
-	_, _ = config.ListenPacket(nil, "udp", "127.0.0.1:0")
+	_, _ = config.Listen(nil, "tcp", "127.0.0.1:0")
 }
 `)},
 		"shadow/shadow.go": &fstest.MapFile{Data: []byte(`package shadow
@@ -575,216 +456,11 @@ func TestSiblingShadow() {
 	if err != nil {
 		t.Fatalf("ScanFS: %v", err)
 	}
-	assertCount(t, got, ScopeAll, ResourceNetListenConfig, 19, 2)
-	assertCount(t, got, ScopeUntagged, ResourceNetListenConfig, 18, 1)
+	assertCount(t, got, ScopeAll, ResourceNetListenConfig, 14, 2)
+	assertCount(t, got, ScopeUntagged, ResourceNetListenConfig, 13, 1)
 	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceNetListenConfig, "TestNetListenConfig", true, false)
 	assertOccurrenceOwner(t, got, "sample/resources_test.go", ResourceNetListenConfig, "helper", false, false)
 	assertOccurrenceOwner(t, got, "sample/tagged_test.go", ResourceNetListenConfig, "TestTaggedNetListenConfig", true, true)
-}
-
-func TestScanCountsListenerHelpersByExactPackageAndImportIdentity(t *testing.T) {
-	t.Parallel()
-	listenerHelper := ResourceListenerHelper
-
-	t.Run("cataloged helpers retain lexical ownership", func(t *testing.T) {
-		t.Parallel()
-		files := fstest.MapFS{
-			"cmd/gc/helpers.go": &fstest.MapFile{Data: []byte(`package main
-func runSupervisor() {}
-func startControllerSocket() {}
-func runController() {}
-func registryBrowserLogin() {}
-func managedDoltPortAvailableForHost() {}
-func startNudgeWakeListener() {}
-func uncatalogedListenerHelper() {}
-`)},
-			"cmd/gc/resources_test.go": &fstest.MapFile{Data: []byte(`package main
-import (
-	capability "github.com/gastownhall/gascity/internal/runtime/runtimecapability"
-	acceptance "github.com/gastownhall/gascity/test/acceptance/helpers"
-	foreigncap "example.test/internal/runtime/runtimecapability"
-	foreignacceptance "example.test/acceptance/helpers"
-	"testing"
-)
-func TestListenerHelpers(t *testing.T) {
-	((runSupervisor))()
-	startControllerSocket()
-	runController()
-	registryBrowserLogin()
-	managedDoltPortAvailableForHost()
-	startNudgeWakeListener()
-	((capability.Run))()
-	((acceptance.WriteSupervisorConfig))()
-	foreigncap.Run()
-	foreignacceptance.WriteSupervisorConfig()
-	uncatalogedListenerHelper()
-	_ = "runSupervisor()"
-	// startControllerSocket()
-	{
-		runSupervisor := func() {}
-		runSupervisor()
-	}
-}
-func listenerHelper() { runController() }
-`)},
-			"cmd/gc/tagged_test.go": &fstest.MapFile{Data: []byte(`//go:build integration
-
-package main
-import "testing"
-func TestTaggedListenerHelper(t *testing.T) { registryBrowserLogin() }
-`)},
-			"cmd/gc/wrong_package_test.go": &fstest.MapFile{Data: []byte(`package main_test
-import "testing"
-func runSupervisor() {}
-func TestWrongPackage(t *testing.T) { runSupervisor() }
-`)},
-			"test/dashport/harness.go": &fstest.MapFile{Data: []byte(`//go:build integration
-
-package dashport_test
-func newHarness() {}
-`)},
-			"test/dashport/projection_test.go": &fstest.MapFile{Data: []byte(`//go:build integration
-
-package dashport_test
-import "testing"
-func TestDashportHarness(t *testing.T) { ((newHarness))() }
-`)},
-		}
-
-		got, err := ScanFS(files)
-		if err != nil {
-			t.Fatalf("ScanFS: %v", err)
-		}
-		assertCount(t, got, ScopeAll, listenerHelper, 11, 3)
-		assertCount(t, got, ScopeUntagged, listenerHelper, 9, 1)
-		assertOccurrenceOwner(t, got, "cmd/gc/resources_test.go", listenerHelper, "TestListenerHelpers", true, false)
-		assertOccurrenceOwner(t, got, "cmd/gc/resources_test.go", listenerHelper, "listenerHelper", false, false)
-		assertOccurrenceOwner(t, got, "cmd/gc/tagged_test.go", listenerHelper, "TestTaggedListenerHelper", true, true)
-		assertOccurrenceOwner(t, got, "test/dashport/projection_test.go", listenerHelper, "TestDashportHarness", true, true)
-	})
-
-	t.Run("default imported helper uses its declared package name", func(t *testing.T) {
-		t.Parallel()
-		got, err := ScanFS(fstest.MapFS{
-			"sample/resources_test.go": &fstest.MapFile{Data: []byte(`package sample
-import "github.com/gastownhall/gascity/test/acceptance/helpers"
-func TestDefaultImport() { acceptancehelpers.WriteSupervisorConfig() }
-`)},
-		})
-		if err != nil {
-			t.Fatalf("ScanFS: %v", err)
-		}
-		assertCount(t, got, ScopeAll, listenerHelper, 1, 1)
-		assertCount(t, got, ScopeUntagged, listenerHelper, 1, 1)
-	})
-
-	t.Run("same-package exported helpers reject lexical shadows", func(t *testing.T) {
-		t.Parallel()
-		got, err := ScanFS(fstest.MapFS{
-			"internal/runtime/runtimecapability/runner.go": &fstest.MapFile{Data: []byte(`package runtimecapability
-func Run() {}
-`)},
-			"internal/runtime/runtimecapability/runner_test.go": &fstest.MapFile{Data: []byte(`package runtimecapability
-import "testing"
-func TestRuntimeCapability(t *testing.T) {
-	((Run))()
-	{
-		Run := func() {}
-		Run()
-	}
-}
-`)},
-			"test/acceptance/helpers/env.go": &fstest.MapFile{Data: []byte(`package acceptancehelpers
-func WriteSupervisorConfig() {}
-`)},
-			"test/acceptance/helpers/env_test.go": &fstest.MapFile{Data: []byte(`package acceptancehelpers
-import "testing"
-func TestSupervisorConfig(t *testing.T) {
-	((WriteSupervisorConfig))()
-	{
-		WriteSupervisorConfig := func() {}
-		WriteSupervisorConfig()
-	}
-}
-`)},
-		})
-		if err != nil {
-			t.Fatalf("ScanFS: %v", err)
-		}
-		assertCount(t, got, ScopeAll, listenerHelper, 2, 2)
-		assertCount(t, got, ScopeUntagged, listenerHelper, 2, 2)
-		assertOccurrenceOwner(t, got, "internal/runtime/runtimecapability/runner_test.go", listenerHelper, "TestRuntimeCapability", true, false)
-		assertOccurrenceOwner(t, got, "test/acceptance/helpers/env_test.go", listenerHelper, "TestSupervisorConfig", true, false)
-	})
-
-	t.Run("same package name in a different directory is not the helper package", func(t *testing.T) {
-		t.Parallel()
-		got, err := ScanFS(fstest.MapFS{
-			"other/helpers.go": &fstest.MapFile{Data: []byte(`package main
-func runSupervisor() {}
-`)},
-			"other/helpers_test.go": &fstest.MapFile{Data: []byte(`package main
-import "testing"
-func TestWrongDirectory(t *testing.T) { runSupervisor() }
-`)},
-		})
-		if err != nil {
-			t.Fatalf("ScanFS: %v", err)
-		}
-		assertCount(t, got, ScopeAll, listenerHelper, 0, 0)
-		assertCount(t, got, ScopeUntagged, listenerHelper, 0, 0)
-	})
-
-	t.Run("cross-file package function value is not a helper declaration", func(t *testing.T) {
-		t.Parallel()
-		got, err := ScanFS(fstest.MapFS{
-			"cmd/gc/helpers.go": &fstest.MapFile{Data: []byte(`package main
-var runSupervisor = func() {}
-`)},
-			"cmd/gc/helpers_test.go": &fstest.MapFile{Data: []byte(`package main
-import "testing"
-func TestFunctionValue(t *testing.T) { runSupervisor() }
-`)},
-		})
-		if err != nil {
-			t.Fatalf("ScanFS: %v", err)
-		}
-		assertCount(t, got, ScopeAll, listenerHelper, 0, 0)
-		assertCount(t, got, ScopeUntagged, listenerHelper, 0, 0)
-	})
-
-	t.Run("same-package method is not a helper declaration", func(t *testing.T) {
-		t.Parallel()
-		got, err := ScanFS(fstest.MapFS{
-			"cmd/gc/method.go": &fstest.MapFile{Data: []byte(`package main
-type helperReceiver struct{}
-func (helperReceiver) runSupervisor() {}
-`)},
-			"cmd/gc/method_test.go": &fstest.MapFile{Data: []byte(`package main
-func TestMethod() { helperReceiver{}.runSupervisor() }
-`)},
-		})
-		if err != nil {
-			t.Fatalf("ScanFS: %v", err)
-		}
-		assertCount(t, got, ScopeAll, listenerHelper, 0, 0)
-		assertCount(t, got, ScopeUntagged, listenerHelper, 0, 0)
-	})
-
-	t.Run("same-package helper requires a package declaration", func(t *testing.T) {
-		t.Parallel()
-		got, err := ScanFS(fstest.MapFS{
-			"cmd/gc/missing_test.go": &fstest.MapFile{Data: []byte(`package main
-import "testing"
-func TestMissingListenerHelper(t *testing.T) { runSupervisor() }
-`)},
-		})
-		if err != nil {
-			t.Fatalf("ScanFS: %v", err)
-		}
-		assertCount(t, got, ScopeAll, listenerHelper, 0, 0)
-		assertCount(t, got, ScopeUntagged, listenerHelper, 0, 0)
-	})
 }
 
 func TestResolveBindingsRetainsOnlyNetListenReceiverTypes(t *testing.T) {
@@ -859,20 +535,20 @@ func (localTesting) Chdir(string) {}
 func skipSlowCmdGCTest(t *testpkg.T, reason string) {}
 
 func TestResources(t *testpkg.T) {
-	((t)).Setenv("KEY", "does not count")
-	t.Chdir("does-not-count")
+	((t)).Setenv("KEY", "value")
+	t.Chdir("testing-dir")
 	((operating).Setenv)("DIRECT", "value")
 	operating.Unsetenv("DIRECT")
 	operating.Clearenv()
 	operating.Chdir("elsewhere")
 	((skipSlowCmdGCTest))(t, "process-backed")
 	func(inner *testpkg.T) {
-		inner.Setenv("INNER", "does not count")
-		inner.Chdir("does-not-count")
+		inner.Setenv("INNER", "value")
+		inner.Chdir("inner-dir")
 	}(t)
 	func(tb testpkg.TB) {
-		tb.Setenv("TB", "does not count")
-		tb.Chdir("does-not-count")
+		tb.Setenv("TB", "value")
+		tb.Chdir("tb-dir")
 	}(t)
 	func(value testpkg.T) {
 		value.Setenv("VALUE", "does not count")
@@ -909,45 +585,18 @@ func TestResources(t *testpkg.T) {
 		t.Fatalf("ScanFS: %v", err)
 	}
 
-	assertCount(t, got, ScopeAll, ResourceEnvironment, 9, 3)
-	assertCount(t, got, ScopeUntagged, ResourceEnvironment, 6, 2)
-	assertCount(t, got, ScopeCmdGCUntagged, ResourceEnvironment, 3, 1)
-	assertCount(t, got, ScopeAll, ResourceCWD, 3, 3)
-	assertCount(t, got, ScopeUntagged, ResourceCWD, 2, 2)
-	assertCount(t, got, ScopeCmdGCUntagged, ResourceCWD, 1, 1)
+	assertCount(t, got, ScopeAll, ResourceEnvironment, 18, 3)
+	assertCount(t, got, ScopeUntagged, ResourceEnvironment, 12, 2)
+	assertCount(t, got, ScopeCmdGCUntagged, ResourceEnvironment, 6, 1)
+	assertCount(t, got, ScopeAll, ResourceCWD, 12, 3)
+	assertCount(t, got, ScopeUntagged, ResourceCWD, 8, 2)
+	assertCount(t, got, ScopeCmdGCUntagged, ResourceCWD, 4, 1)
 	assertCount(t, got, ScopeAll, ResourceSlowProcessGate, 5, 3)
 	assertCount(t, got, ScopeUntagged, ResourceSlowProcessGate, 4, 2)
 	assertCount(t, got, ScopeCmdGCUntagged, ResourceSlowProcessGate, 2, 1)
 }
 
-func TestScanExcludesTestingReceiverSetenvChdirFromEnvironmentAndCWD(t *testing.T) {
-	t.Parallel()
-
-	source := `package sample
-
-import (
-	operating "os"
-	testpkg "testing"
-)
-
-func exercise(t *testpkg.T) {
-	t.Setenv("KEY", "value")
-	operating.Setenv("KEY", "value")
-	t.Chdir("work")
-	operating.Chdir("work")
-}
-`
-	got, err := ScanFS(fstest.MapFS{
-		"sample/resources_test.go": &fstest.MapFile{Data: []byte(source)},
-	})
-	if err != nil {
-		t.Fatalf("ScanFS: %v", err)
-	}
-	assertCount(t, got, ScopeUntagged, ResourceEnvironment, 1, 1)
-	assertCount(t, got, ScopeUntagged, ResourceCWD, 1, 1)
-}
-
-func TestTestingParameterObjectsRecognizesOnlyExactTypes(t *testing.T) {
+func TestScanRecognizesOnlyExactTestingParameterTypes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -970,19 +619,14 @@ func exercise(t %s) {
 	t.Chdir("work")
 }
 `, tt.parameter)
-			fileSet := token.NewFileSet()
-			file, err := parser.ParseFile(fileSet, "sample/resources_test.go", source, parser.SkipObjectResolution)
+			got, err := ScanFS(fstest.MapFS{
+				"sample/resources_test.go": &fstest.MapFile{Data: []byte(source)},
+			})
 			if err != nil {
-				t.Fatalf("ParseFile: %v", err)
+				t.Fatalf("ScanFS: %v", err)
 			}
-			bindings := resolveBindings(fileSet, file, newEmptyPackageImporter(), "resourcecensus.local/test")
-			objects, err := testingParameterObjects(file, bindings)
-			if err != nil {
-				t.Fatalf("testingParameterObjects: %v", err)
-			}
-			if got := len(objects); got != tt.want {
-				t.Fatalf("recognized testing parameters = %d, want %d", got, tt.want)
-			}
+			assertCount(t, got, ScopeUntagged, ResourceEnvironment, tt.want, tt.want)
+			assertCount(t, got, ScopeUntagged, ResourceCWD, tt.want, tt.want)
 		})
 	}
 }
@@ -1340,21 +984,6 @@ func TestResource() {
 	requireErrorContains(t, err, `resource candidate qualifier "missing" has no lexical binding`)
 }
 
-func TestCheckTestingReceiverBindingFailsClosedForUnboundReceiver(t *testing.T) {
-	t.Parallel()
-
-	for _, method := range []string{"Setenv", "Chdir"} {
-		t.Run(method, func(t *testing.T) {
-			t.Parallel()
-
-			receiver := ast.NewIdent("missing")
-			call := &ast.CallExpr{Fun: &ast.SelectorExpr{X: receiver, Sel: ast.NewIdent(method)}}
-			err := checkTestingReceiverBinding(call, bindingInfo{}, method)
-			requireErrorContains(t, err, `testing resource receiver "missing" has no lexical binding`)
-		})
-	}
-}
-
 func TestImportedCallFailsClosedWhenPackageBindingIsUnusable(t *testing.T) {
 	t.Parallel()
 
@@ -1498,24 +1127,6 @@ func TestResource() { _, _ = Listen("tcp", "127.0.0.1:0") }
 			source: `package sample
 import . "net/http/httptest"
 func TestResource() { _ = NewServer(nil) }
-`,
-		},
-		{
-			name:       "runtime capability helper",
-			path:       "sample/dot_runtimecapability_test.go",
-			importPath: "github.com/gastownhall/gascity/internal/runtime/runtimecapability",
-			source: `package sample
-import . "github.com/gastownhall/gascity/internal/runtime/runtimecapability"
-func TestResource() { Run() }
-`,
-		},
-		{
-			name:       "acceptance listener helper",
-			path:       "sample/dot_acceptance_helpers_test.go",
-			importPath: "github.com/gastownhall/gascity/test/acceptance/helpers",
-			source: `package sample
-import . "github.com/gastownhall/gascity/test/acceptance/helpers"
-func TestResource() { WriteSupervisorConfig() }
 `,
 		},
 		{
@@ -1760,7 +1371,7 @@ func TestValidateAcceptsExactSourceRatchets(t *testing.T) {
 	policy := validLedger(census)
 	ledger := cloneLedger(policy)
 
-	if _, err := validateAgainstPolicy(policy, ledger, census, fixedNow(), waiverclock.ModeStrict); err != nil {
+	if err := validateAgainstPolicy(policy, ledger, census, fixedNow()); err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
 }
@@ -1779,7 +1390,7 @@ func TestValidateRejectsDebtGrowthAndStaleHighBaselines(t *testing.T) {
 		row.BaselineCalls = 1
 		row.BaselineFiles = 1
 		ledger := cloneLedger(policy)
-		_, err := validateAgainstPolicy(policy, ledger, census, fixedNow(), waiverclock.ModeStrict)
+		err := validateAgainstPolicy(policy, ledger, census, fixedNow())
 		requireErrorContains(t, err,
 			"source resource census grew: scope=untagged resource=subprocess calls=2 (baseline 1), files=2 (baseline 1)")
 	})
@@ -1790,7 +1401,7 @@ func TestValidateRejectsDebtGrowthAndStaleHighBaselines(t *testing.T) {
 		row.BaselineCalls = 3
 		row.BaselineFiles = 3
 		ledger := cloneLedger(policy)
-		_, err := validateAgainstPolicy(policy, ledger, census, fixedNow(), waiverclock.ModeStrict)
+		err := validateAgainstPolicy(policy, ledger, census, fixedNow())
 		requireErrorContains(t, err,
 			"source resource census baseline is stale: scope=untagged resource=subprocess calls=2 (baseline 3), files=2 (baseline 3); lower the checked baseline to bank the improvement")
 	})
@@ -1809,7 +1420,7 @@ func TestValidateAllowsHistoricalNeedleToDifferFromASTCensus(t *testing.T) {
 	row.ReportedFiles = 1
 	ledger := cloneLedger(policy)
 
-	if _, err := validateAgainstPolicy(policy, ledger, census, fixedNow(), waiverclock.ModeStrict); err != nil {
+	if err := validateAgainstPolicy(policy, ledger, census, fixedNow()); err != nil {
 		t.Fatalf("Validate rejected historical source needle: %v", err)
 	}
 }
@@ -1827,7 +1438,7 @@ func TestValidateAllowsNarrowerHistoricalCmdGCNeedle(t *testing.T) {
 	row.ReportedFiles = 1
 	ledger := cloneLedger(policy)
 
-	if _, err := validateAgainstPolicy(policy, ledger, census, fixedNow(), waiverclock.ModeStrict); err != nil {
+	if err := validateAgainstPolicy(policy, ledger, census, fixedNow()); err != nil {
 		t.Fatalf("Validate rejected narrower historical cmd/gc source needle: %v", err)
 	}
 }
@@ -1845,7 +1456,7 @@ func TestValidateRejectsCoordinatedCmdGCCensusAndManifestGrowth(t *testing.T) {
 		Resource: ResourceEnvironment,
 	}}}
 
-	_, err := validateAgainstPolicy(policy, ledger, census, fixedNow(), waiverclock.ModeStrict)
+	err := validateAgainstPolicy(policy, ledger, census, fixedNow())
 	requireErrorContains(t, err, "baseline_calls = 1, bootstrap policy requires 0")
 	if strings.Contains(err.Error(), "source resource census") {
 		t.Fatalf("live census was compared before cmd/gc policy drift was rejected: %v", err)
@@ -1933,7 +1544,7 @@ func TestValidateRejectsBootstrapPolicyDriftBeforeLiveCensus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ledger := cloneLedger(policy)
 			tt.mutate(&ledger)
-			_, err := validateAgainstPolicy(policy, ledger, grownCensus, fixedNow(), waiverclock.ModeStrict)
+			err := validateAgainstPolicy(policy, ledger, grownCensus, fixedNow())
 			requireErrorContains(t, err, tt.want)
 			if strings.Contains(err.Error(), "source resource census") {
 				t.Fatalf("live census was compared before bootstrap policy drift was rejected: %v", err)
@@ -1947,7 +1558,7 @@ func TestValidateUsesCodeOwnedBootstrapPolicy(t *testing.T) {
 
 	ledger := cloneLedger(bootstrapPolicy)
 	ledger.Debt[0].OwnerBead = "ga-rewritten"
-	_, err := Validate(ledger, Census{}, fixedNow(), waiverclock.ModeStrict)
+	err := Validate(ledger, Census{}, fixedNow())
 	requireErrorContains(t, err, `owner_bead = "ga-rewritten", bootstrap policy requires "ga-80po0c.2"`)
 	if strings.Contains(err.Error(), "source resource census") {
 		t.Fatalf("live census was compared before code-owned policy drift was rejected: %v", err)
@@ -1965,63 +1576,17 @@ func TestBootstrapPolicyOwnsHTTPTestServerDebt(t *testing.T) {
 	}
 }
 
-func TestBootstrapPolicyOwnsListenerHelperDebt(t *testing.T) {
+func TestBootstrapPolicyOwnsNetListenDebt(t *testing.T) {
 	t.Parallel()
-
-	audit := findRow(t, bootstrapPolicy.AuditBaseline, ScopeAll, ResourceListenerHelper)
-	if audit.BaselineCalls != 58 || audit.BaselineFiles != 23 || audit.ReportedCalls != 58 || audit.ReportedFiles != 23 {
-		t.Fatalf("all-source listener-helper baseline/reported = %d/%d, %d/%d; want 58/23, 58/23", audit.BaselineCalls, audit.BaselineFiles, audit.ReportedCalls, audit.ReportedFiles)
-	}
-	if audit.OwnerBead != "ga-80po0c.2.2.3" || audit.MigrationTarget != "P0.4c-listener-helper" {
-		t.Fatalf("all-source listener-helper owner = %q/%q, want ga-80po0c.2.2.3/P0.4c-listener-helper", audit.OwnerBead, audit.MigrationTarget)
-	}
 
 	for _, rows := range [][]Baseline{bootstrapPolicy.Debt, bootstrapPolicy.SmallDebt} {
-		row := findRow(t, rows, ScopeUntagged, ResourceListenerHelper)
-		if row.BaselineCalls != 38 || row.BaselineFiles != 13 || row.ReportedCalls != 38 || row.ReportedFiles != 13 {
-			t.Fatalf("listener-helper baseline/reported = %d/%d, %d/%d; want 38/13, 38/13", row.BaselineCalls, row.BaselineFiles, row.ReportedCalls, row.ReportedFiles)
+		row := findRow(t, rows, ScopeUntagged, ResourceNetListen)
+		if row.BaselineCalls != 92 || row.BaselineFiles != 34 {
+			t.Fatalf("net.Listen baseline = %d/%d, want 92/34", row.BaselineCalls, row.BaselineFiles)
 		}
-		if row.OwnerBead != "ga-80po0c.2.2.3" || row.MigrationTarget != "P0.4c-listener-helper" {
-			t.Fatalf("listener-helper owner = %q/%q, want ga-80po0c.2.2.3/P0.4c-listener-helper", row.OwnerBead, row.MigrationTarget)
+		if row.OwnerBead != "ga-80po0c.2.2" || row.MigrationTarget != "P0.4c" {
+			t.Fatalf("net.Listen owner = %q/%q, want ga-80po0c.2.2/P0.4c", row.OwnerBead, row.MigrationTarget)
 		}
-	}
-}
-
-func TestBootstrapPolicyOwnsNetListenDebtAndExactMediumOwners(t *testing.T) {
-	t.Parallel()
-
-	debt := findRow(t, bootstrapPolicy.Debt, ScopeUntagged, ResourceNetListen)
-	if debt.BaselineCalls != 96 || debt.BaselineFiles != 37 || debt.ReportedCalls != 92 || debt.ReportedFiles != 34 {
-		t.Fatalf("stream-listener source baseline/reported = %d/%d, %d/%d; want 96/37, 92/34", debt.BaselineCalls, debt.BaselineFiles, debt.ReportedCalls, debt.ReportedFiles)
-	}
-	smallDebt := findRow(t, bootstrapPolicy.SmallDebt, ScopeUntagged, ResourceNetListen)
-	if smallDebt.BaselineCalls != 94 || smallDebt.BaselineFiles != 36 {
-		t.Fatalf("stream-listener Small baseline = %d/%d, want 94/36", smallDebt.BaselineCalls, smallDebt.BaselineFiles)
-	}
-	for _, row := range []*Baseline{debt, smallDebt} {
-		if row.OwnerBead != "ga-80po0c.2.2.2" || row.MigrationTarget != "P0.4c-listener" {
-			t.Fatalf("stream-listener owner = %q/%q, want ga-80po0c.2.2.2/P0.4c-listener", row.OwnerBead, row.MigrationTarget)
-		}
-	}
-
-	wantOwners := map[string]bool{
-		"TestServerAliveDetectsLiveServer":  true,
-		"TestServerAliveRejectsStaleSocket": true,
-	}
-	for _, row := range bootstrapPolicy.Medium {
-		if row.PackageDir != "internal/runtime/herdr" || row.PackageName != "herdr" || !wantOwners[row.Owner] {
-			continue
-		}
-		if len(row.Resources) != 1 || row.Resources[0] != ResourceNetListen {
-			t.Fatalf("herdr Medium owner %s resources = %v, want net_listen", row.Owner, row.Resources)
-		}
-		if row.OwnerBead != "ga-80po0c.2.2.2" || row.MigrationTarget != "P0.4c-listener" {
-			t.Fatalf("herdr Medium owner %s policy = %q/%q, want ga-80po0c.2.2.2/P0.4c-listener", row.Owner, row.OwnerBead, row.MigrationTarget)
-		}
-		delete(wantOwners, row.Owner)
-	}
-	if len(wantOwners) != 0 {
-		t.Fatalf("missing exact herdr stream-listener Medium owners: %v", wantOwners)
 	}
 }
 
@@ -2031,24 +1596,24 @@ func TestBootstrapPolicyOwnsNetListenConfigDebt(t *testing.T) {
 	for _, rows := range [][]Baseline{bootstrapPolicy.Debt, bootstrapPolicy.SmallDebt} {
 		row := findRow(t, rows, ScopeUntagged, ResourceNetListenConfig)
 		if row.BaselineCalls != 1 || row.BaselineFiles != 1 {
-			t.Fatalf("net.ListenConfig listener baseline = %d/%d, want 1/1", row.BaselineCalls, row.BaselineFiles)
+			t.Fatalf("net.ListenConfig.Listen baseline = %d/%d, want 1/1", row.BaselineCalls, row.BaselineFiles)
 		}
-		if row.OwnerBead != "ga-80po0c.2.2.2" || row.MigrationTarget != "P0.4c-listener" {
-			t.Fatalf("net.ListenConfig listener owner = %q/%q, want ga-80po0c.2.2.2/P0.4c-listener", row.OwnerBead, row.MigrationTarget)
+		if row.OwnerBead != "ga-80po0c.2.2" || row.MigrationTarget != "P0.4c" {
+			t.Fatalf("net.ListenConfig.Listen owner = %q/%q, want ga-80po0c.2.2/P0.4c", row.OwnerBead, row.MigrationTarget)
 		}
 	}
 }
 
-func TestBootstrapPolicyOwnsNetListenPacketDebt(t *testing.T) {
+func TestBootstrapPolicyOwnsNetListenUnixgramDebt(t *testing.T) {
 	t.Parallel()
 
 	for _, rows := range [][]Baseline{bootstrapPolicy.Debt, bootstrapPolicy.SmallDebt} {
-		row := findRow(t, rows, ScopeUntagged, ResourceNetListenPacket)
+		row := findRow(t, rows, ScopeUntagged, ResourceNetListenUnixgram)
 		if row.BaselineCalls != 3 || row.BaselineFiles != 2 {
-			t.Fatalf("packet-listener baseline = %d/%d, want 3/2", row.BaselineCalls, row.BaselineFiles)
+			t.Fatalf("net.ListenUnixgram baseline = %d/%d, want 3/2", row.BaselineCalls, row.BaselineFiles)
 		}
-		if row.OwnerBead != "ga-80po0c.2.2.2" || row.MigrationTarget != "P0.4c-listener" {
-			t.Fatalf("packet-listener owner = %q/%q, want ga-80po0c.2.2.2/P0.4c-listener", row.OwnerBead, row.MigrationTarget)
+		if row.OwnerBead != "ga-80po0c.2.2" || row.MigrationTarget != "P0.4c" {
+			t.Fatalf("net.ListenUnixgram owner = %q/%q, want ga-80po0c.2.2/P0.4c", row.OwnerBead, row.MigrationTarget)
 		}
 	}
 }
@@ -2064,48 +1629,6 @@ func TestBootstrapPolicyOwnsSyscallListenDebt(t *testing.T) {
 		if row.OwnerBead != "ga-80po0c.2.2" || row.MigrationTarget != "P0.4c" {
 			t.Fatalf("syscall.Listen owner = %q/%q, want ga-80po0c.2.2/P0.4c", row.OwnerBead, row.MigrationTarget)
 		}
-	}
-}
-
-func TestBootstrapPolicyOwnsTmuxDebtAndExactMediumSetup(t *testing.T) {
-	t.Parallel()
-
-	debt := findRow(t, bootstrapPolicy.Debt, ScopeUntagged, ResourceTmux)
-	if debt.BaselineCalls != 7 || debt.BaselineFiles != 3 {
-		t.Fatalf("tmux source baseline = %d/%d, want 7/3", debt.BaselineCalls, debt.BaselineFiles)
-	}
-	smallDebt := findRow(t, bootstrapPolicy.SmallDebt, ScopeUntagged, ResourceTmux)
-	if smallDebt.BaselineCalls != 1 || smallDebt.BaselineFiles != 1 {
-		t.Fatalf("tmux Small baseline = %d/%d, want 1/1", smallDebt.BaselineCalls, smallDebt.BaselineFiles)
-	}
-	for _, row := range []*Baseline{debt, smallDebt} {
-		if row.OwnerBead != "ga-80po0c.2.2.1" || row.MigrationTarget != "P0.4c-tmux" {
-			t.Fatalf("tmux owner = %q/%q, want ga-80po0c.2.2.1/P0.4c-tmux", row.OwnerBead, row.MigrationTarget)
-		}
-	}
-
-	wantOwners := map[string]map[Resource]bool{
-		"cmd/gc|main|TestMain":                {ResourceEnvironment: true, ResourceTmux: true},
-		"internal/runtime/tmux|tmux|TestMain": {ResourceEnvironment: true, ResourceTmux: true},
-	}
-	for _, row := range bootstrapPolicy.Medium {
-		key := row.PackageDir + "|" + row.PackageName + "|" + row.Owner
-		want, ok := wantOwners[key]
-		if !ok {
-			continue
-		}
-		if len(row.Resources) != len(want) {
-			t.Fatalf("medium owner %s resources = %v, want environment and tmux", key, row.Resources)
-		}
-		for _, resource := range row.Resources {
-			if !want[resource] {
-				t.Fatalf("medium owner %s unexpected resource %q in %v", key, resource, row.Resources)
-			}
-		}
-		delete(wantOwners, key)
-	}
-	if len(wantOwners) != 0 {
-		t.Fatalf("missing exact tmux Medium owners: %v", wantOwners)
 	}
 }
 
@@ -2182,7 +1705,7 @@ func TestValidateRequiresTheExactBootstrapRowSet(t *testing.T) {
 			mutate: func(ledger *Ledger) {
 				ledger.Debt[0].Expires = "2026-07-12"
 			},
-			want: `debt baseline scope=untagged resource=subprocess: waiver owned by P0.4 expired 2026-07-12`,
+			want: `debt baseline scope=untagged resource=subprocess: expired 2026-07-12`,
 		},
 		{
 			name: "unknown resource",
@@ -2205,7 +1728,7 @@ func TestValidateRequiresTheExactBootstrapRowSet(t *testing.T) {
 			policy := validLedger(Census{})
 			ledger := cloneLedger(policy)
 			tt.mutate(&ledger)
-			_, err := validateAgainstPolicy(policy, ledger, Census{}, fixedNow(), waiverclock.ModeStrict)
+			err := validateAgainstPolicy(policy, ledger, Census{}, fixedNow())
 			requireErrorContains(t, err, tt.want)
 		})
 	}
@@ -2286,75 +1809,6 @@ func TestCheckedMarkdownBlockRequiresOneOrderedMarkerPair(t *testing.T) {
 	}
 }
 
-func TestReplaceMarkdownBlockRoundTrips(t *testing.T) {
-	t.Parallel()
-
-	document := "# Title\n\nintro text\n\n" + markdownBegin + "\nstale content\n" + markdownEnd + "\n\ntrailing text\n"
-	replacement := markdownBegin + "\nfresh content\n" + markdownEnd
-
-	updated, err := ReplaceMarkdownBlock(document, replacement)
-	if err != nil {
-		t.Fatalf("ReplaceMarkdownBlock: %v", err)
-	}
-	want := "# Title\n\nintro text\n\n" + replacement + "\n\ntrailing text\n"
-	if updated != want {
-		t.Fatalf("ReplaceMarkdownBlock mismatch\n--- got ---\n%s\n--- want ---\n%s", updated, want)
-	}
-
-	block, err := CheckedMarkdownBlock(updated)
-	if err != nil {
-		t.Fatalf("CheckedMarkdownBlock(updated): %v", err)
-	}
-	if block != replacement {
-		t.Fatalf("round-trip mismatch\n--- got ---\n%s\n--- want ---\n%s", block, replacement)
-	}
-}
-
-func TestGeneratedLedgerBlockRoundTrips(t *testing.T) {
-	t.Parallel()
-
-	ledger := Ledger{
-		Version: 2,
-		AuditBaseline: []Baseline{
-			validAudit(ScopeAll, ResourceFixedSleep, 4, 2),
-		},
-		Debt: []Baseline{
-			validDebt(ScopeUntagged, ResourceSubprocess, 3, 2),
-		},
-	}
-	generated := RenderMarkdown(ledger)
-	document := "# TESTING\n\nsome preamble\n\n" + markdownBegin + "\nold, stale table\n" + markdownEnd + "\n\nmore docs below\n"
-
-	updated, err := ReplaceMarkdownBlock(document, generated)
-	if err != nil {
-		t.Fatalf("ReplaceMarkdownBlock: %v", err)
-	}
-	block, err := CheckedMarkdownBlock(updated)
-	if err != nil {
-		t.Fatalf("CheckedMarkdownBlock(updated): %v", err)
-	}
-	if block != generated {
-		t.Fatalf("generated ledger block did not round-trip\n--- got ---\n%s\n--- want ---\n%s", block, generated)
-	}
-	if !strings.HasPrefix(updated, "# TESTING\n\nsome preamble\n\n") || !strings.HasSuffix(updated, "\n\nmore docs below\n") {
-		t.Fatalf("ReplaceMarkdownBlock altered content outside the marker pair:\n%s", updated)
-	}
-}
-
-func TestReplaceMarkdownBlockRequiresOneOrderedMarkerPair(t *testing.T) {
-	t.Parallel()
-
-	for _, document := range []string{
-		"no markers",
-		markdownEnd + "\n" + markdownBegin,
-		markdownBegin + "\n" + markdownEnd + "\n" + markdownBegin,
-	} {
-		if _, err := ReplaceMarkdownBlock(document, markdownBegin+markdownEnd); err == nil {
-			t.Fatalf("ReplaceMarkdownBlock(%q) unexpectedly succeeded", document)
-		}
-	}
-}
-
 func TestRepositoryLedgerMatchesCensusAndDocumentation(t *testing.T) {
 	root := repositoryRoot(t)
 	ledger, err := LoadLedger(filepath.Join(root, "test", "test-resources.toml"))
@@ -2365,47 +1819,20 @@ func TestRepositoryLedgerMatchesCensusAndDocumentation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ScanRepository: %v", err)
 	}
-	// The one call in this package that reads the wall clock, and so the one a
-	// calendar rollover can turn red with no code change. The mode decides who
-	// pays for that: everyone, or the row's owner.
-	mode, err := waiverclock.FromEnv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	warnings, err := Validate(ledger, census, time.Now().UTC(), mode)
-	for _, warning := range warnings {
-		t.Logf("waiver clock: %s", warning)
-	}
-	if err != nil {
+	if err := Validate(ledger, census, time.Now().UTC()); err != nil {
 		t.Fatalf("resource ledger drift:\n%v", err)
 	}
 
-	testingMDPath := filepath.Join(root, "TESTING.md")
-	doc, err := os.ReadFile(testingMDPath)
+	doc, err := fs.ReadFile(os.DirFS(root), "TESTING.md")
 	if err != nil {
 		t.Fatalf("read TESTING.md: %v", err)
 	}
-	want := RenderMarkdown(ledger)
-
-	if *updateLedgerDoc {
-		updated, err := ReplaceMarkdownBlock(string(doc), want)
-		if err != nil {
-			t.Fatalf("replace TESTING.md ledger block: %v", err)
-		}
-		if updated != string(doc) {
-			if err := os.WriteFile(testingMDPath, []byte(updated), 0o644); err != nil {
-				t.Fatalf("write TESTING.md: %v", err)
-			}
-			doc = []byte(updated)
-		}
-	}
-
 	got, err := CheckedMarkdownBlock(string(doc))
 	if err != nil {
-		t.Fatalf("checked TESTING.md block: %v\n--- wanted block ---\n%s", err, want)
+		t.Fatalf("checked TESTING.md block: %v\n--- wanted block ---\n%s", err, RenderMarkdown(ledger))
 	}
-	if got != want {
-		t.Fatalf("TESTING.md resource ledger block is stale; run `go test ./internal/testpolicy/resourcecensus -run TestRepositoryLedgerMatchesCensusAndDocumentation -update` to regenerate it, then review the diff\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	if want := RenderMarkdown(ledger); got != want {
+		t.Fatalf("TESTING.md resource ledger block is stale\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
 

@@ -856,10 +856,6 @@ func (s *Server) streamSessionPeekStructured(ctx context.Context, w http.Respons
 ) {
 	poll := time.NewTicker(outputStreamPollInterval)
 	defer poll.Stop()
-	pollC := poll.C
-	if s.structuredPeekPoll != nil {
-		pollC = s.structuredPeekPoll
-	}
 	keepalive := time.NewTicker(sseKeepalive)
 	defer keepalive.Stop()
 	workerOps := s.watchSessionWorkerOperationSignals(ctx, info)
@@ -939,7 +935,7 @@ func (s *Server) streamSessionPeekStructured(ctx context.Context, w http.Respons
 		select {
 		case <-ctx.Done():
 			return
-		case <-pollC:
+		case <-poll.C:
 			if promoteToHistory() {
 				return
 			}
@@ -1578,10 +1574,6 @@ func (s *Server) streamSessionPeekStructuredHuma(ctx context.Context, send Strin
 	send = cancelOnStringIDSendError(send, cancel)
 	poll := time.NewTicker(outputStreamPollInterval)
 	defer poll.Stop()
-	pollC := poll.C
-	if s.structuredPeekPoll != nil {
-		pollC = s.structuredPeekPoll
-	}
 	keepalive := time.NewTicker(sseKeepalive)
 	defer keepalive.Stop()
 	workerOps := s.watchSessionWorkerOperationSignals(ctx, info)
@@ -1661,7 +1653,7 @@ func (s *Server) streamSessionPeekStructuredHuma(ctx context.Context, send Strin
 		select {
 		case <-ctx.Done():
 			return
-		case <-pollC:
+		case <-poll.C:
 			if promoteToHistory() {
 				return
 			}

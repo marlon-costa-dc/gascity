@@ -47,12 +47,10 @@ func poolSessionIsLiveInfo(i sessionpkg.Info) bool {
 }
 
 // isPoolSessionSlotFreeable reports whether a session's bead is in a terminal
-// state where the pool slot it occupies can be freed: explicitly drained, or
-// asleep with sleep_reason one of idle, idle-timeout, city-stop,
-// failed-create, runtime-missing, provider-terminal-error, or
-// max-session-age. Sessions parked via `gc session wait` (sleep_reason=wait-hold),
-// held by context-churn quarantine, or otherwise signaling "don't touch me"
-// keep their slot.
+// state where the pool slot it occupies can be freed — either explicitly
+// drained, or asleep from a normal idle transition. Sessions parked via
+// `gc session wait` (sleep_reason=wait-hold), held by context-churn
+// quarantine, or otherwise signaling "don't touch me" keep their slot.
 //
 // Distinct from `isDrainedSessionBead` because drain-ack can land pool
 // workers in state=asleep+sleep_reason=idle when the pre-close ownership
@@ -80,8 +78,7 @@ func isPoolSessionSlotFreeable(session beads.Bead) bool {
 	switch reason {
 	case string(sessionpkg.SleepReasonIdle), string(sessionpkg.SleepReasonIdleTimeout),
 		string(sessionpkg.SleepReasonCityStop), string(sessionpkg.SleepReasonFailedCreate),
-		string(sessionpkg.SleepReasonRuntimeMissing), string(sessionpkg.SleepReasonProviderTerminalError),
-		string(sessionpkg.SleepReasonMaxSessionAge):
+		string(sessionpkg.SleepReasonRuntimeMissing), string(sessionpkg.SleepReasonProviderTerminalError):
 		return true
 	}
 	return false
@@ -99,8 +96,7 @@ func isPoolSessionSlotFreeableInfo(i sessionpkg.Info) bool {
 	switch reason {
 	case string(sessionpkg.SleepReasonIdle), string(sessionpkg.SleepReasonIdleTimeout),
 		string(sessionpkg.SleepReasonCityStop), string(sessionpkg.SleepReasonFailedCreate),
-		string(sessionpkg.SleepReasonRuntimeMissing), string(sessionpkg.SleepReasonProviderTerminalError),
-		string(sessionpkg.SleepReasonMaxSessionAge):
+		string(sessionpkg.SleepReasonRuntimeMissing), string(sessionpkg.SleepReasonProviderTerminalError):
 		return true
 	}
 	return false

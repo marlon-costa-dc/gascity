@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -19,7 +18,6 @@ import (
 	"github.com/gastownhall/gascity/internal/beads/contract"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doltauth"
-	"github.com/gastownhall/gascity/internal/doltpool"
 	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/sling"
 )
@@ -39,18 +37,6 @@ var (
 	workflowSQLIssueTables = workflowSQLTableSet{beads: "issues", labels: "labels", deps: "dependencies"}
 	workflowSQLWispTables  = workflowSQLTableSet{beads: "wisps", labels: "wisp_labels", deps: "wisp_dependencies"}
 )
-
-// workflowSQLQueryTimeout bounds each workflow SQL query so a stuck Dolt
-// server fails the fast path in ~5s and the caller drops to the bd-subprocess
-// slow path, rather than inheriting the doltpool DSN's longer ReadTimeout
-// (~30s). The bound matters more now that these reads share a pooled *sql.DB
-// capped at 5 open connections: an unbounded query no longer stalls only its
-// own caller, it holds one of the few shared connections and starves every
-// other Dolt reader in the process. The workflow snapshot call path
-// (buildWorkflowSnapshot → tryFullWorkflowSQL) does not thread a request
-// context, so each query derives its own bounded context from
-// context.Background().
-const workflowSQLQueryTimeout = 5 * time.Second
 
 func workflowSQLCandidatesForWorkflowID(
 	state State,
@@ -77,12 +63,14 @@ func workflowSQLCandidatesForWorkflowID(
 // a pre-fetched dep map. Connects to the dolt server on the given port
 // using the given database name.
 func workflowSQLSnapshot(user, password, host string, port int, database, rootID string) ([]beads.Bead, map[string]beads.Bead, map[string][]beads.Dep, error) {
-	// Pooled handle owned by internal/doltpool; do not Close. Per-snapshot
-	// Open+Close here churned one TCP connection per dashboard refresh.
-	db, err := openWorkflowSQLDB(user, password, host, port, database)
+	dsn := buildDoltDSN(user, password, host, port, database)
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, fmt.Errorf("sql open: %w", err)
 	}
+	defer db.Close() //nolint:errcheck // best-effort cleanup
+	db.SetMaxOpenConns(1)
+	db.SetConnMaxLifetime(30 * time.Second)
 
 	tableSets, err := workflowSQLAvailableTableSets(db)
 	if err != nil {
@@ -102,37 +90,18 @@ func workflowSQLSnapshot(user, password, host string, port int, database, rootID
 		return nil, nil, nil, err
 	}
 
-	// Propagate: tryFullWorkflowSQL returns a nil error only on full
-	// success, and beads stripped of their labels are not that. A missing
-	// labels table is already tolerated inside the hydrate (it skips a
-	// table set that does not exist), so everything reaching here is a
-	// genuine Dolt failure — and the 5s query bound over a 5-connection
-	// shared pool makes a timeout newly reachable. Surfacing it lets
-	// buildWorkflowSnapshot log the cause and rebuild on the bd-subprocess
-	// slow path instead of serving a silently unlabeled graph.
 	if err := workflowSQLHydrateWorkflowLabels(db, tableSets, rootID, workflowBeads, beadIndex); err != nil {
-		return nil, nil, nil, fmt.Errorf("hydrate workflow labels: %w", err)
+		return workflowBeads, beadIndex, depMap, nil
 	}
 
 	return workflowBeads, beadIndex, depMap, nil
 }
 
-// workflowSQLQueryWorkflowBeads is beads.MembershipDirectRootID expressed as a
-// WHERE clause: the root row, plus every row whose gc.root_bead_id metadata
-// equals the root id. It runs over every available table set, issues and wisps
-// alike, which is what makes it tier-complete like beads.DirectMembers.
-//
-// It must stay equivalent to beads.DirectMembers — this is the fast path for
-// the same question snapshotFromStore's fallback answers, and a divergence
-// would make the dashboard's step list depend on whether the Dolt server
-// happened to be reachable. One such divergence exists today and is recorded
-// on snapshotFromStore: the fallback is tier-scoped and this path is not.
 func workflowSQLQueryWorkflowBeads(db *sql.DB, tableSets []workflowSQLTableSet, rootID string) ([]beads.Bead, map[string]beads.Bead, error) {
 	workflowBeads := make([]beads.Bead, 0, 100)
 	beadIndex := make(map[string]beads.Bead)
 	for _, tables := range tableSets {
-		ctx, cancel := context.WithTimeout(context.Background(), workflowSQLQueryTimeout)
-		rows, err := db.QueryContext(ctx, `
+		rows, err := db.Query(`
 			SELECT
 				i.id, i.title, i.status, i.issue_type, i.assignee,
 				i.description, i.created_at, i.updated_at,
@@ -143,14 +112,12 @@ func workflowSQLQueryWorkflowBeads(db *sql.DB, tableSets []workflowSQLTableSet, 
 			ORDER BY i.created_at
 		`, rootID, rootID)
 		if err != nil {
-			cancel()
 			return nil, nil, fmt.Errorf("beads query %s: %w", tables.beads, err)
 		}
 		for rows.Next() {
 			bead, ok, err := workflowSQLScanBead(rows.Scan)
 			if err != nil {
 				_ = rows.Close()
-				cancel()
 				return nil, nil, fmt.Errorf("bead scan %s: %w", tables.beads, err)
 			}
 			if !ok {
@@ -164,14 +131,11 @@ func workflowSQLQueryWorkflowBeads(db *sql.DB, tableSets []workflowSQLTableSet, 
 		}
 		if err := rows.Err(); err != nil {
 			_ = rows.Close()
-			cancel()
 			return nil, nil, fmt.Errorf("bead rows %s: %w", tables.beads, err)
 		}
 		if err := rows.Close(); err != nil {
-			cancel()
 			return nil, nil, fmt.Errorf("bead rows close %s: %w", tables.beads, err)
 		}
-		cancel()
 	}
 	sort.SliceStable(workflowBeads, func(i, j int) bool {
 		return workflowBeads[i].CreatedAt.Before(workflowBeads[j].CreatedAt)
@@ -198,22 +162,19 @@ func workflowSQLQueryWorkflowDeps(db *sql.DB, tableSets []workflowSQLTableSet, r
 		args := make([]any, 0, len(subqueryArgs)*2)
 		args = append(args, subqueryArgs...)
 		args = append(args, subqueryArgs...)
-		ctx, cancel := context.WithTimeout(context.Background(), workflowSQLQueryTimeout)
-		rows, err := db.QueryContext(ctx, `
+		rows, err := db.Query(`
 			SELECT d.issue_id, `+dependsOnExpr+`, COALESCE(NULLIF(d.type, ''), 'blocks')
 			FROM `+tables.deps+` d
 			WHERE d.issue_id IN (`+subquery+`)
 			  AND `+dependsOnExpr+` IN (`+subquery+`)
 		`, args...)
 		if err != nil {
-			cancel()
 			return nil, fmt.Errorf("deps query %s: %w", tables.deps, err)
 		}
 		for rows.Next() {
 			var issueID, dependsOnID, depType sql.NullString
 			if err := rows.Scan(&issueID, &dependsOnID, &depType); err != nil {
 				_ = rows.Close()
-				cancel()
 				return nil, fmt.Errorf("dep scan %s: %w", tables.deps, err)
 			}
 			dep := workflowSQLDepFromRow(issueID, dependsOnID, depType)
@@ -221,14 +182,11 @@ func workflowSQLQueryWorkflowDeps(db *sql.DB, tableSets []workflowSQLTableSet, r
 		}
 		if err := rows.Err(); err != nil {
 			_ = rows.Close()
-			cancel()
 			return nil, fmt.Errorf("dep rows %s: %w", tables.deps, err)
 		}
 		if err := rows.Close(); err != nil {
-			cancel()
 			return nil, fmt.Errorf("dep rows close %s: %w", tables.deps, err)
 		}
-		cancel()
 	}
 	return depMap, nil
 }
@@ -245,14 +203,12 @@ func workflowSQLHydrateWorkflowLabels(db *sql.DB, tableSets []workflowSQLTableSe
 		if !exists {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), workflowSQLQueryTimeout)
-		rows, err := db.QueryContext(ctx, `
+		rows, err := db.Query(`
 			SELECT l.issue_id, l.label
 			FROM `+tables.labels+` l
 			WHERE l.issue_id IN (`+subquery+`)
 		`, subqueryArgs...)
 		if err != nil {
-			cancel()
 			return fmt.Errorf("labels query %s: %w", tables.labels, err)
 		}
 		for rows.Next() {
@@ -264,14 +220,11 @@ func workflowSQLHydrateWorkflowLabels(db *sql.DB, tableSets []workflowSQLTableSe
 		}
 		if err := rows.Err(); err != nil {
 			_ = rows.Close()
-			cancel()
 			return fmt.Errorf("label rows %s: %w", tables.labels, err)
 		}
 		if err := rows.Close(); err != nil {
-			cancel()
 			return fmt.Errorf("label rows close %s: %w", tables.labels, err)
 		}
-		cancel()
 	}
 	for i := range workflowBeads {
 		if labels, ok := labelMap[workflowBeads[i].ID]; ok {
@@ -305,10 +258,8 @@ func workflowSQLAvailableTableSets(db *sql.DB) ([]workflowSQLTableSet, error) {
 }
 
 func workflowSQLTableExists(db *sql.DB, table string) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), workflowSQLQueryTimeout)
-	defer cancel()
 	var count int
-	err := db.QueryRowContext(ctx, `
+	err := db.QueryRow(`
 		SELECT COUNT(*)
 		FROM information_schema.tables
 		WHERE table_schema = DATABASE()
@@ -330,9 +281,7 @@ func workflowSQLExistingColumns(db *sql.DB, table string, candidates []string) (
 	for _, column := range candidates {
 		args = append(args, column)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), workflowSQLQueryTimeout)
-	defer cancel()
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.Query(`
 		SELECT column_name
 		FROM information_schema.columns
 		WHERE table_schema = DATABASE()
@@ -651,13 +600,11 @@ func workflowSQLRouteCandidate(state State, prefix string) (workflowSQLStoreCand
 }
 
 func workflowStorePath(state State, info workflowStoreInfo) (string, bool) {
-	// A class ref names a storage binding, not a scope root: the graph and orders
-	// bindings live at their own legacy .gc/ location (or a gcg Postgres schema),
-	// not at a rig/city path derivable here. They carry the city scope as their
-	// fallback, so answering the city path here would run the SQL fast path against
-	// the wrong database. Skip them; the slow store-scan reads the binding directly.
-	ref := strings.TrimSpace(info.ref)
-	if strings.HasPrefix(ref, workflowGraphStoreRefPrefix+":") || strings.HasPrefix(ref, ordersClassStoreRefPrefix+":") {
+	// The dedicated graph store lives at its own legacy .gc/ location (or a gcg
+	// Postgres schema), not at a rig/city path derivable here, so it has no
+	// rig-path-derived SQL fast-path candidate. Skip it; the slow store-scan in
+	// buildWorkflowSnapshot consults the graph store directly.
+	if strings.HasPrefix(strings.TrimSpace(info.ref), workflowGraphStoreRefPrefix+":") {
 		return "", false
 	}
 	switch strings.TrimSpace(info.scopeKind) {
@@ -684,11 +631,11 @@ func workflowStorePath(state State, info workflowStoreInfo) (string, bool) {
 }
 
 func workflowSQLFindRoot(cfg *config.City, user, password, host string, port int, database, workflowID string) (beads.Bead, bool, error) {
-	// Pooled handle owned by internal/doltpool; do not Close.
 	db, err := openWorkflowSQLDB(user, password, host, port, database)
 	if err != nil {
 		return beads.Bead{}, false, err
 	}
+	defer db.Close() //nolint:errcheck // best-effort cleanup
 
 	tableSets, err := workflowSQLAvailableTableSets(db)
 	if err != nil {
@@ -719,8 +666,7 @@ func workflowSQLWorkflowIDPrefix(cfg *config.City, workflowID string) string {
 
 func workflowSQLGetBeadFromTables(db *sql.DB, tableSets []workflowSQLTableSet, id string) (beads.Bead, bool, error) {
 	for _, tables := range tableSets {
-		ctx, cancel := context.WithTimeout(context.Background(), workflowSQLQueryTimeout)
-		row := db.QueryRowContext(ctx, `
+		row := db.QueryRow(`
 			SELECT
 				i.id, i.title, i.status, i.issue_type, i.assignee,
 				i.description, i.created_at, i.updated_at,
@@ -730,7 +676,6 @@ func workflowSQLGetBeadFromTables(db *sql.DB, tableSets []workflowSQLTableSet, i
 			LIMIT 1
 		`, id)
 		bead, ok, err := workflowSQLScanBead(row.Scan)
-		cancel()
 		if err != nil {
 			return beads.Bead{}, false, fmt.Errorf("get bead %s from %s: %w", id, tables.beads, err)
 		}
@@ -744,8 +689,7 @@ func workflowSQLGetBeadFromTables(db *sql.DB, tableSets []workflowSQLTableSet, i
 func workflowSQLFindRootByWorkflowID(db *sql.DB, tableSets []workflowSQLTableSet, workflowID string) (beads.Bead, bool, error) {
 	matches := make([]beads.Bead, 0, len(tableSets))
 	for _, tables := range tableSets {
-		ctx, cancel := context.WithTimeout(context.Background(), workflowSQLQueryTimeout)
-		row := db.QueryRowContext(ctx, `
+		row := db.QueryRow(`
 			SELECT
 				i.id, i.title, i.status, i.issue_type, i.assignee,
 				i.description, i.created_at, i.updated_at,
@@ -757,7 +701,6 @@ func workflowSQLFindRootByWorkflowID(db *sql.DB, tableSets []workflowSQLTableSet
 			LIMIT 1
 		`, workflowID)
 		bead, ok, err := workflowSQLScanBead(row.Scan)
-		cancel()
 		if err != nil {
 			return beads.Bead{}, false, fmt.Errorf("find workflow %s in %s: %w", workflowID, tables.beads, err)
 		}
@@ -774,14 +717,14 @@ func workflowSQLFindRootByWorkflowID(db *sql.DB, tableSets []workflowSQLTableSet
 	return matches[0], true, nil
 }
 
-// openWorkflowSQLDB returns the shared pooled *sql.DB for a workflow
-// store endpoint. The handle is owned by internal/doltpool — callers
-// must NOT Close it.
 func openWorkflowSQLDB(user, password, host string, port int, database string) (*sql.DB, error) {
-	db, err := doltpool.Open(host, strconv.Itoa(port), user, password, database)
+	dsn := buildDoltDSN(user, password, host, port, database)
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("sql open: %w", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetConnMaxLifetime(30 * time.Second)
 	return db, nil
 }
 

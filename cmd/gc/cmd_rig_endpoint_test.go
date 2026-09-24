@@ -213,7 +213,7 @@ func TestDoRigSetEndpointInheritWritesManagedInheritedRigConfig(t *testing.T) {
 	}
 }
 
-func TestRequireCanonicalizedScopeMetadataPreservesExistingManagedProbeDatabase(t *testing.T) {
+func TestEnsureCanonicalScopeMetadataIfPresentPreservesExistingManagedProbeDatabase(t *testing.T) {
 	scopeDir := t.TempDir()
 	metadataPath := filepath.Join(scopeDir, ".beads", "metadata.json")
 	if err := os.MkdirAll(filepath.Dir(metadataPath), 0o700); err != nil {
@@ -227,8 +227,8 @@ func TestRequireCanonicalizedScopeMetadataPreservesExistingManagedProbeDatabase(
 	}); err != nil {
 		t.Fatalf("EnsureCanonicalMetadata: %v", err)
 	}
-	if err := requireCanonicalizedScopeMetadata(fsys.OSFS{}, scopeDir); err != nil {
-		t.Fatalf("requireCanonicalizedScopeMetadata: %v", err)
+	if err := ensureCanonicalScopeMetadataIfPresent(fsys.OSFS{}, scopeDir); err != nil {
+		t.Fatalf("ensureCanonicalScopeMetadataIfPresent: %v", err)
 	}
 	got, ok, err := contract.ReadDoltDatabase(fsys.OSFS{}, metadataPath)
 	if err != nil {
@@ -237,52 +237,6 @@ func TestRequireCanonicalizedScopeMetadataPreservesExistingManagedProbeDatabase(
 	if !ok || got != strings.ToUpper(managedDoltProbeDatabase) {
 		t.Fatalf("dolt_database = %q, ok=%v; want existing reserved name preserved", got, ok)
 	}
-}
-
-// TestCanonicalizeScopeMetadataIfPresentSkipsOnlyAbsentMetadata pins the split
-// the ga-5k989 fix rests on: absent means skip, and every other reason the
-// metadata cannot be canonicalized still errors.
-func TestCanonicalizeScopeMetadataIfPresentSkipsOnlyAbsentMetadata(t *testing.T) {
-	t.Run("absent metadata is not an error and fabricates nothing", func(t *testing.T) {
-		scopeDir := filepath.Join(t.TempDir(), "never-initialized")
-		if err := canonicalizeScopeMetadataIfPresent(fsys.OSFS{}, scopeDir); err != nil {
-			t.Fatalf("canonicalizeScopeMetadataIfPresent: %v", err)
-		}
-		if _, err := os.Stat(filepath.Join(scopeDir, ".beads", "metadata.json")); !os.IsNotExist(err) {
-			t.Fatalf("skipping a scope must not write its metadata, stat err = %v", err)
-		}
-	})
-
-	t.Run("metadata without a pinned dolt_database still errors", func(t *testing.T) {
-		scopeDir := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(scopeDir, ".beads"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(scopeDir, ".beads", "metadata.json"), []byte(`{"database":"dolt","backend":"dolt","dolt_mode":"server"}`), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		err := canonicalizeScopeMetadataIfPresent(fsys.OSFS{}, scopeDir)
-		if err == nil || !strings.Contains(err.Error(), "missing pinned dolt_database") {
-			t.Fatalf("canonicalizeScopeMetadataIfPresent error = %v, want missing pinned dolt_database", err)
-		}
-	})
-
-	t.Run("present metadata is canonicalized exactly as the named scope is", func(t *testing.T) {
-		scopeDir := t.TempDir()
-		metadataPath := filepath.Join(scopeDir, ".beads", "metadata.json")
-		if err := os.MkdirAll(filepath.Dir(metadataPath), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(metadataPath, []byte(`{"database":"dolt","backend":"dolt","dolt_mode":"embedded","dolt_database":"fe"}`), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if err := canonicalizeScopeMetadataIfPresent(fsys.OSFS{}, scopeDir); err != nil {
-			t.Fatalf("canonicalizeScopeMetadataIfPresent: %v", err)
-		}
-		if mode := readScopeDoltMode(t, scopeDir); mode != "server" {
-			t.Fatalf("dolt_mode = %q, want server", mode)
-		}
-	})
 }
 
 func TestDoRigSetEndpointInheritMirrorsExternalCity(t *testing.T) {
@@ -331,16 +285,11 @@ func TestDoRigSetEndpointInheritMirrorsExternalCity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// An inherited rig must not carry the deprecated per-rig dolt_host/dolt_port
-	// in city.toml (matching the managed-city inherit path). It inherits the city
-	// endpoint through its .beads/config.yaml; a stamped target would churn the
-	// rig config back to explicit on every reconcile and can drift into a hard
-	// error if the city endpoint changes.
-	if got := cityCfg.Rigs[0].DoltHost; got != "" {
-		t.Fatalf("city.toml rig DoltHost = %q, want empty", got)
+	if got := cityCfg.Rigs[0].DoltHost; got != "db.example.com" {
+		t.Fatalf("city.toml rig DoltHost = %q, want %q", got, "db.example.com")
 	}
-	if got := cityCfg.Rigs[0].DoltPort; got != "" {
-		t.Fatalf("city.toml rig DoltPort = %q, want empty", got)
+	if got := cityCfg.Rigs[0].DoltPort; got != "3307" {
+		t.Fatalf("city.toml rig DoltPort = %q, want %q", got, "3307")
 	}
 	if _, err := os.Stat(filepath.Join(rigDir, ".beads", "dolt-server.port")); !os.IsNotExist(err) {
 		t.Fatalf("expected inherited external rig to remove port file, stat err = %v", err)
@@ -918,7 +867,7 @@ func TestDoRigSetEndpointInheritPostgresCityIgnoresStaleManagedRuntime(t *testin
 		EndpointOrigin: contract.EndpointOriginManagedCity,
 		EndpointStatus: contract.EndpointStatusVerified,
 	})
-	if err := os.WriteFile(filepath.Join(cityDir, ".beads", "metadata.json"), []byte(`{"database":"beads","backend":"postgres","storage_endpoint":"postgres://bd@db.example.test:5432","storage_database":"beads_pg"}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cityDir, ".beads", "metadata.json"), []byte(`{"database":"beads","backend":"postgres","postgres_host":"db.example.test","postgres_port":"5432","postgres_user":"bd","postgres_database":"beads_pg"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeRigEndpointCanonicalConfig(t, rigDir, contract.ConfigState{
@@ -941,7 +890,7 @@ func TestDoRigSetEndpointInheritPostgresCityIgnoresStaleManagedRuntime(t *testin
 		t.Fatalf("config.yaml changed after stale postgres managed runtime:\n%s", got)
 	}
 	if _, err := os.Stat(filepath.Join(rigDir, ".beads", "dolt-server.port")); !os.IsNotExist(err) {
-		t.Fatalf("stale managed port should not be copied to a rig gc does not serve, stat err = %v", err)
+		t.Fatalf("stale managed port should not be copied to postgres-backed rig, stat err = %v", err)
 	}
 	if !strings.Contains(stderr.String(), "managed city endpoint unavailable") {
 		t.Fatalf("stderr = %q, want managed city endpoint unavailable", stderr.String())

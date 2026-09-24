@@ -11,9 +11,7 @@ import (
 	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/convergence"
-	"github.com/gastownhall/gascity/internal/coordclass"
 	"github.com/gastownhall/gascity/internal/events"
-	"github.com/gastownhall/gascity/internal/formula"
 	"github.com/gastownhall/gascity/internal/graphv2"
 	"github.com/gastownhall/gascity/internal/molecule"
 )
@@ -27,15 +25,14 @@ import (
 type convergenceStoreAdapter struct {
 	store              beads.Store
 	formulaSearchPaths []string          // search paths for formula compilation in PourWisp
-	relocated          bool              // store is a class binding, not this scope's work ledger
 	activeIndex        map[string]string // bead ID → target agent; nil until populateIndex
 	indexReady         atomic.Bool       // true once populateIndex has completed
 }
 
 var _ convergence.Store = (*convergenceStoreAdapter)(nil)
 
-func newConvergenceStoreAdapter(store beads.Store, formulaSearchPaths []string, relocated bool) *convergenceStoreAdapter {
-	return &convergenceStoreAdapter{store: store, formulaSearchPaths: formulaSearchPaths, relocated: relocated}
+func newConvergenceStoreAdapter(store beads.Store, formulaSearchPaths []string) *convergenceStoreAdapter {
+	return &convergenceStoreAdapter{store: store, formulaSearchPaths: formulaSearchPaths}
 }
 
 // populateIndex performs a one-time scan of all beads to build the
@@ -171,7 +168,7 @@ func (a *convergenceStoreAdapter) PourSpeculativeWisp(parentID, formula, idempot
 	return a.pourWisp(parentID, formula, idempotencyKey, vars, evaluatePrompt, true)
 }
 
-func (a *convergenceStoreAdapter) pourWisp(parentID, formulaName, idempotencyKey string, vars map[string]string, evaluatePrompt string, deferAssignees bool) (string, error) {
+func (a *convergenceStoreAdapter) pourWisp(parentID, formula, idempotencyKey string, vars map[string]string, evaluatePrompt string, deferAssignees bool) (string, error) {
 	// Idempotency: check if a wisp with this key already exists (crash-retry safety).
 	// Fail closed on lookup errors to prevent duplicate wisps.
 	existing, found, err := a.FindByIdempotencyKey(idempotencyKey)
@@ -190,41 +187,19 @@ func (a *convergenceStoreAdapter) pourWisp(parentID, formulaName, idempotencyKey
 	if evaluatePrompt != "" {
 		cookVars["evaluate_prompt"] = evaluatePrompt
 	}
-	isGraphV2, _, err := graphv2.IsGraphV2Formula(formulaName, a.formulaSearchPaths)
+	isGraphV2, _, err := graphv2.IsGraphV2Formula(formula, a.formulaSearchPaths)
 	if err != nil {
-		return "", fmt.Errorf("checking formulas v2 contract for convergence wisp %q: %w", formulaName, err)
+		return "", fmt.Errorf("checking formulas v2 contract for convergence wisp %q: %w", formula, err)
 	}
 	if isGraphV2 {
-		return "", fmt.Errorf("convergence wisps do not support v2 formula %q; use a v1 formula until convergence has an explicit input convoy target", formulaName)
+		return "", fmt.Errorf("convergence wisps do not support v2 formula %q; use a v1 formula until convergence has an explicit input convoy target", formula)
 	}
-	opts := molecule.Options{
+	result, err := molecule.Cook(context.Background(), a.store, formula, a.formulaSearchPaths, molecule.Options{
 		Vars:           cookVars,
 		ParentID:       parentID,
 		IdempotencyKey: idempotencyKey,
 		DeferAssignees: deferAssignees,
-	}
-	// molecule.Cook's body, inlined only so the compiled recipe can be classified
-	// before anything is written — the same reason gc formula cook inlines it.
-	// "Convergence pours a wisp" is the name of the operation, not a guarantee
-	// about what the formula compiles to: a v1 POURED formula compiles to a
-	// molecule whose every bead is ClassWork.
-	recipe, err := formula.CompileWithoutRuntimeVarValidation(context.Background(), formulaName, a.formulaSearchPaths, cookVars)
-	if err != nil {
-		return "", fmt.Errorf("compiling formula %q: %w", formulaName, err)
-	}
-	if err := molecule.ValidateRecipeRuntimeVars(recipe, opts); err != nil {
-		return "", err
-	}
-	if a.relocated && recipeCoordClass(recipe) != coordclass.ClassGraph {
-		// Refuse rather than split the molecule off its parent. The convergence
-		// root is graph class and lives in a.store; a work-class molecule poured
-		// there is a strand the per-boot containment re-check will make fatal,
-		// and poured anywhere else is a child orphaned from its parent across a
-		// store boundary. Neither is recoverable by the loop itself, so this is
-		// the one place that can still say no.
-		return "", fmt.Errorf("convergence formula %q compiles to work-class beads, which cannot be poured into the relocated graph binding this convergence scope is served from; make the formula root-only (phase = \"vapor\") so it compiles to a graph-class wisp, or move the loop to a rig scope", formulaName)
-	}
-	result, err := molecule.Instantiate(context.Background(), a.store, recipe, opts)
+	})
 	if err != nil {
 		return "", err
 	}

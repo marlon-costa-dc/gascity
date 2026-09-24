@@ -248,14 +248,14 @@ func resolveLocalPackReleaseSource(source, packPath string) (repoDir, resolvedPa
 	if err != nil {
 		return "", "", fmt.Errorf("resolving source path: %w", err)
 	}
-	// Normalize both the source and git's toplevel so filepath.Rel compares the
-	// same spelling (macOS: /private/tmp vs /tmp).
-	absSource = normalizePathForCompare(absSource)
+	// Resolve symlinks so filepath.Rel agrees with git's real-path repo root (macOS: /tmp -> /private/tmp).
+	if resolved, evalErr := filepath.EvalSymlinks(absSource); evalErr == nil {
+		absSource = resolved
+	}
 	repoDir, err = localGitRoot(absSource)
 	if err != nil {
 		return "", "", err
 	}
-	repoDir = normalizePathForCompare(repoDir)
 	if strings.TrimSpace(packPath) != "" {
 		resolvedPackPath, err := normalizePackReleasePath(packPath)
 		if err != nil {
@@ -449,8 +449,6 @@ func stampPackRelease(registryPath, packName string, opts packReleaseStampOption
 		}
 		catalog.Packs = append(catalog.Packs, packregistry.CatalogPack{
 			Name:        packName,
-			Tier:        packregistry.CatalogTierCommunity,
-			Publisher:   packregistry.UnknownPublisher,
 			Description: opts.PackDescription,
 			Source:      opts.Source,
 			SourceKind:  "git",

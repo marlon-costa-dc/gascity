@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"sync"
 	"testing"
 
@@ -14,7 +13,7 @@ import (
 // unrelated PRs (gascity#3256, gascity#3261).
 //
 // memoryOrderDispatcher.dispatch builds ONE shared orderDispatchTrackingIndex
-// (order_dispatch.go: trackingIndex := newOrderDispatchTrackingIndex(m.stderr)) and
+// (order_dispatch.go: trackingIndex := newOrderDispatchTrackingIndex()) and
 // consults it from every order's open-work gate. gateOpenWorkBounded runs each
 // gate in its own goroutine and, on a per-order timeout OR ctx cancellation,
 // returns WITHOUT waiting for that goroutine (by design, to avoid stalling
@@ -32,7 +31,7 @@ import (
 // map. Under `-race` the unsynchronized access is reported deterministically;
 // making orderDispatchTrackingIndex guard its maps with a mutex fixes it.
 func TestOrderDispatchTrackingIndexConcurrentGatesAreRaceFree(t *testing.T) {
-	idx := newOrderDispatchTrackingIndex(io.Discard)
+	idx := newOrderDispatchTrackingIndex()
 	stores := []beads.Store{beads.NewMemStore()}
 
 	const (

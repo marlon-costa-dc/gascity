@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -25,7 +24,6 @@ import (
 	"github.com/gastownhall/gascity/internal/overlay"
 	"github.com/gastownhall/gascity/internal/runtime"
 	sessionpkg "github.com/gastownhall/gascity/internal/session"
-	"golang.org/x/mod/semver"
 )
 
 type waitErrorStore struct {
@@ -633,138 +631,23 @@ func waitTestRealBDPath(t *testing.T) string {
 	t.Helper()
 	skipSlowCmdGCTest(t, "requires a managed bd lifecycle city; run make test-cmd-gc-process for full coverage")
 	waitTestRealBDPathOnce.Do(func() {
-		waitTestRealBDCached, waitTestRealBDErr = buildPinnedBDBinaryForTests()
+		candidate, err := findPreferredBinary("bd")
+		if err != nil {
+			waitTestRealBDErr = errors.New("bd with init not installed")
+			return
+		}
+		cmd := exec.Command(candidate, "init", "--help")
+		out, err := cmd.CombinedOutput()
+		if err == nil || !strings.Contains(string(out), `unknown subcommand "init"`) {
+			waitTestRealBDCached = candidate
+			return
+		}
+		waitTestRealBDErr = errors.New("bd with init not installed")
 	})
 	if waitTestRealBDErr != nil {
-		t.Fatalf("build pinned bd test binary: %v", waitTestRealBDErr)
+		t.Skip(waitTestRealBDErr.Error())
 	}
 	return waitTestRealBDCached
-}
-
-// buildPinnedBDBinaryForTests builds the bd CLI from the exact
-// github.com/steveyegge/beads module version this repo's go.mod requires, so
-// the binary's compiled-in schema/migration knowledge always matches
-// gascity's own in-process beads code (internal/beads imports that same
-// module directly). A bd resolved by searching PATH/home-dir locations
-// instead (as findPreferredBinary does for callers that only need some bd
-// present) carries no such guarantee: it can drift to a different schema
-// version and fail deep inside a test with a cryptic mismatch error instead
-// of cleanly at the point the drift actually originates (ga-r9cvmi).
-//
-// go install's "@version" form deliberately ignores any enclosing module's
-// go.mod/go.sum and resolves the target module's own dependency closure in
-// isolation, which is required here: cmd/bd's full dependency graph (CLI
-// extras like AI-assisted duplicate detection, ADO rich-text rendering,
-// telemetry exporters) is broader than what gascity's own go.sum carries,
-// since gascity only imports internal/beads's storage packages.
-func buildPinnedBDBinaryForTests() (string, error) {
-	version, err := pinnedBeadsModuleVersion()
-	if err != nil {
-		return "", fmt.Errorf("resolve pinned beads module version: %w", err)
-	}
-
-	sweepOrphanPIDPrefixedDirs(os.TempDir(), testBDBinaryDirPrefix)
-	buildDir, err := os.MkdirTemp("", pidPrefixedTempPattern(testBDBinaryDirPrefix))
-	if err != nil {
-		return "", fmt.Errorf("mktemp bd binary dir: %w", err)
-	}
-
-	cmd := exec.Command("go", "install", "-tags", "gms_pure_go",
-		"github.com/steveyegge/beads/cmd/bd@"+version)
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOBIN="+buildDir)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("go install github.com/steveyegge/beads/cmd/bd@%s: %w\n%s", version, err, out)
-	}
-	return filepath.Join(buildDir, "bd"), nil
-}
-
-// pinnedBeadsModuleVersion reports the github.com/steveyegge/beads version
-// this test binary was actually built against, read from this process's own
-// embedded build info rather than a `go list -m` subprocess or a go.mod text
-// scan: debug.ReadBuildInfo reflects the exact resolved dependency graph
-// (including any replace/exclude directives) with zero process spawn, and it
-// can never itself drift from go.mod the way a second hardcoded version
-// string could, since the compiler stamps it in at build time.
-func pinnedBeadsModuleVersion() (string, error) {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "", fmt.Errorf("read build info: not available (binary not built with module support)")
-	}
-	for _, dep := range bi.Deps {
-		if dep.Path != "github.com/steveyegge/beads" {
-			continue
-		}
-		if dep.Replace != nil {
-			return dep.Replace.Version, nil
-		}
-		return dep.Version, nil
-	}
-	return "", fmt.Errorf("github.com/steveyegge/beads not found in build info deps")
-}
-
-// TestBuildPinnedBDBinaryForTestsUsesGoModSource locks in the fix for
-// ga-r9cvmi: a bd binary resolved by searching PATH/home-dir locations (the
-// old waitTestRealBDPath behavior, still used elsewhere via
-// findPreferredBinary) carries no guarantee of matching the schema/migration
-// knowledge baked into gascity's own in-process beads code, which is compiled
-// from the exact github.com/steveyegge/beads version go.mod pins. Confirmed
-// live: the same ~/.local/bin/bd path reported two different version stamps
-// across two consecutive invocations in this same fleet sandbox, and
-// ga-r9cvmi's own notes captured a deterministic v49-vs-v53 schema mismatch
-// from that ambient drift. buildPinnedBDBinaryForTests must instead build bd
-// fresh from the pinned dependency, so its correctness never depends on
-// whatever happens to be installed on the host.
-func TestBuildPinnedBDBinaryForTestsUsesGoModSource(t *testing.T) {
-	// Load-bearing for the census even though waitTestRealBDPath calls it
-	// again: this is the cmd/gc+untagged slow_process_gate call site the
-	// 57 -> 58 bump accounts for across census.go, test-resources.toml, and
-	// TESTING.md. Deleting it as redundant fails the ledger gate.
-	skipSlowCmdGCTest(t, "builds a real bd binary from source; run make test-cmd-gc-process for full coverage")
-
-	// Route through waitTestRealBDPath so this shares waitTestRealBDPathOnce
-	// with the other bd-consuming tests. Calling buildPinnedBDBinaryForTests
-	// directly builds a second ~91 MB binary, and leaks a second temp dir, in
-	// any shard that also holds a waitTestRealBDPath caller.
-	bdPath := waitTestRealBDPath(t)
-
-	pinned, err := pinnedBeadsModuleVersion()
-	if err != nil {
-		t.Fatalf("pinnedBeadsModuleVersion: %v", err)
-	}
-	out, err := exec.Command(bdPath, "version").CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s version: %v\n%s", bdPath, err, out)
-	}
-	versionLine := ""
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, "bd version ") {
-			versionLine = line
-			break
-		}
-	}
-	fields := strings.Fields(versionLine)
-	if len(fields) < 3 || !semver.IsValid("v"+fields[2]) {
-		t.Fatalf("%s version output %q does not report a declared Beads release version", bdPath, out)
-	}
-	metadata, err := exec.Command("go", "version", "-m", bdPath).CombinedOutput()
-	if err != nil {
-		t.Fatalf("go version -m %s: %v\n%s", bdPath, err, metadata)
-	}
-	foundPinnedModule := false
-	for _, line := range strings.Split(string(metadata), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[0] == "mod" && fields[1] == "github.com/steveyegge/beads" && fields[2] == pinned {
-			foundPinnedModule = true
-			break
-		}
-	}
-	if !foundPinnedModule {
-		t.Fatalf("%s build metadata %q does not retain pinned Beads module version %q", bdPath, metadata, pinned)
-	}
-	// `bd version` reports the release variable declared by Beads source
-	// (currently 1.1.0), not the Go module pseudo-version used to fetch that
-	// source. The exact source guarantee is therefore checked through the
-	// compiled binary's module metadata above.
 }
 
 func TestLoadWaitBeadsByLabelUsesBoundedLookup(t *testing.T) {
@@ -2528,7 +2411,7 @@ func TestDoSessionWait_RegistersReadyWaitForRigDependency(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := doSessionWait(sessionID, []string{depID}, false, "block", false, &stdout, &stderr, sessionWaitDeps{
 		sessions:         sessionFrontDoor(cityStore),
-		dependencies:     newWaitDependencyStoreSet(cityStore, map[string]beads.Store{"frontend": rigStore}, beads.GraphStore{}),
+		dependencies:     newWaitDependencyStoreSet(cityStore, map[string]beads.Store{"frontend": rigStore}),
 		now:              func() time.Time { return now },
 		createdBySession: originID,
 	})
@@ -2752,7 +2635,7 @@ func TestPrepareWaitWakeState_ResolvesRigDependencyBeads(t *testing.T) {
 
 			readyWaitSet, err := prepareWaitWakeStateWithSnapshot(
 				sessionFrontDoor(cityStore),
-				newWaitDependencyStoreSet(cityStore, map[string]beads.Store{"frontend": rigStore}, beads.GraphStore{}),
+				newWaitDependencyStoreSet(cityStore, map[string]beads.Store{"frontend": rigStore}),
 				beads.NudgesStore{Store: cityStore},
 				now,
 				nil,
@@ -3405,144 +3288,5 @@ func TestRouteWaitList_ThreeRungByteIdentical(t *testing.T) {
 	// Sanity: the tie resolved chronologically (oldest wait first in the array).
 	if !strings.Contains(typed, persisted[1].ID) || !strings.Contains(typed, persisted[0].ID) {
 		t.Fatalf("both waits should render: %s", typed)
-	}
-}
-
-// TestPrepareWaitWakeState_ResolvesGraphBindingDependencyBeads pins that a
-// dependency living in the relocated infrastructure binding resolves. Without
-// the graph leg it misses on every leg, and a clean miss is consumed as proof
-// the dependency was deleted — a silent FailWait, with no event and no wake.
-func TestPrepareWaitWakeState_ResolvesGraphBindingDependencyBeads(t *testing.T) {
-	now := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
-
-	for _, tc := range []struct {
-		name       string
-		depStatus  string
-		wantReady  bool
-		wantState  string
-		wantStatus string
-	}{
-		{name: "closed binding dependency becomes ready", depStatus: "closed", wantReady: true, wantState: waitStateReady, wantStatus: "open"},
-		{name: "open binding dependency remains pending", depStatus: "open", wantState: waitStatePending, wantStatus: "open"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			const (
-				sessionID = "hq-session-1"
-				waitID    = "hq-wait-1"
-				// A step bead minted by the graph class: the reserved prefix is
-				// what makes it unreachable from every work scope.
-				depID = "gcg-dep-1"
-			)
-			cityStore := waitPrefixedStore{
-				Store: beads.NewMemStoreFrom(2, []beads.Bead{
-					{
-						ID:        sessionID,
-						Title:     "worker session",
-						Type:      sessionBeadType,
-						Status:    "open",
-						Labels:    []string{sessionBeadLabel},
-						CreatedAt: now.Add(-time.Minute),
-						UpdatedAt: now.Add(-time.Minute),
-						Revision:  1,
-						Metadata: map[string]string{
-							"session_name":       "worker",
-							"agent_name":         "worker",
-							"continuation_epoch": "1",
-						},
-					},
-					{
-						ID:        waitID,
-						Title:     "wait:worker session",
-						Type:      waitBeadType,
-						Status:    "open",
-						Labels:    []string{waitBeadLabel, "session:" + sessionID},
-						CreatedAt: now.Add(-time.Minute),
-						UpdatedAt: now.Add(-time.Minute),
-						Revision:  1,
-						Metadata: map[string]string{
-							"session_id":       sessionID,
-							"session_name":     "worker",
-							"kind":             "deps",
-							"state":            waitStatePending,
-							"dep_ids":          depID,
-							"dep_mode":         "all",
-							"registered_epoch": "1",
-							"delivery_attempt": "1",
-						},
-					},
-				}, nil),
-				prefix: "hq",
-			}
-			binding := waitPrefixedStore{
-				Store: beads.NewMemStoreFrom(1, []beads.Bead{{
-					ID:        depID,
-					Title:     "Step 1: implement",
-					Type:      "step",
-					Status:    tc.depStatus,
-					CreatedAt: now.Add(-time.Minute),
-					UpdatedAt: now.Add(-time.Minute),
-					Revision:  1,
-				}}, nil),
-				prefix: "gcg",
-			}
-			rigStore := waitPrefixedStore{Store: beads.NewMemStore(), prefix: "ga"}
-
-			readyWaitSet, err := prepareWaitWakeStateWithSnapshot(
-				sessionFrontDoor(cityStore),
-				newWaitDependencyStoreSet(cityStore, map[string]beads.Store{"frontend": rigStore}, beads.GraphStore{Store: binding}),
-				beads.NudgesStore{Store: cityStore},
-				now,
-				nil,
-			)
-			if err != nil {
-				t.Fatalf("prepareWaitWakeStateWithSnapshot: %v", err)
-			}
-			if got := readyWaitSet[sessionID]; got != tc.wantReady {
-				t.Fatalf("readyWaitSet[%s] = %v, want %v", sessionID, got, tc.wantReady)
-			}
-
-			updatedWait, getErr := cityStore.Get(waitID)
-			if getErr != nil {
-				t.Fatalf("store.Get(wait): %v", getErr)
-			}
-			if got := updatedWait.Metadata["state"]; got != tc.wantState {
-				t.Fatalf("wait state = %q, want %q; a dependency in the binding that no leg can read is indistinguishable from a deleted one, so the wait fails instead of waking", got, tc.wantState)
-			}
-			if updatedWait.Status != tc.wantStatus {
-				t.Fatalf("wait status = %q, want %q", updatedWait.Status, tc.wantStatus)
-			}
-		})
-	}
-}
-
-// TestLoadWaitDependencyBeadReadsTheBindingOnAMigratedCity is the one-shot CLI
-// twin of the controller-tick case above: `gc session wait` resolves its
-// dependency through loadWaitDependencyBead, whose scope candidates are all work
-// roots, so a binding-resident dependency reads as a bead that does not exist.
-func TestLoadWaitDependencyBeadReadsTheBindingOnAMigratedCity(t *testing.T) {
-	cityPath, cfg := migratedOneShotCLICity(t)
-	captureCLIStorageStderr(t)
-
-	binding := openMigratedDestination(t, mustResolveInfraTarget(t, cityPath, cfg))
-	dep, err := binding.Create(beads.Bead{Title: "Step 1: implement", Type: "step"})
-	if err != nil {
-		t.Fatalf("creating the dependency in the binding: %v", err)
-	}
-	if err := closeBeadStoreHandle(binding); err != nil {
-		t.Fatalf("closing the binding handle: %v", err)
-	}
-
-	cityStore, err := openCityStoreAt(cityPath)
-	if err != nil {
-		t.Fatalf("opening the work store: %v", err)
-	}
-	t.Cleanup(func() { _ = closeBeadStoreHandle(cityStore) })
-
-	got, err := loadWaitDependencyBead(cityPath, cityStore, dep.ID)
-	if err != nil {
-		t.Fatalf("loadWaitDependencyBead(%s): %v; a dependency the reader cannot see is consumed as a deleted one, which fails the wait", dep.ID, err)
-	}
-	if got.ID != dep.ID {
-		t.Errorf("resolved %q, want the binding-resident dependency %q", got.ID, dep.ID)
 	}
 }
