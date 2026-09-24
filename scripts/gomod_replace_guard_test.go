@@ -62,6 +62,37 @@ func TestCheckGomodReplaceGuard(t *testing.T) {
 		}
 	})
 
+	forkPairingCases := []struct {
+		name     string
+		depsEnv  string
+		wantPass bool
+	}{
+		{"passes_fork_replace_named_in_deps_env", "BD_FORK_MODULE=github.com/example/beads\nBD_FORK_VERSION=v1.0.5-fd.1\n", true},
+		{"blocks_fork_replace_with_other_version", "BD_FORK_MODULE=github.com/example/beads\nBD_FORK_VERSION=v1.0.5-fd.2\n", false},
+		{"blocks_fork_replace_without_deps_env_pairing", "BD_VERSION=v1.0.5\n", false},
+	}
+	for _, tc := range forkPairingCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			gomod := filepath.Join(dir, "go.mod")
+			content := "module github.com/example/mod\n\ngo 1.22\n\nreplace github.com/steveyegge/beads => github.com/example/beads v1.0.5-fd.1\n"
+			if err := os.WriteFile(gomod, []byte(content), 0o644); err != nil {
+				t.Fatalf("write go.mod: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "deps.env"), []byte(tc.depsEnv), 0o644); err != nil {
+				t.Fatalf("write deps.env: %v", err)
+			}
+			out, err := exec.Command("bash", script, gomod).CombinedOutput()
+			if tc.wantPass && err != nil {
+				t.Fatalf("expected exit 0 for the deps.env-named fork replace, got %v\n%s", err, out)
+			}
+			if !tc.wantPass && err == nil {
+				t.Fatalf("expected non-zero exit, got 0\n%s", out)
+			}
+		})
+	}
+
 	pseudoVersionCases := []struct {
 		name  string
 		block string
