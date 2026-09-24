@@ -1,35 +1,36 @@
-name: RC Release
+name: Prerelease
 
 on:
   push:
     tags:
       - "v*.*.*-rc*"
+      - "v*.*.*-fc.*"
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "RC tag to create or publish, e.g. v1.2.0-rc1"
+        description: "Prerelease tag to create or publish, e.g. v1.2.0-rc1 or v1.2.0-fc.1"
         required: true
         type: string
       target_ref:
-        description: "Commit SHA, branch, or tag to build when creating the RC tag"
+        description: "Commit SHA, branch, or tag to build when creating the prerelease tag"
         required: true
-        default: "release/v1.2.0"
         type: string
 
 concurrency:
-  group: rc-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+  group: prerelease-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
   cancel-in-progress: false
 
 permissions: {}
 
 jobs:
-  rc-release:
-    name: Draft RC release
-    if: ${{ github.repository == 'gastownhall/gascity' }}
+  prerelease:
+    name: Draft prerelease
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # The prerelease is published in the repository whose tag triggered the
+      # run (GitHub's own GITHUB_REPOSITORY); no repository setting names it.
       - name: Checkout dispatch target
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -48,8 +49,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Resolve RC tag
-        id: rc
+      - name: Resolve prerelease tag
+        id: prerelease
         env:
           DISPATCH_TAG: ${{ inputs.tag_name }}
           EVENT_NAME: ${{ github.event_name }}
@@ -62,8 +63,8 @@ jobs:
             tag="$GITHUB_REF_NAME"
           fi
 
-          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
-            echo "ERROR: RC tag must match vMAJOR.MINOR.PATCH-rcN, got: $tag" >&2
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(rc[0-9]+|fc\.[0-9]+)$ ]]; then
+            echo "ERROR: prerelease tag must match vMAJOR.MINOR.PATCH-rcN or vMAJOR.MINOR.PATCH-fc.N, got: $tag" >&2
             exit 1
           fi
 
@@ -92,13 +93,11 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
-      - name: Reject replace directives in go.mod
-        run: |
-          if grep -qE '^replace\s' go.mod; then
-            echo "ERROR: go.mod contains replace directives; aborting RC release." >&2
-            grep -n '^replace' go.mod
-            exit 1
-          fi
+      - name: Check go.mod replace directives
+        # The replace policy has one owner, scripts/check-gomod-replace.sh (the
+        # same required check CI runs). An inline "no replace at all" grep here
+        # would contradict it for a replace the policy explicitly permits.
+        run: make check-gomod-replace
 
       - name: Run GoReleaser draft prerelease
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
@@ -107,18 +106,18 @@ jobs:
           args: release --clean --draft --skip=announce
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_CURRENT_TAG: ${{ steps.rc.outputs.tag }}
+          GORELEASER_CURRENT_TAG: ${{ steps.prerelease.outputs.tag }}
 
-      - name: Summarize RC release
+      - name: Summarize prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ steps.rc.outputs.tag }}
-          TARGET_COMMIT: ${{ steps.rc.outputs.commit }}
+          TAG_NAME: ${{ steps.prerelease.outputs.tag }}
+          TARGET_COMMIT: ${{ steps.prerelease.outputs.commit }}
         run: |
           set -euo pipefail
           url="$(gh release view "$TAG_NAME" --json url --jq .url)"
           {
-            echo "### Draft RC release"
+            echo "### Draft prerelease"
             echo
             echo "- Tag: \`$TAG_NAME\`"
             echo "- Commit: \`$TARGET_COMMIT\`"
