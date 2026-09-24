@@ -93,13 +93,11 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
-      - name: Reject replace directives in go.mod
-        run: |
-          if grep -qE '^replace\s' go.mod; then
-            echo "ERROR: go.mod contains replace directives; aborting RC release." >&2
-            grep -n '^replace' go.mod
-            exit 1
-          fi
+      - name: Check go.mod replace directives
+        # The replace policy has one owner, scripts/check-gomod-replace.sh (the
+        # required CI check). It admits only the bd fork pairing named in
+        # deps.env; an inline "no replace at all" grep would contradict it.
+        run: make check-gomod-replace
 
       - name: Run GoReleaser draft prerelease
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
