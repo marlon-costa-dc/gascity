@@ -26,12 +26,19 @@ func TestCheckGomodReplaceGuard(t *testing.T) {
 		t.Fatalf("check-gomod-replace.sh not found at %s: %v", script, err)
 	}
 
-	runScript := func(t *testing.T, content string) (output string, exitCode int) {
+	// runScriptWithDepsEnv runs the guard on content; a non-empty depsEnv is
+	// written as the deps.env beside go.mod (the fork pairing owner).
+	runScriptWithDepsEnv := func(t *testing.T, content, depsEnv string) (output string, exitCode int) {
 		t.Helper()
 		dir := t.TempDir()
 		gomod := filepath.Join(dir, "go.mod")
 		if err := os.WriteFile(gomod, []byte(content), 0o644); err != nil {
 			t.Fatalf("write go.mod: %v", err)
+		}
+		if depsEnv != "" {
+			if err := os.WriteFile(filepath.Join(dir, "deps.env"), []byte(depsEnv), 0o644); err != nil {
+				t.Fatalf("write deps.env: %v", err)
+			}
 		}
 		cmd := exec.Command("bash", script, gomod)
 		out, err := cmd.CombinedOutput()
@@ -43,6 +50,10 @@ func TestCheckGomodReplaceGuard(t *testing.T) {
 			t.Fatalf("exec error: %v", err)
 		}
 		return string(out), 0
+	}
+	runScript := func(t *testing.T, content string) (output string, exitCode int) {
+		t.Helper()
+		return runScriptWithDepsEnv(t, content, "")
 	}
 
 	t.Run("passes_no_replace", func(t *testing.T) {
@@ -74,20 +85,12 @@ func TestCheckGomodReplaceGuard(t *testing.T) {
 	for _, tc := range forkPairingCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			gomod := filepath.Join(dir, "go.mod")
 			content := "module github.com/example/mod\n\ngo 1.22\n\nreplace github.com/steveyegge/beads => github.com/example/beads v1.0.5-fd.1\n"
-			if err := os.WriteFile(gomod, []byte(content), 0o644); err != nil {
-				t.Fatalf("write go.mod: %v", err)
+			out, code := runScriptWithDepsEnv(t, content, tc.depsEnv)
+			if tc.wantPass && code != 0 {
+				t.Fatalf("expected exit 0 for the deps.env-named fork replace, got %d\n%s", code, out)
 			}
-			if err := os.WriteFile(filepath.Join(dir, "deps.env"), []byte(tc.depsEnv), 0o644); err != nil {
-				t.Fatalf("write deps.env: %v", err)
-			}
-			out, err := exec.Command("bash", script, gomod).CombinedOutput()
-			if tc.wantPass && err != nil {
-				t.Fatalf("expected exit 0 for the deps.env-named fork replace, got %v\n%s", err, out)
-			}
-			if !tc.wantPass && err == nil {
+			if !tc.wantPass && code == 0 {
 				t.Fatalf("expected non-zero exit, got 0\n%s", out)
 			}
 		})
