@@ -3,7 +3,8 @@
 #
 # Discovers databases from the authoritative rig registry (all registered rigs,
 # including external rigs outside GC_CITY_PATH). By default, lists orphaned
-# databases (dry-run). Use --force to remove them.
+# databases (dry-run). Use --database NAME to select one exact orphan. Use
+# --force to remove selected orphans.
 # Use --max to set a safety limit (refuses if more orphans than --max).
 #
 # Removal strategy: when the dolt SQL server is reachable, --force issues
@@ -20,6 +21,7 @@ set -e
 force=false
 max_orphans=50
 server_down_ok=false
+target_database=""
 PACK_DIR="${GC_PACK_DIR:-$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)}"
 . "$PACK_DIR/assets/scripts/runtime.sh"
 data_dir="$DOLT_DATA_DIR"
@@ -29,12 +31,20 @@ while [ $# -gt 0 ]; do
     --force) force=true; shift ;;
     --max)   max_orphans="$2"; shift 2 ;;
     --server-down-ok) server_down_ok=true; shift ;;
+    --database)
+      [ $# -ge 2 ] || { echo "gc dolt cleanup: --database requires NAME" >&2; exit 1; }
+      [ -n "$2" ] || { echo "gc dolt cleanup: --database requires a non-empty NAME" >&2; exit 1; }
+      [ -z "$target_database" ] || { echo "gc dolt cleanup: --database may be supplied only once" >&2; exit 1; }
+      target_database="$2"
+      shift 2
+      ;;
     -h|--help)
-      echo "Usage: gc dolt cleanup [--force] [--max N] [--server-down-ok]"
+      echo "Usage: gc dolt cleanup [--database NAME] [--force] [--max N] [--server-down-ok]"
       echo ""
       echo "Find Dolt databases not referenced by any registered rig."
       echo ""
       echo "Flags:"
+      echo "  --database NAME    Select one exact orphaned database"
       echo "  --force            Actually remove orphaned databases"
       echo "  --max N            Refuse if more than N orphans (default: 50)"
       echo "  --server-down-ok   Permit filesystem rm fallback when the dolt"
@@ -48,7 +58,28 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+if [ -n "$target_database" ]; then
+  case "$target_database" in
+    [A-Za-z0-9_]*)
+      case "$target_database" in
+        *[!A-Za-z0-9_-]*)
+          echo "gc dolt cleanup: invalid --database target '$target_database': name contains forbidden characters (allowed: A-Z, a-z, 0-9, _, -)" >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    *)
+      echo "gc dolt cleanup: invalid --database target '$target_database': name must start with [A-Za-z0-9_]" >&2
+      exit 1
+      ;;
+  esac
+fi
+
 if [ ! -d "$data_dir" ]; then
+  if [ -n "$target_database" ]; then
+    echo "gc dolt cleanup: database '$target_database' not found under '$data_dir'" >&2
+    exit 1
+  fi
   echo "No orphaned databases found."
   exit 0
 fi
@@ -91,6 +122,29 @@ done <<EOF
 $(metadata_files)
 EOF
 
+if [ -n "$target_database" ]; then
+  case "$(printf '%s' "$target_database" | tr '[:upper:]' '[:lower:]')" in
+    information_schema|mysql|dolt_cluster|performance_schema|sys|__gc_probe)
+      echo "gc dolt cleanup: database '$target_database' is a system database, not an orphaned rig database" >&2
+      exit 1
+      ;;
+  esac
+  case "$referenced" in
+    *" $target_database "*)
+      echo "gc dolt cleanup: database '$target_database' is registered; refusing exact orphan cleanup" >&2
+      exit 1
+      ;;
+  esac
+  if [ ! -d "$data_dir/$target_database" ]; then
+    echo "gc dolt cleanup: database '$target_database' not found under '$data_dir'" >&2
+    exit 1
+  fi
+  if [ ! -d "$data_dir/$target_database/.dolt" ]; then
+    echo "gc dolt cleanup: database '$target_database' is not a Dolt database under '$data_dir'" >&2
+    exit 1
+  fi
+fi
+
 # Find orphans.
 orphans=""
 orphan_count=0
@@ -98,6 +152,9 @@ for d in "$data_dir"/*/; do
   [ ! -d "$d/.dolt" ] && continue
   name="$(basename "$d")"
   case "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')" in information_schema|mysql|dolt_cluster|performance_schema|sys|__gc_probe) continue ;; esac
+  if [ -n "$target_database" ] && [ "$name" != "$target_database" ]; then
+    continue
+  fi
   case "$referenced" in
     *" $name "*) continue ;; # referenced, not orphan
   esac
@@ -121,6 +178,10 @@ for d in "$data_dir"/*/; do
 done
 
 if [ "$orphan_count" -eq 0 ]; then
+  if [ -n "$target_database" ]; then
+    echo "gc dolt cleanup: database '$target_database' is not orphaned" >&2
+    exit 1
+  fi
   echo "No orphaned databases found."
   exit 0
 fi
