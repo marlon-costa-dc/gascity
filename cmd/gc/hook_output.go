@@ -38,10 +38,18 @@ func antigravityHookAdditionalContext(content string) map[string]any {
 }
 
 func codexHookOutput(eventName, content string) map[string]any {
-	if strings.EqualFold(strings.TrimSpace(eventName), "Stop") {
+	switch {
+	case strings.EqualFold(strings.TrimSpace(eventName), "Stop"):
 		return map[string]any{
 			"decision": "block",
 			"reason":   strings.TrimRight(content, "\n"),
+		}
+	case strings.EqualFold(strings.TrimSpace(eventName), "PreCompact"):
+		// Codex PreCompact is a stateless lifecycle hook. Its output schema
+		// accepts only the universal hook fields, so additionalContext is not
+		// available at this event boundary.
+		return map[string]any{
+			"systemMessage": strings.TrimRight(content, "\n"),
 		}
 	}
 	return codexHookAdditionalContext(eventName, content)

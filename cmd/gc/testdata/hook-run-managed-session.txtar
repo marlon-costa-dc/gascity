@@ -1,0 +1,78 @@
+# gc hook run --when-managed-session: the GC_MANAGED_SESSION_HOOK=1 marker
+# selects the managed pre-compaction handoff, an incomplete managed identity
+# fails loud before the child starts, and a selected callback runs the real
+# `gc handoff --auto` child.
+
+env GC_BEADS=file
+env GC_DOLT=skip
+env GC_SESSION=fake
+
+exec gc init --file $WORK/hook-city.toml $WORK/hooktown
+cd $WORK/hooktown
+
+# --- 1. No marker and no session identity: not selected, child not run ---
+
+exec gc hook run --when-managed-session -- handoff --auto 'context cycle'
+stderr 'NOT SELECTED: GC_MANAGED_SESSION_HOOK is not set'
+! stdout .
+
+# --- 2. Session identity without the marker: stale or foreign hook ---
+
+env GC_SESSION_NAME=mayor
+! exec gc hook run --when-managed-session -- handoff --auto 'context cycle'
+stderr 'managed session identity \(GC_SESSION_NAME\) present without GC_MANAGED_SESSION_HOOK=1'
+! stdout .
+env GC_SESSION_NAME=
+
+# --- 3. Marker with a value other than 1 ---
+
+env GC_MANAGED_SESSION_HOOK=yes
+! exec gc hook run --when-managed-session -- handoff --auto 'context cycle'
+stderr 'GC_MANAGED_SESSION_HOOK="yes": the managed-session marker must be exactly 1'
+! stdout .
+
+# --- 4. Marker with no session identity at all: fails, nothing skipped ---
+
+env GC_MANAGED_SESSION_HOOK=1
+! exec gc hook run --when-managed-session -- handoff --auto 'context cycle'
+stderr 'incomplete managed session identity: missing GC_SESSION_ID, GC_SESSION_NAME, one of GC_ALIAS/GC_AGENT, one of GC_CITY/GC_CITY_PATH/GC_CITY_ROOT'
+! stdout .
+
+# --- 5. Marker with a partial identity ---
+
+env GC_SESSION_ID=gc-mayor-session
+env GC_ALIAS=mayor
+! exec gc hook run --when-managed-session -- handoff --auto 'context cycle'
+stderr 'missing GC_SESSION_NAME, one of GC_CITY/GC_CITY_PATH/GC_CITY_ROOT$'
+! stdout .
+
+# No handoff mail was sent by any rejected callback.
+exec gc mail inbox mayor
+! stdout 'context cycle'
+
+# --- 6. Marker with a complete identity runs the real handoff child ---
+
+env GC_SESSION_NAME=mayor
+env GC_CITY=$WORK/hooktown
+exec gc hook run --when-managed-session -- handoff --auto 'context cycle'
+stdout 'Handoff: sent auto mail'
+! stderr 'NOT SELECTED'
+
+env GC_MANAGED_SESSION_HOOK=
+env GC_SESSION_ID=
+env GC_SESSION_NAME=
+env GC_ALIAS=
+env GC_CITY=
+exec gc mail inbox mayor
+stdout 'context cycle'
+
+-- hook-city.toml --
+[workspace]
+name = "hooktown"
+
+[[agent]]
+name = "mayor"
+start_command = "echo hello"
+
+[[named_session]]
+template = "mayor"
