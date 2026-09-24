@@ -75,7 +75,13 @@ func newHookRunCmd(stdout, stderr io.Writer) *cobra.Command {
 
 This protects provider hook callbacks from wedged data-plane commands. The
 child process is the current gc executable, and <gc args...> are passed to it
-verbatim.`,
+verbatim. With --when-managed-session, the child runs only when the callback
+carries the GC_MANAGED_SESSION_HOOK=1 marker that Gas City writes into its
+managed hook commands. A marked callback must have a complete Gas City session
+identity; an incomplete identity, an invalid marker value, or a session
+identity without the marker fails before the child starts. A callback with
+neither the marker nor any session identity is not selected and exits
+successfully.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -87,17 +93,78 @@ verbatim.`,
 	}
 	cmd.Flags().DurationVar(&opts.Timeout, "timeout", defaultHookRunTimeout, "hard timeout for the managed hook command")
 	cmd.Flags().IntVar(&opts.TimeoutExitCode, "timeout-exit-code", 124, "exit code to return when the managed hook command times out")
+	cmd.Flags().BoolVar(&opts.WhenManagedSession, "when-managed-session", false, "run only when GC_MANAGED_SESSION_HOOK=1 selects a complete Gas City managed session")
 	return cmd
 }
 
 const defaultHookRunTimeout = 15 * time.Second
 
 type hookRunOptions struct {
-	Timeout         time.Duration
-	TimeoutExitCode int
+	Timeout            time.Duration
+	TimeoutExitCode    int
+	WhenManagedSession bool
 }
 
 var hookRunExecutable = os.Executable
+
+// managedSessionHookIdentityKeys are the Gas City session identity variables a
+// --when-managed-session callback inspects.
+var managedSessionHookIdentityKeys = []string{
+	"GC_SESSION_ID",
+	"GC_SESSION_NAME",
+	"GC_ALIAS",
+	"GC_AGENT",
+	"GC_CITY",
+	"GC_CITY_PATH",
+	"GC_CITY_ROOT",
+}
+
+// selectManagedSessionHook reports whether a --when-managed-session callback
+// runs its child. The GC_MANAGED_SESSION_HOOK=1 marker, which Gas City writes
+// into every managed hook command it installs (as it does for SessionStart),
+// is the only selector. A marked callback must carry a complete session
+// identity. An unmarked callback that carries part of a Gas City identity is a
+// stale or foreign hook inside a managed session. Both of those are errors; an
+// unmarked callback without any identity is not selected.
+func selectManagedSessionHook(lookup func(string) string) (bool, error) {
+	valuePresent := func(key string) bool {
+		return strings.TrimSpace(lookup(key)) != ""
+	}
+	switch marker := lookup(managedSessionHookEnv); marker {
+	case "1":
+	case "":
+		var present []string
+		for _, key := range managedSessionHookIdentityKeys {
+			if valuePresent(key) {
+				present = append(present, key)
+			}
+		}
+		if len(present) > 0 {
+			return false, fmt.Errorf("managed session identity (%s) present without %s=1", strings.Join(present, ", "), managedSessionHookEnv)
+		}
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s=%q: the managed-session marker must be exactly 1", managedSessionHookEnv, marker)
+	}
+
+	missing := make([]string, 0, 4)
+	if !valuePresent("GC_SESSION_ID") {
+		missing = append(missing, "GC_SESSION_ID")
+	}
+	if !valuePresent("GC_SESSION_NAME") {
+		missing = append(missing, "GC_SESSION_NAME")
+	}
+	if !valuePresent("GC_ALIAS") && !valuePresent("GC_AGENT") {
+		missing = append(missing, "one of GC_ALIAS/GC_AGENT")
+	}
+	if !valuePresent("GC_CITY") && !valuePresent("GC_CITY_PATH") && !valuePresent("GC_CITY_ROOT") {
+		missing = append(missing, "one of GC_CITY/GC_CITY_PATH/GC_CITY_ROOT")
+	}
+	if len(missing) > 0 {
+		return false, fmt.Errorf("%s=1 with incomplete managed session identity: missing %s", managedSessionHookEnv, strings.Join(missing, ", "))
+	}
+	return true, nil
+}
 
 func cmdHookRun(args []string, opts hookRunOptions, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -110,6 +177,22 @@ func cmdHookRun(args []string, opts hookRunOptions, stdin io.Reader, stdout, std
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	payload := drainHookStdin(ctx, stdin)
+	if ctx.Err() == context.DeadlineExceeded {
+		fmt.Fprintf(stderr, "gc hook run: command timed out after %s\n", timeout) //nolint:errcheck
+		return opts.TimeoutExitCode
+	}
+	if opts.WhenManagedSession {
+		selected, err := selectManagedSessionHook(os.Getenv)
+		if err != nil {
+			fmt.Fprintf(stderr, "gc hook run: %v\n", err) //nolint:errcheck
+			return 1
+		}
+		if !selected {
+			fmt.Fprintf(stderr, "gc hook run: NOT SELECTED: %s is not set\n", managedSessionHookEnv) //nolint:errcheck
+			return 0
+		}
+	}
 
 	exe, err := hookRunExecutable()
 	if err != nil {
@@ -141,7 +224,7 @@ func cmdHookRun(args []string, opts hookRunOptions, stdin io.Reader, stdout, std
 	// with ctx already expired, so cmd.Run() sees the canceled context and never
 	// spawns the child: gc hook run fails open to the timeout exit code in the
 	// timeout branch below instead of hanging before it spawns.
-	cmd.Stdin = bytes.NewReader(drainHookStdin(ctx, stdin))
+	cmd.Stdin = bytes.NewReader(payload)
 	// Buffer child stdout instead of streaming it straight to the provider so
 	// a wedged command cannot leak partial injectable output before the
 	// fail-open timeout path runs. The buffer is flushed only on a clean or

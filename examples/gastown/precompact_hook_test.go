@@ -22,7 +22,9 @@ import (
 // skip restart, return immediately. The internal SDK hook config
 // (internal/hooks/config/claude.json) was switched to --auto in commit
 // 7b3b913a ("fix: add auto handoff for precompact"); the gastown pack overlay
-// must match.
+// must match. Managed hooks run the handoff as the child of
+// `GC_MANAGED_SESSION_HOOK=1 gc hook run --when-managed-session -- handoff`;
+// the same --auto rule applies to that child.
 func TestPreCompactHandoffHooksUseAuto(t *testing.T) {
 	repoRoot := filepath.Clean(filepath.Join(exampleDir(), "..", ".."))
 	paths := preCompactHookConfigPaths(t, repoRoot)
@@ -51,6 +53,9 @@ func TestPreCompactHandoffHooksUseAuto(t *testing.T) {
 				sawHandoff = true
 				if !hasAutoFlag(command) {
 					t.Errorf("PreCompact hook invokes 'gc handoff' without --auto; bare gc handoff requests a restart and kills the session on every compaction (gc-flp1).\n  command: %q\n  fix: insert --auto, e.g. 'gc handoff --auto \"context cycle\"'", command)
+				}
+				if strings.Contains(command, "--when-managed-session") && !strings.Contains(command, "GC_MANAGED_SESSION_HOOK=1 gc ") {
+					t.Errorf("PreCompact hook selects the managed session without the GC_MANAGED_SESSION_HOOK=1 marker.\n  command: %q", command)
 				}
 			}
 		})
@@ -121,10 +126,15 @@ func hookCommands(raw any) []string {
 	return commands
 }
 
+// containsGCHandoff reports whether command runs `gc handoff`, either directly
+// or as the child of a managed `gc hook run ... -- handoff` wrapper.
 func containsGCHandoff(command string) bool {
 	fields := strings.Fields(command)
 	for i := 0; i < len(fields)-1; i++ {
 		if fields[i] == "gc" && fields[i+1] == "handoff" {
+			return true
+		}
+		if fields[i] == "--" && fields[i+1] == "handoff" && strings.Contains(command, "gc hook run ") {
 			return true
 		}
 	}
