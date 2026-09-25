@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -195,22 +196,72 @@ func RepositoryRoot(t *testing.T) string {
 // $HOME/go. Only the first element of a GOPATH list holds the module cache.
 func goModuleCache(t *testing.T) string {
 	t.Helper()
+	dir, err := resolveGoModuleCache()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	return dir
+}
+
+// resolveGoModuleCache is goModuleCache without a test handle.
+func resolveGoModuleCache() (string, error) {
 	if dir := goEnvValue("GOMODCACHE"); dir != "" {
-		return dir
+		return dir, nil
 	}
 	gopath := goEnvValue("GOPATH")
 	if gopath == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			t.Fatalf("resolve home directory to default GOPATH: %v", err)
+			return "", fmt.Errorf("resolve home directory to default GOPATH: %w", err)
 		}
 		gopath = filepath.Join(home, "go")
 	}
 	roots := filepath.SplitList(gopath)
 	if len(roots) == 0 || roots[0] == "" {
-		t.Fatalf("GOPATH %q has no usable first element", gopath)
+		return "", fmt.Errorf("GOPATH %q has no usable first element", gopath)
 	}
-	return filepath.Join(roots[0], "pkg", "mod")
+	return filepath.Join(roots[0], "pkg", "mod"), nil
+}
+
+// LinkedBeads describes the beads module linked into the running binary.
+type LinkedBeads struct {
+	// Version is the version this module's go.mod requires.
+	Version string
+	// SourcePath and SourceVersion name the module cmd/go actually built:
+	// the go.mod replacement when one applies, else the required module.
+	SourcePath, SourceVersion string
+	// Dir is SourcePath@SourceVersion unpacked in the module cache.
+	Dir string
+}
+
+// LinkedBeadsModule resolves the beads module linked into the running binary
+// from its embedded build info. It needs no *testing.T, so non-test helpers
+// such as a pinned bd builder share the same resolution, and it spawns nothing.
+func LinkedBeadsModule() (LinkedBeads, error) {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return LinkedBeads{}, fmt.Errorf("read build info: not available")
+	}
+	for _, dep := range bi.Deps {
+		if dep.Path != PinnedBeadsModulePath {
+			continue
+		}
+		linked := LinkedBeads{Version: dep.Version, SourcePath: dep.Path, SourceVersion: dep.Version}
+		if dep.Replace != nil {
+			linked.SourcePath, linked.SourceVersion = dep.Replace.Path, dep.Replace.Version
+		}
+		cache, err := resolveGoModuleCache()
+		if err != nil {
+			return LinkedBeads{}, err
+		}
+		dir, err := pinnedBeadsModuleDir(cache, linked.SourcePath, linked.SourceVersion)
+		if err != nil {
+			return LinkedBeads{}, err
+		}
+		linked.Dir = dir
+		return linked, nil
+	}
+	return LinkedBeads{}, fmt.Errorf("%s not found in build info deps", PinnedBeadsModulePath)
 }
 
 // goEnvValue reads one go environment variable: process environment, then the

@@ -22,6 +22,7 @@ import (
 
 	"github.com/gastownhall/gascity/internal/api"
 	"github.com/gastownhall/gascity/internal/beads"
+	"github.com/gastownhall/gascity/internal/beads/beadstest"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/overlay"
 	"github.com/gastownhall/gascity/internal/runtime"
@@ -691,12 +692,10 @@ func waitTestRealBDPath(t *testing.T) string {
 // version and fail deep inside a test with a cryptic mismatch error instead
 // of cleanly at the point the drift actually originates (ga-r9cvmi).
 //
-// go install's "@version" form deliberately ignores any enclosing module's
-// go.mod/go.sum and resolves the target module's own dependency closure in
-// isolation, which is required here: cmd/bd's full dependency graph (CLI
-// extras like AI-assisted duplicate detection, ADO rich-text rendering,
-// telemetry exporters) is broader than what gascity's own go.sum carries,
-// since gascity only imports internal/beads's storage packages.
+// cmd/bd's full dependency graph (CLI extras like AI-assisted duplicate
+// detection, ADO rich-text rendering, telemetry exporters) is broader than
+// what gascity's own go.sum carries, since gascity only imports the storage
+// packages, so the build resolves beads' own closure in a throwaway module.
 func buildPinnedBDBinaryForTests() (string, error) {
 	version, err := pinnedBeadsModuleVersion()
 	if err != nil {
@@ -709,16 +708,67 @@ func buildPinnedBDBinaryForTests() (string, error) {
 		return "", fmt.Errorf("mktemp bd binary dir: %w", err)
 	}
 
-	// Build inside this module rather than `go install pkg@version`: an
-	// install by version ignores this go.mod's replace directives, so a paired
-	// fork of beads would build the unreplaced upstream (or no module at all).
-	cmd := exec.Command("go", "build", "-tags", "gms_pure_go",
-		"-o", filepath.Join(buildDir, "bd"), "github.com/steveyegge/beads/cmd/bd")
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	// Build through a throwaway main module that requires beads exactly as
+	// this go.mod does (replace included), seeded with beads' own go.sum:
+	// gascity's go.sum carries only the storage packages it imports, and
+	// `go install pkg@version` ignores replace directives, so neither can
+	// build a paired fork. The binary's module metadata then records the
+	// pinned dependency (and its replacement) as its source.
+	linked, err := beadstest.LinkedBeadsModule()
+	if err != nil {
+		return "", fmt.Errorf("resolve linked beads module: %w", err)
+	}
+	wrapperDir := filepath.Join(buildDir, "module")
+	if err := writePinnedBDWrapperModule(wrapperDir, linked); err != nil {
+		return "", err
+	}
+	cmd := exec.Command("go", "build", "-C", wrapperDir, "-mod=mod", "-tags", "gms_pure_go",
+		"-o", filepath.Join(buildDir, "bd"), beadstest.PinnedBeadsModulePath+"/cmd/bd")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOWORK=off")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("go build github.com/steveyegge/beads/cmd/bd (pinned %s): %w\n%s", version, err, out)
 	}
 	return filepath.Join(buildDir, "bd"), nil
+}
+
+// writePinnedBDWrapperModule writes the throwaway main module that builds bd
+// against the linked beads module, taking the go directive and go.sum from
+// beads itself.
+func writePinnedBDWrapperModule(dir string, linked beadstest.LinkedBeads) error {
+	beadsGoMod, err := os.ReadFile(filepath.Join(linked.Dir, "go.mod"))
+	if err != nil {
+		return fmt.Errorf("read linked beads go.mod: %w", err)
+	}
+	goDirective := ""
+	for _, line := range strings.Split(string(beadsGoMod), "\n") {
+		if strings.HasPrefix(line, "go ") {
+			goDirective = strings.TrimSpace(line)
+			break
+		}
+	}
+	if goDirective == "" {
+		return fmt.Errorf("linked beads go.mod at %s has no go directive", linked.Dir)
+	}
+	goMod := "module gascity.test/pinnedbd\n\n" + goDirective + "\n\nrequire " +
+		beadstest.PinnedBeadsModulePath + " " + linked.Version + "\n"
+	if linked.SourcePath != beadstest.PinnedBeadsModulePath || linked.SourceVersion != linked.Version {
+		goMod += "\nreplace " + beadstest.PinnedBeadsModulePath + " => " +
+			linked.SourcePath + " " + linked.SourceVersion + "\n"
+	}
+	goSum, err := os.ReadFile(filepath.Join(linked.Dir, "go.sum"))
+	if err != nil {
+		return fmt.Errorf("read linked beads go.sum: %w", err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("mkdir pinned bd module: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		return fmt.Errorf("write pinned bd go.mod: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.sum"), goSum, 0o644); err != nil {
+		return fmt.Errorf("write pinned bd go.sum: %w", err)
+	}
+	return nil
 }
 
 // pinnedBeadsModuleVersion reports the github.com/steveyegge/beads version
@@ -797,7 +847,8 @@ func TestBuildPinnedBDBinaryForTestsUsesGoModSource(t *testing.T) {
 	beadsModLine := false
 	for _, line := range strings.Split(string(metadata), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[0] == "mod" && fields[1] == "github.com/steveyegge/beads" && fields[2] == pinned {
+		isBeadsLine := len(fields) >= 2 && (fields[0] == "mod" || fields[0] == "dep") && fields[1] == "github.com/steveyegge/beads"
+		if isBeadsLine && len(fields) >= 3 && fields[2] == pinned {
 			foundPinnedModule = true
 			break
 		}
@@ -807,7 +858,7 @@ func TestBuildPinnedBDBinaryForTestsUsesGoModSource(t *testing.T) {
 			foundPinnedModule = true
 			break
 		}
-		beadsModLine = len(fields) >= 2 && fields[0] == "mod" && fields[1] == "github.com/steveyegge/beads"
+		beadsModLine = isBeadsLine
 	}
 	if !foundPinnedModule {
 		t.Fatalf("%s build metadata %q does not retain pinned Beads module version %q", bdPath, metadata, pinned)
