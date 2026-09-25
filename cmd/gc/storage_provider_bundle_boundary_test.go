@@ -220,13 +220,42 @@ func TestModuleGraphCarriesNoReplaceDirective(t *testing.T) {
 	if len(malformed) > 0 {
 		t.Fatalf("go.mod has replace directives this guard cannot parse (lines %v); a manifest we cannot read is a violation, not a pass", malformed)
 	}
+	forkModule, forkVersion := forkBeadsPairing(t, root)
 	for _, directive := range directives {
+		// Fork plumbing: the one bd fork pairing deps.env declares (enforced
+		// exactly by scripts/check-gomod-replace.sh) is the only admitted replace.
+		if forkModule != "" && directive.oldPath == "github.com/steveyegge/beads" &&
+			directive.oldVersion == "" && directive.newPath == forkModule &&
+			directive.newVersion == forkVersion {
+			continue
+		}
 		t.Errorf("go.mod line %d replaces %q with %q; this module graph carries no replace directive, so a build resolves the dependencies the manifest names and nothing else",
 			directive.line, directive.oldPath, directive.newPath)
 	}
 	if anyGoWorkFile(t, root) {
 		t.Error("the tree commits a go.work; a workspace redirects the module graph for every go invocation started at or below it")
 	}
+}
+
+// forkBeadsPairing reads the bd fork pairing deps.env declares
+// (BD_FORK_MODULE / BD_FORK_VERSION, written by scripts/fork/fork.sh pair).
+// It returns empty strings when the tree declares no pairing.
+func forkBeadsPairing(t *testing.T, root string) (string, string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "deps.env"))
+	if err != nil {
+		t.Fatalf("reading deps.env: %v", err)
+	}
+	var module, version string
+	for _, line := range strings.Split(string(data), "\n") {
+		if value, ok := strings.CutPrefix(line, "BD_FORK_MODULE="); ok {
+			module = value
+		}
+		if value, ok := strings.CutPrefix(line, "BD_FORK_VERSION="); ok {
+			version = value
+		}
+	}
+	return module, version
 }
 
 // --- the arms, as functions over an arbitrary tree ---------------------------
