@@ -129,19 +129,12 @@ jobs:
         id: bd
         run: |
           set -euo pipefail
-          ref="$(grep -E '^BD_CURRENT_REF=' deps.env | cut -d= -f2)"
-          ver="$(grep -E '^BD_CURRENT_VERSION=' deps.env | cut -d= -f2)"
-          if [ -z "$ref" ] || [ -z "$ver" ]; then
-            echo "::error::BD_CURRENT_REF/BD_CURRENT_VERSION missing or empty in deps.env" >&2
-            exit 1
-          fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          .github/scripts/resolve-bd-current-source.sh >> "$GITHUB_OUTPUT"
       - name: Build bd ${{ steps.bd.outputs.ver }} from source @ ${{ steps.bd.outputs.ref }}
         run: |
           set -euo pipefail
           src="${RUNNER_TEMP}/beads-src"
-          git clone --filter=blob:none https://github.com/gastownhall/beads "$src"
+          git clone --filter=blob:none "${{ steps.bd.outputs.repo }}" "$src"
           git -C "$src" checkout "${{ steps.bd.outputs.ref }}"
           mkdir -p "${HOME}/.local/bin"
           go -C "$src" build -tags gms_pure_go -o "${HOME}/.local/bin/bd" ./cmd/bd

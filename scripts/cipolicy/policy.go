@@ -77,7 +77,7 @@ const (
 	// internal/bootstrap/packs/core/assets/scripts/** so a reaper.sh-only
 	// change runs the real-Dolt reaper tests. Reviewed delta: one filter path,
 	// no new job, trigger or permission.
-	expectedCIExecutionHash     = "7bf12250c2b6d756458cc48e70fd716b01e517fa4d629f237b542aa8f67cb139"
+	expectedCIExecutionHash     = "3867d237bbeb9a9fa74eb8dd6e948f05ef4004a24d51785590c49834fd8bae77"
 	expectedNightlyTriggersHash = "0a4400a09ac567e90adf8be1232eef1f14e36efd8dba3e143aa6e36f5b7a36f5"
 	// Nightly: reviewed delta Beads v1.3.0-rc.2 -> v1.3.0, then (round3 review,
 	// completeness) one new job, beads-proxied-perf: ubuntu-latest,
@@ -87,7 +87,7 @@ const (
 	// verbatim, and one `go test -tags acceptance_a -timeout 45m -run
 	// 'TestBeadsProxiedDefault$'` step. No new trigger, no new permission, no
 	// provider selector.
-	expectedNightlyExecutionHash = "04ca67750b129d1e4b52702116e79f0c0547e67d1a1f050932511cf3fed10db2"
+	expectedNightlyExecutionHash = "71ba351dc01c14d41da3371544d5926dd471069a9066b6a81ff8803f65fe6cf8"
 	expectedSetupActionHash      = "8f2d6b3a57f11d4f33a41211b1d3d5362d1437ba40c7b6db068abb98e731e5ac"
 )
 
@@ -110,6 +110,7 @@ var requiredFilterPaths = map[string][]string{
 		"test/acceptance/beads_cli_contract_test.go",
 		"deps.env",
 		".github/scripts/install-bd-archive.sh",
+		".github/scripts/resolve-bd-current-source.sh",
 		"cmd/gc/init_provider_readiness.go",
 	},
 	// beads-topology-acceptance is the only job that stands up the proxied
@@ -197,6 +198,7 @@ var requiredFilterPaths = map[string][]string{
 		".github/actions/setup-gascity-ubuntu/**",
 		".github/scripts/install-dolt-archive.sh",
 		".github/scripts/install-bd-archive.sh",
+		".github/scripts/resolve-bd-current-source.sh",
 		".github/scripts/install-claude-native.sh",
 		"internal/beads/**",
 		"internal/events/**",
