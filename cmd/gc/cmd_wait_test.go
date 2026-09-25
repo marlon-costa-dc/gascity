@@ -709,11 +709,14 @@ func buildPinnedBDBinaryForTests() (string, error) {
 		return "", fmt.Errorf("mktemp bd binary dir: %w", err)
 	}
 
-	cmd := exec.Command("go", "install", "-tags", "gms_pure_go",
-		"github.com/steveyegge/beads/cmd/bd@"+version)
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOBIN="+buildDir)
+	// Build inside this module rather than `go install pkg@version`: an
+	// install by version ignores this go.mod's replace directives, so a paired
+	// fork of beads would build the unreplaced upstream (or no module at all).
+	cmd := exec.Command("go", "build", "-tags", "gms_pure_go",
+		"-o", filepath.Join(buildDir, "bd"), "github.com/steveyegge/beads/cmd/bd")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("go install github.com/steveyegge/beads/cmd/bd@%s: %w\n%s", version, err, out)
+		return "", fmt.Errorf("go build github.com/steveyegge/beads/cmd/bd (pinned %s): %w\n%s", version, err, out)
 	}
 	return filepath.Join(buildDir, "bd"), nil
 }
@@ -791,12 +794,20 @@ func TestBuildPinnedBDBinaryForTestsUsesGoModSource(t *testing.T) {
 		t.Fatalf("go version -m %s: %v\n%s", bdPath, err, metadata)
 	}
 	foundPinnedModule := false
+	beadsModLine := false
 	for _, line := range strings.Split(string(metadata), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) >= 3 && fields[0] == "mod" && fields[1] == "github.com/steveyegge/beads" && fields[2] == pinned {
 			foundPinnedModule = true
 			break
 		}
+		// A go.mod replace records the effective source on the "=>" line that
+		// follows the module's own line; pinned is that replacement's version.
+		if len(fields) >= 3 && fields[0] == "=>" && beadsModLine && fields[2] == pinned {
+			foundPinnedModule = true
+			break
+		}
+		beadsModLine = len(fields) >= 2 && fields[0] == "mod" && fields[1] == "github.com/steveyegge/beads"
 	}
 	if !foundPinnedModule {
 		t.Fatalf("%s build metadata %q does not retain pinned Beads module version %q", bdPath, metadata, pinned)

@@ -18,7 +18,7 @@ import (
 // rather than left to the one caller.
 func TestPinnedBeadsModuleDirRefusesAnUnresolvedCache(t *testing.T) {
 	t.Run("a cache that does not hold the module", func(t *testing.T) {
-		if _, err := pinnedBeadsModuleDir(filepath.Join(t.TempDir(), "empty"), "v1.3.0"); err == nil {
+		if _, err := pinnedBeadsModuleDir(filepath.Join(t.TempDir(), "empty"), PinnedBeadsModulePath, "v1.3.0"); err == nil {
 			t.Fatal("pinnedBeadsModuleDir accepted a cache with no pinned module in it; a skip here lets a resolver bug read as green")
 		}
 	})
@@ -32,7 +32,7 @@ func TestPinnedBeadsModuleDirRefusesAnUnresolvedCache(t *testing.T) {
 		if err := os.WriteFile(path, []byte("not a module"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pinnedBeadsModuleDir(cache, "v1.3.0"); err == nil {
+		if _, err := pinnedBeadsModuleDir(cache, PinnedBeadsModulePath, "v1.3.0"); err == nil {
 			t.Fatal("pinnedBeadsModuleDir accepted a file where the module source should be")
 		}
 	})
@@ -43,7 +43,29 @@ func TestPinnedBeadsModuleDirRefusesAnUnresolvedCache(t *testing.T) {
 		if err := os.MkdirAll(want, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		got, err := pinnedBeadsModuleDir(cache, "v1.3.0")
+		got, err := pinnedBeadsModuleDir(cache, PinnedBeadsModulePath, "v1.3.0")
+		if err != nil {
+			t.Fatalf("pinnedBeadsModuleDir: %v", err)
+		}
+		if got != want {
+			t.Fatalf("pinnedBeadsModuleDir = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("a replaced module resolves under its replacement path", func(t *testing.T) {
+		cache := t.TempDir()
+		replacement := "github.com/example/beads-fork"
+		want := filepath.Join(cache, filepath.FromSlash(replacement)+"@v1.3.0-fx.1")
+		if err := os.MkdirAll(want, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		goMod := "module x\n\nrequire " + PinnedBeadsModulePath + " v1.3.0\n\nreplace " +
+			PinnedBeadsModulePath + " => " + replacement + " v1.3.0-fx.1\n"
+		path, version, ok := pinnedBeadsReplacement(goMod)
+		if !ok || path != replacement || version != "v1.3.0-fx.1" {
+			t.Fatalf("pinnedBeadsReplacement = (%q, %q, %v)", path, version, ok)
+		}
+		got, err := pinnedBeadsModuleDir(cache, path, version)
 		if err != nil {
 			t.Fatalf("pinnedBeadsModuleDir: %v", err)
 		}
@@ -62,7 +84,7 @@ func TestPinnedBeadsModuleDirRefusesAnUnresolvedCache(t *testing.T) {
 // reproduced with nothing more than GOMODCACHE pointed somewhere else.
 func TestPinnedBeadsModuleDirFailsRatherThanSkips(t *testing.T) {
 	reporter := &recordingModuleDirReporter{}
-	if dir := pinnedBeadsModuleDirOrFatal(reporter, filepath.Join(t.TempDir(), "empty"), "v1.3.0"); dir != "" {
+	if dir := pinnedBeadsModuleDirOrFatal(reporter, filepath.Join(t.TempDir(), "empty"), PinnedBeadsModulePath, "v1.3.0"); dir != "" {
 		t.Fatalf("an unresolved cache produced the directory %q", dir)
 	}
 	if len(reporter.skips) != 0 {

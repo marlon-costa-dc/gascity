@@ -44,7 +44,37 @@ func PinnedBeadsModuleDir(t *testing.T) string {
 	if dir := bazelRunfilesBeadsModule(); dir != "" {
 		return dir
 	}
-	return pinnedBeadsModuleDirOrFatal(t, goModuleCache(t), PinnedBeadsVersion(t))
+	path, version := PinnedBeadsModuleSource(t)
+	return pinnedBeadsModuleDirOrFatal(t, goModuleCache(t), path, version)
+}
+
+// PinnedBeadsModuleSource reports the module path and version cmd/go actually
+// builds for the pinned library: the go.mod replacement when one is declared,
+// else the required version itself. A replaced module is unpacked in the cache
+// under its replacement path, so resolving the required path would read a tree
+// the build never used.
+func PinnedBeadsModuleSource(t *testing.T) (string, string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(RepositoryRoot(t), "go.mod"))
+	if err != nil {
+		t.Fatalf("read go.mod: %v", err)
+	}
+	if path, version, ok := pinnedBeadsReplacement(string(data)); ok {
+		return path, version
+	}
+	return PinnedBeadsModulePath, PinnedBeadsVersion(t)
+}
+
+// pinnedBeadsReplacement reads a single-line `replace <pinned> => <path> <version>`
+// directive for the pinned module out of go.mod text.
+func pinnedBeadsReplacement(goMod string) (string, string, bool) {
+	for _, line := range strings.Split(goMod, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) == 5 && fields[0] == "replace" && fields[1] == PinnedBeadsModulePath && fields[2] == "=>" {
+			return fields[3], fields[4], true
+		}
+	}
+	return "", "", false
 }
 
 // bazelRunfilesBeadsModule locates the pinned beads module inside the bazel
@@ -90,9 +120,9 @@ type moduleDirReporter interface {
 
 // pinnedBeadsModuleDirOrFatal reports an unresolved module cache as a test
 // failure. See PinnedBeadsModuleDir for why it cannot be a skip.
-func pinnedBeadsModuleDirOrFatal(t moduleDirReporter, cache, version string) string {
+func pinnedBeadsModuleDirOrFatal(t moduleDirReporter, cache, path, version string) string {
 	t.Helper()
-	dir, err := pinnedBeadsModuleDir(cache, version)
+	dir, err := pinnedBeadsModuleDir(cache, path, version)
 	if err != nil {
 		t.Fatalf("%v\n"+
 			"The test binary links %s, so the go command resolved it; this resolution did not. "+
@@ -106,8 +136,8 @@ func pinnedBeadsModuleDirOrFatal(t moduleDirReporter, cache, version string) str
 
 // pinnedBeadsModuleDir is the resolution itself, separated from the test so that
 // the failure path has a test of its own.
-func pinnedBeadsModuleDir(cache, version string) (string, error) {
-	dir := filepath.Join(cache, filepath.FromSlash(PinnedBeadsModulePath)+"@"+version)
+func pinnedBeadsModuleDir(cache, path, version string) (string, error) {
+	dir := filepath.Join(cache, filepath.FromSlash(path)+"@"+version)
 	info, err := os.Stat(dir)
 	switch {
 	case err != nil:

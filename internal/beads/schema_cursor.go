@@ -98,11 +98,14 @@ import (
 // read-only open FROM BEADS: that is the standing ask, alongside
 // SchemaVersions().
 const (
-	// SchemaCursorMain is schema.LatestVersion() for the pinned library.
-	SchemaCursorMain = 66
+	// SchemaCursorMain is schema.LatestVersion() for the pinned library. This
+	// fork links the bd fork release named by go.mod's replace (deps.env
+	// BD_FORK_VERSION), so the cursors follow that library;
+	// TestSchemaCursorsMatchPinnedBeads enforces the equality.
+	SchemaCursorMain = 67
 	// SchemaCursorIgnored is schema.LatestIgnoredVersion() for the pinned
 	// library.
-	SchemaCursorIgnored = 26
+	SchemaCursorIgnored = 27
 )
 
 // PinnedSchemaCursors returns the pair a proxied database must already be at

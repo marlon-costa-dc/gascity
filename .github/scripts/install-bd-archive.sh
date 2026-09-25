@@ -18,6 +18,22 @@ if [[ -z "$version" ]]; then
 fi
 shift || true
 
+# Fork pairing (deps.env, written by scripts/fork/fork.sh pair): gc links the
+# bd fork release BD_FORK_VERSION through go.mod's replace, so the bd that pairs
+# with the linked library (BD_VERSION) is installed from the fork. Any other
+# requested version (e.g. the BD_PREV_VERSION matrix cell) stays upstream.
+owner_repo="gastownhall/beads"
+deps_env="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/deps.env"
+if [[ -f "$deps_env" ]]; then
+  linked_version="$(sed -n 's/^BD_VERSION=//p' "$deps_env")"
+  fork_module="$(sed -n 's/^BD_FORK_MODULE=//p' "$deps_env")"
+  fork_version="$(sed -n 's/^BD_FORK_VERSION=//p' "$deps_env")"
+  if [[ -n "$fork_module" && -n "$fork_version" && "$version" == "$linked_version" ]]; then
+    owner_repo="${fork_module#github.com/}"
+    version="$fork_version"
+  fi
+fi
+
 use_cache=false
 while (($#)); do
   case "$1" in
@@ -116,7 +132,7 @@ github_release_asset_sha() {
 
 archive="beads_${version_no_v}_${platform_tuple}.tar.gz"
 if [[ -z "$expected_sha" ]]; then
-  expected_sha="$(github_release_asset_sha "gastownhall/beads" "$version" "$archive")"
+  expected_sha="$(github_release_asset_sha "$owner_repo" "$version" "$archive")"
   if [[ -z "$expected_sha" ]]; then
     echo "No bd checksum found for ${version}/${platform_tuple}" >&2
     exit 1
@@ -168,7 +184,7 @@ else
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
   curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors --retry-connrefused -o "${tmp}/${archive}" \
-    "https://github.com/gastownhall/beads/releases/download/${version}/${archive}"
+    "https://github.com/${owner_repo}/releases/download/${version}/${archive}"
   actual_sha="$(sha256_file "${tmp}/${archive}")"
   if [[ "$actual_sha" != "$expected_sha" ]]; then
     echo "bd checksum mismatch for ${version}/${platform_tuple}" >&2
