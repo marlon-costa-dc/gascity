@@ -264,3 +264,60 @@ func TestSQLScriptConnectedBranchExportsPassword(t *testing.T) {
 		t.Fatalf("stat password marker: %v", err)
 	}
 }
+
+// TestSQLScriptDropsForwardedScopeFlags is the regression guard for
+// `gc --city <path> dolt sql -q QUERY`: gc forwards the caller's pre-leaf
+// scope (--city/--rig, spaced or with `=`) to the pack command, and the
+// wrapper used to pass it on to `dolt sql`, which rejects it as positional
+// arguments. The scope is already resolved into GC_CITY_PATH, so only the
+// query arguments may reach dolt.
+func TestSQLScriptDropsForwardedScopeFlags(t *testing.T) {
+	root := repoRoot(t)
+	script := filepath.Join(root, sqlScript)
+
+	binDir := t.TempDir()
+	argvFile := writeFakeDolt(t, binDir)
+
+	cityPath := t.TempDir()
+	dataDir := filepath.Join(cityPath, "data")
+	if err := os.MkdirAll(filepath.Join(dataDir, "testdb", ".dolt"), 0o755); err != nil {
+		t.Fatalf("mkdir db: %v", err)
+	}
+
+	cmd := exec.Command("sh", script,
+		"--city", cityPath, "-q", "SELECT 1", "--rig=beads")
+	cmd.Env = append(filteredEnv("PATH",
+		"GC_DOLT_HOST", "GC_DOLT_PORT", "GC_DOLT_USER",
+		"GC_DOLT_PASSWORD", "GC_DOLT_DATA_DIR",
+		"GC_CITY_PATH", "GC_PACK_DIR",
+	),
+		"PATH="+binDir+":"+os.Getenv("PATH"),
+		"GC_CITY_PATH="+cityPath,
+		"GC_PACK_DIR="+root,
+		"GC_DOLT_DATA_DIR="+dataDir,
+		"GC_DOLT_PORT=unreachable",
+		"GC_DOLT_USER=root",
+		"GC_DOLT_PASSWORD=",
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sql.sh exited non-zero: %v\noutput: %s", err, out)
+	}
+
+	argv := readArgv(t, argvFile)
+	sqlIdx := -1
+	for i, a := range argv {
+		if a == "sql" {
+			sqlIdx = i
+			break
+		}
+	}
+	if sqlIdx == -1 {
+		t.Fatalf("fake dolt argv has no `sql`: %v; output: %s", argv, out)
+	}
+	got := strings.Join(argv[sqlIdx+1:], "\x00")
+	if want := strings.Join([]string{"-q", "SELECT 1"}, "\x00"); got != want {
+		t.Fatalf("argv after `sql` = %q; want [-q SELECT 1] (gc scope flags must not reach dolt)", argv[sqlIdx+1:])
+	}
+}
