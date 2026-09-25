@@ -28,6 +28,14 @@ if [[ ! -f "$gomod" ]]; then
 	exit 1
 fi
 
+fork_module=""
+fork_version=""
+deps_env="$(dirname "$gomod")/deps.env"
+if [[ -f "$deps_env" ]]; then
+	fork_module="$(sed -n 's/^BD_FORK_MODULE=//p' "$deps_env")"
+	fork_version="$(sed -n 's/^BD_FORK_VERSION=//p' "$deps_env")"
+fi
+
 check_replace_rhs() {
 	local stripped="$1" rhs="$2"
 	local version="" path_part="$rhs"
@@ -60,6 +68,12 @@ check_replace_rhs() {
 
 	# No version: path-only redirect with no version to check.
 	[[ -n "$version" ]] || return 0
+
+	# Fork pairing (FORK.md): the operator-authorized replace that points the
+	# beads library at the bd fork release named in deps.env, and nothing else.
+	if [[ -n "$fork_module" && "$path_part" == "$fork_module" && "$version" == "$fork_version" ]]; then
+		return 0
+	fi
 
 	# Only pure vX.Y.Z release tags are allowed. Everything else — pseudo-versions
 	# (timestamp+sha suffix), prerelease labels (-rc1, -beta), and non-semver
