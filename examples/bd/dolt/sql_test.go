@@ -97,38 +97,29 @@ func readArgv(t *testing.T, argvFile string) []string {
 	return strings.Split(trimmed, "\n")
 }
 
-// TestSQLScriptForwardsQueryArgs is the regression guard for the
-// arg-forwarding gap that motivated the #1485 fix. The wrapper used
-// to call `exec dolt $args sql` (no "$@"), which silently dropped
-// `-q "QUERY"`. The non-fatal Dolt diagnostic protocol (SHOW FULL
-// PROCESSLIST via `gc dolt sql -q`) only works if the wrapper passes
-// trailing args through.
-func TestSQLScriptForwardsQueryArgs(t *testing.T) {
+// runEmbeddedSQLScript runs the wrapper with args in its embedded branch
+// against a fake `dolt`, and returns the argv that dolt received with the
+// wrapper's combined output. A minimal data dir lets the embedded branch find
+// a dolt-shaped subdirectory; GC_DOLT_DATA_DIR overrides runtime.sh's
+// DOLT_DATA_DIR computation directly. Every Dolt-related variable the script
+// consults is stripped so the branch is decided only by the values set here
+// (an ambient GC_DOLT_HOST would flip it), and a non-numeric GC_DOLT_PORT
+// makes managed_runtime_tcp_reachable (runtime.sh) take its
+// `”|*[!0-9]*` early return, avoiding the bind-then-close TOCTOU window of an
+// "unused" port.
+func runEmbeddedSQLScript(t *testing.T, args ...string) ([]string, []byte) {
+	t.Helper()
 	root := repoRoot(t)
-	script := filepath.Join(root, sqlScript)
-
 	binDir := t.TempDir()
 	argvFile := writeFakeDolt(t, binDir)
 
-	// Provide a minimal data dir so the embedded branch finds a
-	// dolt-shaped subdirectory and reaches the exec. GC_DOLT_DATA_DIR
-	// overrides runtime.sh's DOLT_DATA_DIR computation directly.
 	cityPath := t.TempDir()
 	dataDir := filepath.Join(cityPath, "data")
 	if err := os.MkdirAll(filepath.Join(dataDir, "testdb", ".dolt"), 0o755); err != nil {
 		t.Fatalf("mkdir db: %v", err)
 	}
 
-	// Strip every Dolt-related env var the script consults so the
-	// branch selection inside the wrapper is determined entirely by
-	// the values set below. An ambient GC_DOLT_HOST in CI or a
-	// developer shell would otherwise silently flip the branch and
-	// hide whether the embedded path actually exercised "$@".
-	// Use a non-numeric GC_DOLT_PORT so managed_runtime_tcp_reachable
-	// (runtime.sh) takes its `''|*[!0-9]*` early-return path and the
-	// script falls deterministically into the embedded branch. This
-	// avoids the bind-then-close TOCTOU window of an "unused" port.
-	cmd := exec.Command("sh", script, "-q", "SELECT 1")
+	cmd := exec.Command("sh", append([]string{filepath.Join(root, sqlScript)}, args...)...)
 	cmd.Env = append(filteredEnv("PATH",
 		"GC_DOLT_HOST", "GC_DOLT_PORT", "GC_DOLT_USER",
 		"GC_DOLT_PASSWORD", "GC_DOLT_DATA_DIR",
@@ -147,8 +138,17 @@ func TestSQLScriptForwardsQueryArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sql.sh exited non-zero: %v\noutput: %s", err, out)
 	}
+	return readArgv(t, argvFile), out
+}
 
-	argv := readArgv(t, argvFile)
+// TestSQLScriptForwardsQueryArgs is the regression guard for the
+// arg-forwarding gap that motivated the #1485 fix. The wrapper used
+// to call `exec dolt $args sql` (no "$@"), which silently dropped
+// `-q "QUERY"`. The non-fatal Dolt diagnostic protocol (SHOW FULL
+// PROCESSLIST via `gc dolt sql -q`) only works if the wrapper passes
+// trailing args through.
+func TestSQLScriptForwardsQueryArgs(t *testing.T) {
+	argv, out := runEmbeddedSQLScript(t, "-q", "SELECT 1")
 	if len(argv) == 0 {
 		t.Fatalf("fake dolt was never invoked; output: %s", out)
 	}
@@ -272,40 +272,8 @@ func TestSQLScriptConnectedBranchExportsPassword(t *testing.T) {
 // arguments. The scope is already resolved into GC_CITY_PATH, so only the
 // query arguments may reach dolt.
 func TestSQLScriptDropsForwardedScopeFlags(t *testing.T) {
-	root := repoRoot(t)
-	script := filepath.Join(root, sqlScript)
-
-	binDir := t.TempDir()
-	argvFile := writeFakeDolt(t, binDir)
-
-	cityPath := t.TempDir()
-	dataDir := filepath.Join(cityPath, "data")
-	if err := os.MkdirAll(filepath.Join(dataDir, "testdb", ".dolt"), 0o755); err != nil {
-		t.Fatalf("mkdir db: %v", err)
-	}
-
-	cmd := exec.Command("sh", script,
-		"--city", cityPath, "-q", "SELECT 1", "--rig=beads")
-	cmd.Env = append(filteredEnv("PATH",
-		"GC_DOLT_HOST", "GC_DOLT_PORT", "GC_DOLT_USER",
-		"GC_DOLT_PASSWORD", "GC_DOLT_DATA_DIR",
-		"GC_CITY_PATH", "GC_PACK_DIR",
-	),
-		"PATH="+binDir+":"+os.Getenv("PATH"),
-		"GC_CITY_PATH="+cityPath,
-		"GC_PACK_DIR="+root,
-		"GC_DOLT_DATA_DIR="+dataDir,
-		"GC_DOLT_PORT=unreachable",
-		"GC_DOLT_USER=root",
-		"GC_DOLT_PASSWORD=",
-	)
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("sql.sh exited non-zero: %v\noutput: %s", err, out)
-	}
-
-	argv := readArgv(t, argvFile)
+	argv, out := runEmbeddedSQLScript(t,
+		"--city", "/scope/city", "-q", "SELECT 1", "--rig=beads")
 	sqlIdx := -1
 	for i, a := range argv {
 		if a == "sql" {
