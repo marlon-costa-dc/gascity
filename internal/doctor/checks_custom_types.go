@@ -127,6 +127,21 @@ func (c *CustomTypesCheck) Fix(_ *CheckContext) error {
 	return setCustomTypes(c.Dir, strings.Join(merged, ","))
 }
 
+// bdEnv pins the bd subprocess to THIS store. Without the pin, bd resolves
+// the operator's active workspace through the XDG state/config homes (bd v67
+// remembers the last store it touched) and the check would read a foreign
+// store's types.custom — on a host with a populated home store an
+// uninitialized local store would report every required type as present.
+func bdEnv(dir string) []string {
+	return append(os.Environ(),
+		"BEADS_DIR="+filepath.Join(dir, ".beads"),
+		"HOME="+dir,
+		"XDG_CONFIG_HOME="+filepath.Join(dir, ".config"),
+		"XDG_DATA_HOME="+filepath.Join(dir, ".local", "share"),
+		"XDG_STATE_HOME="+filepath.Join(dir, ".local", "state"),
+	)
+}
+
 // getCustomTypes reads the current types.custom config from a bd store.
 // Uses --json so an unset key returns an empty string value rather than
 // the human-readable "types.custom (not set)" sentinel (which would
@@ -136,6 +151,7 @@ func getCustomTypes(dir string) ([]string, error) {
 	args := []string{"config", "get", "--json", "types.custom"}
 	cmd := exec.Command("bd", args...)
 	cmd.Dir = dir
+	cmd.Env = bdEnv(dir)
 	out, err := cmd.Output()
 	exitCode := 0
 	if err != nil {
@@ -175,6 +191,7 @@ func setCustomTypes(dir, types string) error {
 	args := []string{"config", "set", "types.custom", types}
 	cmd := exec.Command("bd", args...)
 	cmd.Dir = dir
+	cmd.Env = bdEnv(dir)
 	err := cmd.Run()
 	exitCode := 0
 	if err != nil {
