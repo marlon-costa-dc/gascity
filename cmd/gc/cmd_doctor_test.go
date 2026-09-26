@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1076,6 +1078,7 @@ func TestWriteDoctorJSONProjectsTimedOut(t *testing.T) {
 // other rig check.
 func TestBuildDoctorChecksRegistersRigWorktreesCheck(t *testing.T) {
 	cityDir := t.TempDir()
+	stopCityDoltServers(t, cityDir)
 	if err := os.MkdirAll(filepath.Join(cityDir, ".gc"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1101,4 +1104,27 @@ func TestBuildDoctorChecksRegistersRigWorktreesCheck(t *testing.T) {
 	if doctorCheckIndex(names, "rig:sleeping:worktrees") >= 0 {
 		t.Errorf("rig:sleeping:worktrees registered for a suspended rig; names=%v", names)
 	}
+}
+
+// stopCityDoltServers kills any dolt sql-server whose command line names the
+// city root: doctor checks that open the real store start the managed
+// server, and the suite's leak guard fails the package when a test leaves
+// one behind.
+func stopCityDoltServers(t *testing.T, root string) {
+	t.Helper()
+	t.Cleanup(func() {
+		out, err := exec.Command("pgrep", "-f", root).Output()
+		if err != nil {
+			return
+		}
+		for _, pidText := range strings.Fields(string(out)) {
+			pid, convErr := strconv.Atoi(pidText)
+			if convErr != nil {
+				continue
+			}
+			if proc, findErr := os.FindProcess(pid); findErr == nil {
+				_ = proc.Kill()
+			}
+		}
+	})
 }

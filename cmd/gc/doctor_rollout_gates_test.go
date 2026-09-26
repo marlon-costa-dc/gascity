@@ -124,9 +124,11 @@ func hasRolloutCheck(checks []doctor.Check, name string) bool {
 // TestBuildDoctorChecksRegistersRolloutGates proves the composition seam wires the
 // rollout section into the doctor check set when the config loads cleanly.
 func TestBuildDoctorChecksRegistersRolloutGates(t *testing.T) {
+	cityDir := t.TempDir()
+	stopCityDoltServers(t, cityDir)
 	cfg := &config.City{Beads: config.BeadsConfig{ConditionalWrites: "require"}}
 	flags := rollout.ForTest(rollout.WithBeadsConditionalWrites(rollout.Require))
-	checks := buildDoctorChecks(t.TempDir(), cfg, nil, buildDoctorChecksOpts{RolloutFlags: flags})
+	checks := buildDoctorChecks(cityDir, cfg, nil, buildDoctorChecksOpts{RolloutFlags: flags})
 	if !hasRolloutCheck(checks, "rollout:beads.conditional_writes") {
 		t.Error("buildDoctorChecks did not register the beads rollout gate")
 	}
@@ -135,7 +137,9 @@ func TestBuildDoctorChecksRegistersRolloutGates(t *testing.T) {
 // TestBuildDoctorChecksRegistersRolloutResolveError proves a boot resolve error
 // surfaces as its single advisory check through the composition seam.
 func TestBuildDoctorChecksRegistersRolloutResolveError(t *testing.T) {
-	checks := buildDoctorChecks(t.TempDir(), &config.City{}, nil, buildDoctorChecksOpts{RolloutResolveErr: errors.New("boom")})
+	cityDir := t.TempDir()
+	stopCityDoltServers(t, cityDir)
+	checks := buildDoctorChecks(cityDir, &config.City{}, nil, buildDoctorChecksOpts{RolloutResolveErr: errors.New("boom")})
 	if !hasRolloutCheck(checks, "rollout:resolve") {
 		t.Error("buildDoctorChecks did not register the rollout resolve-error check")
 	}
