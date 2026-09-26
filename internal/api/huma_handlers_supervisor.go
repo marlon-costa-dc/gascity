@@ -92,7 +92,7 @@ type cityCreateRequest struct {
 // request_id. Polling is unnecessary.
 type asyncAcceptedResponse struct {
 	RequestID   string `json:"request_id" doc:"Correlation ID. Watch /v0/events/stream for request.result.city.create, request.result.city.unregister, or request.failed with this request_id."`
-	EventCursor string `json:"event_cursor" doc:"Supervisor event-stream cursor captured before the async request was accepted. Pass this value as after_cursor to /v0/events/stream to receive the request result without replaying unrelated historical backlog. A value of 0 can also mean no event provider is configured or every event log is empty."`
+	EventCursor string `json:"event_cursor" doc:"Supervisor event-stream cursor captured before the async request was accepted. Pass this value as after_cursor to /v0/events/stream to receive the request result. A populated cursor resumes each city at its exact per-city position, so no unrelated historical backlog is replayed. The value 0 is returned only when no event provider is registered at capture time; passing 0 back requests a replay from zero for every provider present at resume time, which still delivers this request result because no provider predates the capture boundary."`
 }
 
 // SupervisorCityCreateInput is the input for POST /v0/city.
@@ -142,7 +142,7 @@ type SupervisorEventListInput struct {
 // SupervisorEventListOutput is the response for GET /v0/events (supervisor scope).
 type SupervisorEventListOutput struct {
 	Body struct {
-		EventCursor string            `json:"event_cursor" doc:"Supervisor event-stream cursor captured before the history snapshot was listed. Pass this value as after_cursor to /v0/events/stream to receive events emitted after the snapshot boundary without replaying unrelated historical backlog."`
+		EventCursor string            `json:"event_cursor" doc:"Supervisor event-stream cursor captured before the history snapshot was listed. Pass this value as after_cursor to /v0/events/stream to receive events emitted after the snapshot boundary. A populated cursor resumes each city at its exact per-city position, so no unrelated historical backlog is replayed. The value 0 is returned only when no event provider is registered at capture time; passing 0 back requests a replay from zero for every provider present at resume time."`
 		Items       []WireTaggedEvent `json:"items"`
 		Total       int               `json:"total"`
 	}
@@ -751,6 +751,12 @@ func supervisorEventCursorFromMux(mux *events.Multiplexer) (string, error) {
 	if cursor := events.FormatCursor(cursors); cursor != "" {
 		return cursor, nil
 	}
+	// No providers are registered yet, so there is no per-city boundary to
+	// capture. Return literal "0": resolveGlobalStreamCursors treats it as a
+	// replay-from-zero request, which lets an async caller still catch its
+	// result event once its city registers. Because no provider predates this
+	// cursor, the replay carries no pre-capture backlog. Callers that want a
+	// no-backlog head start must omit after_cursor instead of sending "0".
 	return "0", nil
 }
 
@@ -869,27 +875,16 @@ func (sm *SupervisorMux) streamGlobalEvents(hctx huma.Context, input *Supervisor
 	keepalive := time.NewTicker(sseKeepalive)
 	defer keepalive.Stop()
 
-	type result struct {
-		event events.TaggedEvent
-		err   error
-	}
-	ch := make(chan result, 1)
-	readNext := func() {
-		go func() {
-			te, err := mw.Next()
-			select {
-			case ch <- result{event: te, err: err}:
-			case <-hctx.Context().Done():
-			}
-		}()
-	}
-	readNext()
+	ch := readEventsAhead(hctx.Context(), mw.Next)
 
 	for {
 		select {
 		case <-hctx.Context().Done():
 			return
-		case r := <-ch:
+		case r, ok := <-ch:
+			if !ok {
+				return
+			}
 			if r.err != nil {
 				log.Printf("api: supervisor events-stream: multiplex Next failed: %v", r.err)
 				return
@@ -897,7 +892,7 @@ func (sm *SupervisorMux) streamGlobalEvents(hctx huma.Context, input *Supervisor
 			cursors[r.event.City] = r.event.Seq
 			var wfp *workflowEventProjection
 			if cs := sm.resolver.CityState(r.event.City); cs != nil {
-				wfp = projectWorkflowEvent(cs, r.event.Event)
+				wfp = projectWorkflowEventWithSlack(cs, r.event.Event, len(ch))
 			}
 			envelope, decodeErr := wireTaggedEventFrom(r.event, wfp)
 			if decodeErr != nil {
@@ -907,7 +902,6 @@ func (sm *SupervisorMux) streamGlobalEvents(hctx huma.Context, input *Supervisor
 				// firing in practice.
 				log.Printf("api: supervisor events-stream skip %s seq=%d city=%s: %v",
 					r.event.Type, r.event.Seq, r.event.City, decodeErr)
-				readNext()
 				continue
 			}
 			if err := send(StringIDMessage{ID: events.FormatCursor(cursors), Data: envelope}); err != nil {
@@ -917,7 +911,6 @@ func (sm *SupervisorMux) streamGlobalEvents(hctx huma.Context, input *Supervisor
 				// endpoints do the same on send failure.
 				return
 			}
-			readNext()
 		case t := <-keepalive.C:
 			// Emit a heartbeat frame (no ID so reconnect cursor is preserved).
 			// Idle proxies drop long-lived SSE without traffic; skipping this

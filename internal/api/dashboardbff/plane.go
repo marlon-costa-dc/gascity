@@ -18,18 +18,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
-
-// CityRef is a registered city's name and on-disk root path, as reported by
-// CityResolver.Cities for eager tailer warm-up at Plane.Start.
-type CityRef struct {
-	Name string
-	Path string
-}
 
 // CityResolver resolves a managed city name to its on-disk root path. The
 // supervisor's city registry implements this; resolving the path from the
@@ -37,11 +29,6 @@ type CityRef struct {
 // city-name path traversal out of the host-side plane entirely.
 type CityResolver interface {
 	CityPath(name string) (path string, ok bool)
-	// Cities returns every registered city so Plane.Start can eager-warm each
-	// city's run-view fold at startup (instead of on the operator's first
-	// click). It may be empty (no cities registered yet); cities registered
-	// after Start keep the lazy per-city start on their first request.
-	Cities() []CityRef
 }
 
 // Deps are the collaborators the /api plane needs.
@@ -115,19 +102,14 @@ func New(deps Deps) *Plane {
 // middleware (logging, recovery, request-id, host/CORS) via Handler().
 func (p *Plane) Handler() http.Handler { return p.guard(p.mux) }
 
-// Start enables the per-city samplers and eager-warms every registered city's
-// run-view fold. Each city's sampler is launched lazily on first request for
-// that city's data (matching the BFF's lazy per-city runtime); the run tailers,
-// by contrast, are eager-started here for all served cities so the first run
-// view (and the first after a supervisor restart) is a warm read rather than a
-// cold ~5s replay. eagerWarmTailers is non-blocking — it only spawns each fold
-// goroutine — so Start stays fast and never waits on any city's cold load.
-// Everything runs until ctx is canceled or Stop is called.
+// Start enables the per-city samplers and run tailers. Both are launched lazily
+// on first request for that city's data, so an idle supervisor does not replay
+// every registered city's event history at startup. Everything runs until ctx
+// is canceled or Stop is called.
 func (p *Plane) Start(ctx context.Context) {
 	ctx, p.stop = context.WithCancel(ctx)
 	p.samplers.enable(ctx, &p.wg)
 	p.runTailers.enable(ctx, &p.wg)
-	p.eagerWarmTailers()
 }
 
 // Stop signals the samplers to halt and waits for them to drain.
@@ -138,34 +120,19 @@ func (p *Plane) Stop() {
 	p.wg.Wait()
 }
 
-// readOnlySafePostRE matches the run-diff endpoint — the one POST on the plane
-// that only READS git state. It carries its execution path in the request body
-// (so it cannot be a GET) but mutates nothing, so it must stay reachable on a
-// read-only supervisor; classifying the plane's write policy by HTTP method
-// alone would otherwise 405 the SPA's run Diff tab on every non-loopback bind.
-var readOnlySafePostRE = regexp.MustCompile(`^/api/city/[^/]+/runs/[^/]+/diff$`)
-
-// isReadOnlySafeRequest reports whether an unsafe-method request is in fact a
-// pure read that must survive the read-only gate. Only the run-diff POST
-// qualifies today; it is still subject to the CSRF checks in guard.
-func isReadOnlySafeRequest(r *http.Request) bool {
-	return r.Method == http.MethodPost && readOnlySafePostRE.MatchString(r.URL.Path)
-}
-
 // guard enforces the plane's write policy. Unsafe-method requests must (a) be
 // same-origin and (b) carry a non-empty X-GC-Request header (the supervisor's
 // CSRF convention); the same-origin assertion is defense-in-depth so a CORS
-// regression elsewhere cannot reopen CSRF on its own. In read-only mode a
-// genuine mutation is refused outright, but a read-only-SAFE request (run-diff,
-// which only reads git) is classified by semantics rather than method, so it
-// passes the read-only gate while staying behind CSRF. Safe methods pass
-// straight through. One shared gate so no per-handler check can be forgotten.
+// regression elsewhere cannot reopen CSRF on its own. In read-only mode every
+// mutation is refused outright — the plane serves only reads (GET/HEAD), which
+// pass straight through. One shared gate so no per-handler check can be
+// forgotten.
 func (p *Plane) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 		default:
-			if p.deps.ReadOnly && !isReadOnlySafeRequest(r) {
+			if p.deps.ReadOnly {
 				writeError(w, http.StatusMethodNotAllowed, "dashboard is read-only")
 				return
 			}
@@ -216,7 +183,6 @@ func (p *Plane) registerRoutes() {
 	p.registerBuilds()
 	p.registerClientLog()
 	p.registerHealth()
-	p.registerRunDiff()
 	p.registerSamplers()
 	p.registerRunSummary()
 	p.registerRunDetail()

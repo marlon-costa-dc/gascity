@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# fork.sh — maintain this fork as an upstream release tree plus fork plumbing.
+# fork.sh — maintain this fork as upstream's default branch plus the fork delta.
 #
-#   scripts/fork/fork.sh sync [<upstream-tag>]  rebuild the integration branch on an
-#                                               upstream release and open the PR
+#   scripts/fork/fork.sh sync                   merge upstream's default branch into
+#                                               the integration branch and open the PR
 #   scripts/fork/fork.sh release                tag the merged integration head as the
 #                                               next fork prerelease (<base>-<label>.<N>)
 #   scripts/fork/fork.sh pair [<bd-fork-tag>]   link the bd fork release this build
 #                                               pairs with (repos that link beads only)
 #
-# Every fact is derived, never configured: the upstream repository and the
-# integration branch come from GitHub (parent, default branch), the base is the
-# newest upstream release already merged into the integration branch, and the
-# fork label (fd, fc, ...) comes from this fork's own release tags. FORK.md
-# documents the full cycle.
+# Every fact is derived, never configured: the upstream repository, its default
+# branch and the integration branch come from GitHub (parent, default branches),
+# the base is the newest upstream release already merged into the integration
+# branch, and the fork label (fd, fc, ...) comes from this fork's own release
+# tags. FORK.md documents the full cycle.
 set -euo pipefail
 
 die() {
@@ -71,39 +71,40 @@ fork_label() {
 
 cmd_sync() {
 	fetch_integration
-	local target="${1:-}"
-	[[ -n "$target" ]] || target=$(gh release view -R "$upstream" --json tagName --jq .tagName)
-	[[ "$target" =~ $release_re ]] || die "upstream tag must be vX.Y.Z, got: $target"
-	local base
-	base=$(current_base)
+	local upstream_branch target base short
+	upstream_branch=$(gh repo view "$upstream" --json defaultBranchRef --jq .defaultBranchRef.name)
+	git fetch --no-tags "$upstream_url" "refs/heads/${upstream_branch}:refs/remotes/upstream-sync/${upstream_branch}"
+	target=$(git rev-parse "refs/remotes/upstream-sync/${upstream_branch}")
+	# The fork delta is everything since the upstream commit last merged in.
+	base=$(git merge-base "$target" "origin/${integration}")
 	if [[ "$target" == "$base" ]]; then
-		echo "fork.sh: already at $target"
+		echo "fork.sh: already at upstream ${upstream_branch} ${target}"
 		return 0
 	fi
-	fetch_upstream_tag "$target"
+	short=$(git rev-parse --short=9 "$target")
 
 	local main_root lane worktree patch
 	main_root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-	lane="lane/${integration}-${target}"
-	worktree="$(dirname "$main_root")/worktrees/$(basename "$main_root")/lane-${integration}-${target}"
+	lane="lane/${integration}-${upstream_branch}-${short}"
+	worktree="$(dirname "$main_root")/worktrees/$(basename "$main_root")/lane-${integration}-${upstream_branch}-${short}"
 	patch=$(mktemp)
 	git diff --binary "$base" "origin/${integration}" >"$patch"
 
 	git worktree add -b "$lane" "$worktree" "$target"
 	git -C "$worktree" merge --no-ff -s ours "origin/${integration}" \
-		-m "merge ${integration} history into the ${target} fork base (tree stays ${target})"
+		-m "merge ${integration} history into upstream ${upstream_branch} ${short} (tree stays upstream)"
 	git -C "$worktree" apply --3way --index "$patch"
 	rm -f "$patch"
-	git -C "$worktree" commit -m "re-apply the fork plumbing from ${base} onto ${target}"
+	git -C "$worktree" commit -m "re-apply the fork delta onto upstream ${upstream_branch} ${short}"
 	if grep -q '^BD_FORK_VERSION=' "$worktree/deps.env" 2>/dev/null; then
 		(cd "$worktree" && "$worktree/scripts/fork/fork.sh" pair)
 		git -C "$worktree" add go.mod go.sum deps.env
-		git -C "$worktree" commit -m "refresh the bd fork pairing on ${target}"
+		git -C "$worktree" commit -m "refresh the bd fork pairing on upstream ${upstream_branch} ${short}"
 	fi
 	git -C "$worktree" push -u origin "$lane"
 	gh pr create -R "$self" --base "$integration" --head "$lane" --draft \
-		--title "Rebuild ${integration} on upstream ${target}" \
-		--body "Upstream ${target} with the fork plumbing re-applied from ${base} (\`git diff ${base} origin/${integration}\`). Created by scripts/fork/fork.sh sync; see FORK.md."
+		--title "Sync ${integration} with upstream ${upstream_branch} ${short}" \
+		--body "Upstream ${upstream_branch} ${target} with the fork delta re-applied (\`git diff ${base} origin/${integration}\`). Created by scripts/fork/fork.sh sync; see FORK.md."
 }
 
 cmd_release() {
@@ -120,9 +121,13 @@ cmd_release() {
 		fi
 	done < <(git ls-remote --tags --refs origin "refs/tags/${base}-${label}.*" | sed 's#.*refs/tags/##')
 	tag="${base}-${label}.$((n + 1))"
-	echo "fork.sh: ${self} ${integration} ${head} = ${base} + fork plumbing:"
-	git diff --stat "$base" "$head"
-	git tag -a "$tag" -m "Fork release ${tag} of upstream ${base}" "$head"
+	local upstream_branch synced
+	upstream_branch=$(gh repo view "$upstream" --json defaultBranchRef --jq .defaultBranchRef.name)
+	git fetch --no-tags "$upstream_url" "refs/heads/${upstream_branch}:refs/remotes/upstream-sync/${upstream_branch}"
+	synced=$(git merge-base "refs/remotes/upstream-sync/${upstream_branch}" "$head")
+	echo "fork.sh: ${self} ${integration} ${head} = upstream ${upstream_branch} ${synced} + fork delta:"
+	git diff --stat "$synced" "$head"
+	git tag -a "$tag" -m "Fork release ${tag}: upstream ${upstream_branch} ${synced} (${base} line) + fork delta" "$head"
 	git push origin "refs/tags/${tag}"
 	echo "fork.sh: pushed ${tag}; the release workflow publishes it"
 }
@@ -154,8 +159,8 @@ cmd_pair() {
 }
 
 case "${1:-}" in
-sync) shift && cmd_sync "$@" ;;
+sync) cmd_sync ;;
 release) cmd_release ;;
 pair) shift && cmd_pair "$@" ;;
-*) die "usage: fork.sh sync [<upstream-tag>] | release | pair [<bd-fork-tag>]" ;;
+*) die "usage: fork.sh sync | release | pair [<bd-fork-tag>]" ;;
 esac

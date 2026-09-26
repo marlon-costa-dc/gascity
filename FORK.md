@@ -1,43 +1,46 @@
 # This fork
 
-This repository is a fork of its GitHub parent. It ships the parent's release
-tree unchanged, plus a small set of fork plumbing. The integration branch is
-the repository's default branch. Fork releases are prereleases named
-`vX.Y.Z-<label>.N`, where `vX.Y.Z` is the upstream release and `<label>` is
-this fork's release label.
+This repository is a fork of its GitHub parent. Its integration branch (the
+repository's default branch) tracks the parent's default branch, plus a small
+set of fork plumbing and a few product patches. Fork releases are prereleases
+named `vX.Y.Z-<label>.N`: `vX.Y.Z` is the newest upstream release the branch
+contains, `<label>` is this fork's release label, and the tag annotation
+records the upstream commit the release is built on.
 
 ## Policy
 
-- **Product code equals upstream.** `git diff <upstream-tag> origin/<default-branch>`
-  lists only fork plumbing: this file, `scripts/fork/`, the fork release
-  workflow, and the few upstream files the plumbing has to touch.
-- **A product patch needs a reason.** It lives on its own `fork/<topic>`
-  branch and exists only for a defect we hit at runtime with no upstream fix.
-  Refactors, style changes and dead-code removal of upstream code go upstream,
-  never here.
+- **Product code equals upstream plus named patches.** `git diff $(git merge-base
+  upstream/<branch> origin/<default-branch>) origin/<default-branch>` lists only
+  fork plumbing (this file, `scripts/fork/`, the fork release workflow, the
+  integration branch in workflow triggers) and the product patches below.
+- **A product patch needs a reason.** Each one is developed on its own
+  `feat/<slug>` branch from the integration branch, as one surgical commit that
+  can become an upstream pull request, and exists only for a defect or need we
+  hit at runtime with no upstream fix. Refactors, style changes and dead-code
+  removal of upstream code go upstream, never here.
 - **Upstream's own mechanisms come first.** Before patching, look for an
   existing configuration key, environment variable, extension point or
   upstream commit.
 
-## Update to a new upstream release
+## Sync with upstream
 
 ```bash
-scripts/fork/fork.sh sync            # the latest upstream release
-scripts/fork/fork.sh sync v1.3.1     # or an explicit upstream release tag
+scripts/fork/fork.sh sync
 ```
 
 `sync` does the following:
-1. Creates `lane/<default-branch>-<tag>` in a linked worktree next to the
-   other worktrees.
-2. Branches from the upstream tag and merges the default branch in with
-   `-s ours`, so the tree equals the tag and the PR merges completely.
-3. Re-applies the current fork plumbing (`git diff <previous-base> origin/<default-branch>`)
+1. Fetches the parent's default branch and creates
+   `lane/<default-branch>-<upstream-branch>-<sha>` in a linked worktree next to
+   the other worktrees.
+2. Branches from that upstream commit and merges the default branch in with
+   `-s ours`, so the tree equals upstream and the PR merges completely.
+3. Re-applies the fork delta (`git diff <last-synced-upstream> origin/<default-branch>`)
    with `git apply --3way`. A conflict stops the script.
 4. Refreshes the bd pairing, where this repository has one.
 5. Pushes the lane and opens a draft PR.
 
-Commit and push hooks run normally. When the default branch already carries
-the requested release, `sync` prints `already at <tag>` and changes nothing.
+When the default branch already contains the upstream head, `sync` prints
+`already at upstream <branch> <sha>` and changes nothing.
 
 ## Release
 
@@ -47,8 +50,9 @@ After the PR is merged:
 scripts/fork/fork.sh release
 ```
 
-This tags the merged head as the next `<base>-<label>.N` and pushes the tag.
-The fork release workflow then builds and publishes the prerelease.
+This tags the merged head as the next `<base>-<label>.N`, records the synced
+upstream commit in the tag annotation, and pushes the tag. The fork release
+workflow then builds and publishes the prerelease.
 
 ## bd ↔ gc pairing
 

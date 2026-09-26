@@ -18,6 +18,22 @@ if [[ -z "$version" ]]; then
 fi
 shift || true
 
+# Fork pairing (deps.env, written by scripts/fork/fork.sh pair): gc links the
+# bd fork release BD_FORK_VERSION through go.mod's replace, so the bd that pairs
+# with the linked library (BD_VERSION) is installed from the fork. Any other
+# requested version (e.g. the BD_PREV_VERSION matrix cell) stays upstream.
+owner_repo="gastownhall/beads"
+deps_env="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/deps.env"
+if [[ -f "$deps_env" ]]; then
+  linked_version="$(sed -n 's/^BD_VERSION=//p' "$deps_env")"
+  fork_module="$(sed -n 's/^BD_FORK_MODULE=//p' "$deps_env")"
+  fork_version="$(sed -n 's/^BD_FORK_VERSION=//p' "$deps_env")"
+  if [[ -n "$fork_module" && -n "$fork_version" && "$version" == "$linked_version" ]]; then
+    owner_repo="${fork_module#github.com/}"
+    version="$fork_version"
+  fi
+fi
+
 use_cache=false
 while (($#)); do
   case "$1" in
@@ -65,6 +81,14 @@ case "${version}:${platform_tuple}" in
   v1.2.2:linux_arm64) expected_sha="501f38a1070d4b9b3b6261a86a3c92c4a52366869021560430a4bb0036afd83a" ;;
   v1.2.2:darwin_amd64) expected_sha="e192dcb60f0f48d9463cd3bcf425d41fc0a632080cf9a06153c97ce12368c4bb" ;;
   v1.2.2:darwin_arm64) expected_sha="2aa1245c666419900d2d6993a05049e92c40e0e601d19579cca5b07a7bb8021d" ;;
+  v1.3.0-rc.2:linux_amd64) expected_sha="e669c358a74e9d9cf244069797e2752a3bc5dd83332127f2dc15649f7f001080" ;;
+  v1.3.0-rc.2:linux_arm64) expected_sha="3d01b7b7683e8d1d480fdf538d355462337c534434a146601e1dcc5d67db6149" ;;
+  v1.3.0-rc.2:darwin_amd64) expected_sha="a8d3ff137714089e55a5d62deb9c12459c1537de54ff6e7a507e0d6f0eb91cae" ;;
+  v1.3.0-rc.2:darwin_arm64) expected_sha="ac132fbf451b479f75b98e7a02f86455aef5418762c527456ff14cdcdee944b9" ;;
+  v1.3.0-rc.1:linux_amd64) expected_sha="f023b6e6295dd16f368658ba5d4bffe991c3685de40e6dce9275fa5869abf6ce" ;;
+  v1.3.0-rc.1:linux_arm64) expected_sha="34ca4f1f78a3d27c8d83302ef66c9d6396e009f71b18707a8225538cfdf50d8c" ;;
+  v1.3.0-rc.1:darwin_amd64) expected_sha="37ad05ad70d378a83af5044a70ccabb377cf1640b54c4edef6ce5dfe6407d596" ;;
+  v1.3.0-rc.1:darwin_arm64) expected_sha="ab1c530b09219cd2a8fcca08bdcb91ffc4a210da5b0a3b4523c6097e50171c2f" ;;
   v1.1.0:linux_amd64) expected_sha="b0f3dd607c3fb989ee08d0a6854fba80d0402971eb108f9af6170bc14d491a34" ;;
   v1.1.0:linux_arm64) expected_sha="e64eb6f5f998c9eae3ef9ec786f5f1c907ab3ed04fe220ebf265ca9952e21b2f" ;;
   v1.1.0:darwin_amd64) expected_sha="5d7d30fdadcf012b7e0c1933a62cdfaef106e2561509b904e50a6733621cf8da" ;;
@@ -108,7 +132,7 @@ github_release_asset_sha() {
 
 archive="beads_${version_no_v}_${platform_tuple}.tar.gz"
 if [[ -z "$expected_sha" ]]; then
-  expected_sha="$(github_release_asset_sha "gastownhall/beads" "$version" "$archive")"
+  expected_sha="$(github_release_asset_sha "$owner_repo" "$version" "$archive")"
   if [[ -z "$expected_sha" ]]; then
     echo "No bd checksum found for ${version}/${platform_tuple}" >&2
     exit 1
@@ -160,7 +184,7 @@ else
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
   curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors --retry-connrefused -o "${tmp}/${archive}" \
-    "https://github.com/gastownhall/beads/releases/download/${version}/${archive}"
+    "https://github.com/${owner_repo}/releases/download/${version}/${archive}"
   actual_sha="$(sha256_file "${tmp}/${archive}")"
   if [[ "$actual_sha" != "$expected_sha" ]]; then
     echo "bd checksum mismatch for ${version}/${platform_tuple}" >&2
