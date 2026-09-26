@@ -36,6 +36,12 @@ func TestCustomTypesCheck_MissingTypes(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	// bd v67 falls back to $HOME/.beads when neither BEADS_DIR nor an
+	// ancestor carries a store; on a host with a populated home store the
+	// subprocess would read its types.custom and report StatusOK. Repointing
+	// HOME at the sandbox keeps the premise true: the only .beads in reach is
+	// the empty one below, so `bd config get` must fail.
+	t.Setenv("HOME", dir)
 	beadsDir := filepath.Join(dir, ".beads")
 	if err := os.MkdirAll(beadsDir, 0o700); err != nil {
 		t.Fatal(err)
