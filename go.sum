@@ -790,8 +790,8 @@ github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0
 github.com/mailru/easyjson v0.7.7/go.mod h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJJLY9Nlc=
 github.com/mark3labs/mcp-go v0.34.0 h1:eWy7WBGvhk6EyAAyVzivTCprE52iXJwNtvHV6Cv3bR0=
 github.com/mark3labs/mcp-go v0.34.0/go.mod h1:rXqOudj/djTORU/ThxYx8fqEVj/5pvTuuebQ2RC7uk4=
-github.com/marlon-costa-dc/beads v1.3.0-fd.4 h1:v4kyKkkCGlPJgupxotgdwQI0XaUNQAKur0W+BG55Emo=
-github.com/marlon-costa-dc/beads v1.3.0-fd.4/go.mod h1:zlesjW3ezaA7WTRy2/oqH/ZviYFlIrXA8l8a3vVoPpM=
+github.com/marlon-costa-dc/beads v1.3.0-fd.5 h1:i4+GmTTlo5ZBIjJeyEVTguAitoyhGxiDL/bQKFMwWH8=
+github.com/marlon-costa-dc/beads v1.3.0-fd.5/go.mod h1:zlesjW3ezaA7WTRy2/oqH/ZviYFlIrXA8l8a3vVoPpM=
 github.com/mattn/go-colorable v0.1.1/go.mod h1:FuOcm+DKB9mbwrcAfNl7/TZVBZ6rcnceauSikq3lYCQ=
 github.com/mattn/go-colorable v0.1.6/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=

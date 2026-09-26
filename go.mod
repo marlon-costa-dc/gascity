@@ -254,4 +254,4 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/steveyegge/beads => github.com/marlon-costa-dc/beads v1.3.0-fd.4
+replace github.com/steveyegge/beads => github.com/marlon-costa-dc/beads v1.3.0-fd.5
