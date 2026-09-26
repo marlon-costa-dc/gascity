@@ -1,16 +1,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
 )
-
-// Bounds the single store probe that gates store-dependent doctor checks (#5064).
-const doctorBeadStorePreflightTimeout = 5 * time.Second
 
 // City + per-rig store checks skipped on outage-shaped preflight; keep in sync with buildDoctorChecks.
 const (
@@ -18,21 +13,44 @@ const (
 	doctorPerRigStoreCheckCount = 3
 )
 
-// City-scoped store probe before store-dependent checks (also used at gc start warmup). Tests override.
+// City-scoped store probe before store-dependent checks. Tests override.
 var doctorBeadStorePreflight = defaultDoctorBeadStorePreflight
 
-func defaultDoctorBeadStorePreflight(cityPath string, _ func(string) (beads.Store, error)) error {
-	ctx, cancel := context.WithTimeout(context.Background(), doctorBeadStorePreflightTimeout)
-	defer cancel()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	// NoRecovery + context-bound runner (O(1) list; process-group kill on timeout).
-	env, err := bdRuntimeEnvWithErrorRecoveryContext(ctx, cityPath, false)
+// defaultDoctorBeadStorePreflight probes the store the way every store check
+// reads it: through the run's memoized factory, whose open IS the proxied
+// lane's admission.
+//
+// It used to fork a raw `bd list` under NoRecovery and a 5s deadline instead.
+// That probe has no admission behind it, and admission is the only code that
+// can classify a proxied endpoint — and, on the zombie shape (the data port
+// accepts and never greets because the Dolt child took SIGTERM), walk its
+// budgeted escalation: three no-greeting probes, one provider ping, then one
+// provider recover per generation. Gating the store checks on the raw fork
+// turned every recoverable zombie into a declared outage: the probe burned
+// its deadline on accept-without-greet dials, bead-store-preflight failed as
+// a blocking error, and the beads-store check that would have run admission
+// and healed the scope was among the checks it gated off — so a doctor run
+// on a disturbed city spent its budget in unrelated check timeouts and still
+// reported the store unreachable
+// (test/acceptance TestProxiedNativeLifecycle/child-term-zombie, root-move).
+//
+// Routing the probe through the factory keeps the #5064 contract — ONE probe
+// per run, because the store this open returns is memoized and every
+// store-dependent check reuses it — and the open's budget is the ladder's
+// own: spacing sleeps, provider verbs queued on the lifecycle slot, bd's
+// per-command timeout. A short caller deadline is deliberately NOT wrapped
+// around the open: one that landed between a recover's `bd dolt stop` and
+// its re-admitting ping would cut the recover in half, which is exactly the
+// state the generation ledger's IssueStop exists to prevent. The post-open
+// read is what actually carries the verdict for the stores that construct
+// lazily (bd front door, exec): only a read proves the store serves, and its
+// ceiling is bd's own per-command timeout.
+func defaultDoctorBeadStorePreflight(cityPath string, storeFactory func(string) (beads.Store, error)) error {
+	store, err := storeFactory(cityPath)
 	if err != nil {
 		return err
 	}
-	_, err = beads.ExecCommandRunnerWithEnvContext(ctx, env)(cityPath, "bd", "list", "--json", "--limit", "1")
+	_, err = store.List(beads.ListQuery{Status: "open", Limit: 1})
 	return err
 }
 

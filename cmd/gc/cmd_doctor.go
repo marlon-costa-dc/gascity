@@ -190,7 +190,8 @@ type buildDoctorChecksOpts struct {
 	// `gc start` warmup path: every store-dependent check the preflight gates
 	// is WarmupEligible() == false, so warmupEligibleChecks filters all of them
 	// out and the probe's result cannot affect warmup output — it would only
-	// add up to doctorBeadStorePreflightTimeout of startup latency.
+	// add the store open (and, on a recoverable zombie, the admission ladder
+	// that heals it) to warmup startup.
 	SkipStorePreflight bool
 	// RolloutFlags is the on-disk rollout-gate snapshot doctor renders; RolloutResolveErr
 	// is set when resolving it failed (an out-of-enum config value).
