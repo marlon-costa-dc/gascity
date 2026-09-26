@@ -691,6 +691,16 @@ const (
 	// beat, and escalating inside that beat would fork bd for a proxy that was
 	// about to answer.
 	admissionNoGreetingSpacing = time.Second
+	// admissionPostRecoverGraceAttempts bounds the fork-free wait between a
+	// spent recover and the re-admission. The provider's ping returns while
+	// the replacement Dolt child is still booting, and re-admitting inside
+	// that boot window reads a healthy restart as a fresh zombie — on slower
+	// runners, repeatedly, burning one generation after another until the
+	// lane ends terminal over a proxy that was coming up the whole time.
+	admissionPostRecoverGraceAttempts = 8
+	// admissionPostRecoverGrace spaces those re-probes: eight two-second
+	// dials cover a slow Dolt boot without spending a single bd verb.
+	admissionPostRecoverGrace = 2 * time.Second
 	// admissionDrainPoll is the drain loop's cadence for the cheap half: two
 	// file reads, no socket.
 	admissionDrainPoll = 250 * time.Millisecond
@@ -1160,7 +1170,24 @@ func (in AdmissionInput) escalateZombie(ctx context.Context, root string, ep pro
 	// One recover per generation, ever. The claim is in flight until the verb
 	// returns (round4 review F1), so no other ladder reads it as spent early.
 	if recoverClaim, claimed := in.Recovered.begin(generation); claimed {
-		return in.spendRecover(ctx, root, key, recoverClaim)
+		pin, retry, verdict := in.spendRecover(ctx, root, key, recoverClaim)
+		if retry {
+			// The recover's own ping returns while the replacement Dolt child
+			// may still be booting. Re-admitting inside that window walks a
+			// fresh ladder over the NEW generation and can spend its recover
+			// too — generation after generation — so spend the fork-free
+			// grace first: sleeps and dials only, never a provider verb.
+			for attempt := 0; attempt < admissionPostRecoverGraceAttempts; attempt++ {
+				if err := in.Sleep(ctx, admissionPostRecoverGrace); err != nil {
+					break
+				}
+				probe := in.Probe(ctx, ep, in.Database)
+				if probe.Outcome != proxyendpoint.ProbeAcceptedNoGreeting {
+					break
+				}
+			}
+		}
+		return pin, retry, verdict
 	}
 
 	// The rung was already claimed. Which way decides the answer, and all of

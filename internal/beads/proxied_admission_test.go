@@ -522,28 +522,39 @@ func TestAdmitTable(t *testing.T) {
 			t.Errorf("a second zombie pass spent more verbs: %d ping / %d recover, want 1/1", pings, recovers)
 		}
 
-		// Four passes in total, and the count is the ladder's shape rather than
-		// a number: the FIRST Admit above runs three — one that spends the ping
-		// and re-admits, one that spends the recover and re-admits, and one
-		// that finds both rungs spent and answers proxy_zombie — and the second
-		// Admit runs one, which finds both rungs spent immediately. Each pass
-		// costs admissionNoGreetingAttempts probe sessions: admitOnce's own,
-		// plus the re-probes escalateZombie walks before it spends anything.
-		const passes = 4
-		if want := passes * admissionNoGreetingAttempts; probes != want {
-			t.Fatalf("the no-greeting ladder ran %d probe sessions across %d passes, want %d "+
-				"(%d per pass). A ladder that escalated on the FIRST silent probe would fork bd for "+
-				"every proxy that is merely mid-restart.",
-				probes, passes, want, admissionNoGreetingAttempts)
+		// The shape the ladder owes, stated as properties rather than a magic
+		// pass count: every ladder pass costs admissionNoGreetingAttempts probe
+		// sessions (a ladder that escalated on the FIRST silent probe would
+		// fork bd for every proxy that is merely mid-restart); the pass that
+		// spent the recover walks admissionPostRecoverGraceAttempts EXTRA
+		// fork-free re-probes (the replacement Dolt child's boot window, waited
+		// out with dials instead of a second `bd dolt stop`); the rungs are
+		// SPACED; and the grace is PACED. The exact pass count belongs to the
+		// ledger's TTL/read-clock subtleties, not to this row.
+		if probes < 2*admissionNoGreetingAttempts+admissionPostRecoverGraceAttempts {
+			t.Fatalf("the no-greeting surface ran %d probe sessions, want at least two ladder passes "+
+				"(%d x %d) plus the %d-probe post-recover grace",
+				probes, 2, admissionNoGreetingAttempts, admissionPostRecoverGraceAttempts)
 		}
-		if want := passes * (admissionNoGreetingAttempts - 1); len(waits) != want {
-			t.Fatalf("the ladder waited %d times, want %d: the re-probes must be SPACED, "+
-				"or three probes in a microsecond is the same as one", len(waits), want)
-		}
-		for i, wait := range waits {
-			if wait != admissionNoGreetingSpacing {
-				t.Fatalf("wait %d was %s, want admissionNoGreetingSpacing (%s)", i, wait, admissionNoGreetingSpacing)
+		spacingWaits, graceWaits := 0, 0
+		for _, wait := range waits {
+			switch wait {
+			case admissionNoGreetingSpacing:
+				spacingWaits++
+			case admissionPostRecoverGrace:
+				graceWaits++
+			default:
+				t.Fatalf("unexpected wait %s; the ladder only spaces its probes and paces its grace", wait)
 			}
+		}
+		passes := (probes - graceWaits) / admissionNoGreetingAttempts
+		if want := passes * (admissionNoGreetingAttempts - 1); spacingWaits != want {
+			t.Fatalf("the ladder spaced %d times, want %d: the re-probes must be SPACED, "+
+				"or three probes in a microsecond is the same as one", spacingWaits, want)
+		}
+		if graceWaits != admissionPostRecoverGraceAttempts {
+			t.Fatalf("the post-recover grace paced %d times, want %d: the restart window must be "+
+				"waited out with dials, never with another bd verb", graceWaits, admissionPostRecoverGraceAttempts)
 		}
 		// The span the comment at admissionNoGreetingAttempts promises, stated
 		// as an assertion so a retuned constant has to face it.
@@ -551,6 +562,40 @@ func TestAdmitTable(t *testing.T) {
 			t.Fatalf("one no-greeting pass spans %s, want at least 2s: a proxy mid-restart accepts and "+
 				"stays silent for a beat, and escalating inside that beat forks bd for a proxy that was "+
 				"about to answer", span)
+		}
+	})
+
+	t.Run("a recover's restart greets within the grace and pins", func(t *testing.T) {
+		// The row the post-recover grace exists for: the provider ping that
+		// ends the recover returns while the replacement Dolt child is still
+		// booting, so the first re-admission probe reads accept-without-greet
+		// exactly like the zombie. The grace waits that boot out with dials,
+		// and the endpoint that greets inside the window PINS instead of
+		// spending a second generation's recover or ending terminal.
+		f := newAdmissionFixture(t, "-1")
+		ops := &admissionOps{}
+		opened := 0
+
+		in := baseAdmissionInput(f, ops)
+		in.LongLived = true
+		in.Probe = func(_ context.Context, ep proxyendpoint.Endpoint, database string) proxyendpoint.ProbeResult {
+			if _, recovers := ops.counts(); recovers == 0 {
+				return proxyendpoint.ProbeResult{Outcome: proxyendpoint.ProbeAcceptedNoGreeting}
+			}
+			return servedProbe(pinnedCursors(), new(int))(context.Background(), ep, database)
+		}
+		in.Sleep = func(context.Context, time.Duration) error { return nil }
+
+		pin, err := Admit(context.Background(), in)
+		if err != nil {
+			t.Fatalf("Admit: %v", err)
+		}
+		openIfAdmitted(pin, &opened)
+		if opened != 1 {
+			t.Fatalf("a restart that greeted inside the grace did not yield an openable pin")
+		}
+		if pings, recovers := ops.counts(); pings != 1 || recovers != 1 {
+			t.Fatalf("the grace row spent %d ping / %d recover, want exactly 1/1", pings, recovers)
 		}
 	})
 

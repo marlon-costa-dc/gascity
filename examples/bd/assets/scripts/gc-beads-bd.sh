@@ -2845,7 +2845,7 @@ run_bd_init_pinned() {
     local host="$4"
     local force_init="${5:-false}"
     if [ "$force_init" = "true" ]; then
-        run_bd_pinned "$dir" init --force --quiet --server -p "$prefix" --database "$dolt_database" --skip-hooks --skip-agents \
+        run_bd_pinned "$dir" init --reinit-local --quiet --server -p "$prefix" --database "$dolt_database" --skip-hooks --skip-agents \
             --server-host "$host" --server-port "$DOLT_PORT" "$dir" || die "bd init failed for $dir"
         return 0
     fi
