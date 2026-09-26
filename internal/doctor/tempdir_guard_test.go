@@ -47,14 +47,38 @@ func retryRemoveAll(dir string, remove func(string) error, attempts int, delay t
 	return lastErr
 }
 
-// guardedTempDir returns a t.TempDir() whose removal is retried by
-// retryRemoveAllForTest. Registering the cleanup after t.TempDir() has
-// registered its own means LIFO ordering runs the retrying removal first,
-// leaving TempDir's single-shot RemoveAll nothing to trip over. Every temp
-// dir a bd subprocess writes into needs this, so bead ga-531fk — where the
-// dir pinned as HOME was the one missing the guard and failed a Mac CI run
-// after its test body had already passed — cannot repeat: the guard now
-// comes with the directory instead of being a second line to remember.
+// bdWalkUpSafeTempRoot returns the root new throwaway bd workspaces are
+// created under: the ambient temp dir when nothing in its ancestry up to the
+// filesystem root carries a .beads workspace record, and "/tmp" otherwise,
+// whose only remaining ancestors are /tmp and /. Fleet agents legitimately
+// run with TMPDIR under their home (TMPDIR=$HOME/tmp), and a home that hosts
+// a city carries .beads/metadata.json; a bd subprocess spawned with cmd.Dir
+// in a temp dir under it then walks up, resolves that OUTER workspace, and
+// refuses a fresh default-mode init ("this workspace is recorded as
+// proxied-server"). The env scrub and the test-owned HOME cover bd's env and
+// config channels; this root is the same isolation applied to bd's
+// directory-walk-up channel.
+func bdWalkUpSafeTempRoot() string {
+	root := os.TempDir()
+	for dir := root; ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".beads")); err == nil {
+			return "/tmp"
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return root
+		}
+	}
+}
+
+// guardedTempDir returns a t.TempDir()-shaped directory whose removal is
+// retried by retryRemoveAllForTest, placed under bdWalkUpSafeTempRoot so the
+// bd subprocesses these tests spawn cannot resolve a workspace outside the
+// throwaway dir. Every temp dir a bd subprocess writes into needs this, so
+// bead ga-531fk — where the dir pinned as HOME was the one missing the guard
+// and failed a Mac CI run after its test body had already passed — cannot
+// repeat: the guard now comes with the directory instead of being a second
+// line to remember.
 func guardedTempDir(t *testing.T) string {
 	t.Helper()
 	return guardedTempDirWith(t, os.RemoveAll)
@@ -62,12 +86,16 @@ func guardedTempDir(t *testing.T) string {
 
 // guardedTempDirWith is guardedTempDir with the removal call injected. The
 // registration is the whole point of the helper and yet is invisible to a
-// dir-is-gone assertion, because t.TempDir() removes an idle dir on its own;
-// injecting the removal is what lets a test observe that the cleanup was
-// registered at all. Ordinary callers want guardedTempDir.
+// dir-is-gone assertion, because an idle dir removed by the retrying removal
+// leaves nothing to observe; injecting the removal is what lets a test
+// observe that the cleanup was registered at all. Ordinary callers want
+// guardedTempDir.
 func guardedTempDirWith(t *testing.T, remove func(string) error) string {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := os.MkdirTemp(bdWalkUpSafeTempRoot(), "gc-doctor-guarded-")
+	if err != nil {
+		t.Fatalf("MkdirTemp under %s: %v", bdWalkUpSafeTempRoot(), err)
+	}
 	t.Cleanup(func() { retryRemoveAllForTest(t, dir, remove) })
 	return dir
 }
@@ -78,9 +106,29 @@ func guardedTempDirWith(t *testing.T, remove func(string) error) string {
 // machine-level dolt.shared-server setting out of the bd subprocesses these
 // tests spawn (ga-zxpfic). bd then writes $HOME/.beads/ itself, which is why
 // that dir needs the same retrying removal as the working dir.
+//
+// The pin deliberately hides ONLY bd's own config namespace, not the host's
+// version-manager state: on a mise-managed host PATH resolves bd through a
+// shim, and a shim resolves its version from the manager's global config and
+// install store — both rooted at the real home. Hiding HOME without carrying
+// those two directories turns every bd subprocess into "No version is set
+// for shim: bd". The manager's config namespace (.config/mise) is disjoint
+// from the .beads fallback this pin exists to exclude, so the directories
+// are carried across by their own explicit env vars, which the shim reads
+// regardless of HOME.
 func testOwnedHome(t *testing.T) string {
 	t.Helper()
 	home := guardedTempDir(t)
+	if realHome, err := os.UserHomeDir(); err == nil && realHome != "" {
+		miseConfig := filepath.Join(realHome, ".config", "mise")
+		if _, err := os.Stat(miseConfig); err == nil {
+			t.Setenv("MISE_CONFIG_DIR", miseConfig)
+		}
+		miseData := filepath.Join(realHome, ".local", "share", "mise")
+		if _, err := os.Stat(miseData); err == nil {
+			t.Setenv("MISE_DATA_DIR", miseData)
+		}
+	}
 	t.Setenv("HOME", home)
 	return home
 }
@@ -179,26 +227,20 @@ func TestTestOwnedHomePinsHOMEToAGuardedTempDir(t *testing.T) {
 	}
 }
 
-// TestGuardedTempDirRemovalRunsBeforeTempDirsOwnCleanup pins the wrapper
-// half: that guardedTempDir itself reaches the seam with a real removal. It
-// sandwiches a probe cleanup between TempDir's base RemoveAll (registered by
-// the deliberate first t.TempDir() call) and guardedTempDir's retry cleanup,
-// so LIFO runs retry -> probe -> base and the probe observes whether the
-// guarded removal ran. Bypassing the seam (return t.TempDir()) or injecting
-// an inert remove both leave the dir standing and turn this red; no other
-// test here catches either shape.
-func TestGuardedTempDirRemovalRunsBeforeTempDirsOwnCleanup(t *testing.T) {
-	var removedBeforeBase bool
-	t.Run("guarded", func(t *testing.T) {
-		_ = t.TempDir() // first TempDir call: pins the base RemoveAll below ours
-		var dir string
-		t.Cleanup(func() {
-			_, err := os.Stat(dir)
-			removedBeforeBase = os.IsNotExist(err)
-		})
-		dir = guardedTempDir(t)
-	})
-	if !removedBeforeBase {
-		t.Fatal("guardedTempDir's cleanup did not remove the dir before TempDir's own cleanup ran")
+// TestGuardedTempDirPlacesTheDirOutsideBeadsAncestry pins the walk-up half
+// of the guard: the dir must be created under a root whose ancestry carries
+// no .beads workspace record, so a bd subprocess spawned with cmd.Dir in it
+// cannot resolve an outer workspace and refuse a fresh init. The red this
+// pins is a placement regression back under the ambient temp root on a host
+// whose TMPDIR lives under a beads-recorded home.
+func TestGuardedTempDirPlacesTheDirOutsideBeadsAncestry(t *testing.T) {
+	dir := guardedTempDir(t)
+	for ancestor := dir; ; ancestor = filepath.Dir(ancestor) {
+		if _, err := os.Stat(filepath.Join(ancestor, ".beads")); err == nil {
+			t.Fatalf("guarded temp dir %s sits under %s, which carries a .beads record a bd walk-up would resolve", dir, ancestor)
+		}
+		if parent := filepath.Dir(ancestor); parent == ancestor {
+			break
+		}
 	}
 }

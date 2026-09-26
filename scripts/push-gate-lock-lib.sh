@@ -158,8 +158,30 @@ PUSH_GATE_FD_BASE=200
 # happens to have open in the range.
 PUSH_GATE_FD_SPAN=64
 
-# Resolve the city root, validating any env var before trusting it so a
-# stray GC_CITY_PATH can't redirect the lock directory arbitrarily.
+# Normalize a path for discovery comparisons: strip trailing slashes and
+# resolve what exists, mirroring cmd/gc normalizeDiscoveryPath (the symlink
+# resolution keeps a ceiling comparison honest when HOME or TMPDIR is reached
+# through a linked path).
+push_gate_normalize_path() {
+    local _pgn="${1%"${1##*[!/]}"]}"
+    [[ -z "$_pgn" ]] && _pgn="/"
+    if _pgn="$(cd "$_pgn" 2>/dev/null && pwd -P)"; then
+        printf '%s\n' "$_pgn"
+    else
+        printf '%s\n' "$_pgn"
+    fi
+}
+
+# Walk-up discovery: bash port of cmd/gc/city_discovery.go's
+# findCityWithOptions. city.toml wins outright; a legacy .gc/-only ancestor
+# is remembered as a fallback but only used if no city.toml is ever found
+# before the ceiling. Ceilings and ignored legacy runtime roots are the Go
+# owner's (implicitCityDiscoveryOptions): GC_CEILING_DIRECTORIES, $HOME and
+# TMPDIR bound the walk and a ceiling directory is itself never adopted, and
+# the supervisor's global runtime root ($GC_HOME or ~/.gc, plus .gc under
+# every TMPDIR ancestor) is never adopted as a city — a repo with no city
+# falls back to its git dir instead of gate-slotting the operator's global
+# gc home.
 push_gate_city_root() {
     local _pgc_var _pgc_candidate _pgc_abs
     for _pgc_var in GC_CITY_PATH GC_CITY GC_CITY_ROOT; do
@@ -172,25 +194,44 @@ push_gate_city_root() {
         fi
     done
 
-    # Walk-up discovery: bash port of cmd/gc/city_discovery.go's
-    # findCityWithOptions. city.toml wins outright; a legacy .gc/-only
-    # ancestor is remembered as a fallback but only used if no city.toml is
-    # ever found before the ceiling.
-    local _pgc_dir="$PWD" _pgc_home="${HOME:-}" _pgc_legacy="" _pgc_parent
+    local _pgc_tmp="${TMPDIR:-/tmp}" _pgc_entry
+    local _pgc_ceilings="" _pgc_ignored=""
+    for _pgc_entry in "${HOME:-}" "$_pgc_tmp" ${GC_CEILING_DIRECTORIES:-}; do
+        [[ -n "$_pgc_entry" ]] || continue
+        _pgc_ceilings+="$(push_gate_normalize_path "$_pgc_entry")"$'\n'
+    done
+    for _pgc_entry in "${GC_HOME:-}" "${HOME:+${HOME%/}/.gc}"; do
+        [[ -n "$_pgc_entry" ]] || continue
+        _pgc_ignored+="$(push_gate_normalize_path "$_pgc_entry")"$'\n'
+    done
+    _pgc_entry="$(push_gate_normalize_path "$_pgc_tmp")"
+    while [[ -n "$_pgc_entry" && "$_pgc_entry" != "/" ]]; do
+        _pgc_ignored+="$_pgc_entry/.gc"$'\n'
+        _pgc_entry="$(dirname "$_pgc_entry")"
+    done
+
+    local _pgc_dir _pgc_legacy="" _pgc_parent _pgc_ceiling _pgc_is_ceiling
+    _pgc_dir="$(push_gate_normalize_path "$PWD")"
     while :; do
         if [[ -f "$_pgc_dir/city.toml" ]]; then
             printf '%s\n' "$_pgc_dir"
             return 0
         fi
-        if [[ -z "$_pgc_legacy" && -d "$_pgc_dir/.gc" ]]; then
+        _pgc_is_ceiling=""
+        while IFS= read -r _pgc_ceiling; do
+            if [[ -n "$_pgc_ceiling" && "$_pgc_dir" == "$_pgc_ceiling" ]]; then
+                _pgc_is_ceiling=1
+                break
+            fi
+        done <<<"$_pgc_ceilings"
+        if [[ -z "$_pgc_is_ceiling" && -z "$_pgc_legacy" && -d "$_pgc_dir/.gc" ]] \
+            && ! printf '%s' "$_pgc_ignored" | grep -Fxq -- "$_pgc_dir/.gc"; then
             _pgc_legacy="$_pgc_dir"
         fi
-        if [[ -n "$_pgc_home" && "$_pgc_dir" == "$_pgc_home" ]]; then
-            break
-        fi
+        [[ -n "$_pgc_is_ceiling" ]] && break
         _pgc_parent="$(dirname "$_pgc_dir")"
         [[ "$_pgc_parent" == "$_pgc_dir" ]] && break
-        _pgc_dir="$_pgc_parent"
+        _pgc_dir="$(push_gate_normalize_path "$_pgc_parent")"
     done
 
     if [[ -n "$_pgc_legacy" ]]; then
