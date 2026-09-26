@@ -7646,12 +7646,12 @@ case "$cmd" in
     fi
     has_force=false
     for arg in "$@"; do
-      if [ "$arg" = "--force" ]; then
+      if [ "$arg" = "--reinit-local" ]; then
         has_force=true
       fi
     done
     if [ "$has_force" != "true" ]; then
-      echo "bd init fallback must force reinitialize existing workspace" >&2
+      echo "bd init fallback must reinit-local the existing workspace" >&2
       exit 2
     fi
     printf '1\n' > %q
@@ -7722,7 +7722,7 @@ esac
 		t.Fatalf("expected bd init fallback to run: %v", err)
 	}
 	got := string(data)
-	for _, want := range []string{"--force", "--server", "-p", "gc", "--database", "hq", cityPath} {
+	for _, want := range []string{"--reinit-local", "--server", "-p", "gc", "--database", "hq", cityPath} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("bd init argv missing %q:\n%s", want, got)
 		}
@@ -7791,12 +7791,12 @@ case "$cmd" in
     fi
     has_force=false
     for arg in "$@"; do
-      if [ "$arg" = "--force" ]; then
+      if [ "$arg" = "--reinit-local" ]; then
         has_force=true
       fi
     done
     if [ "$has_force" != "true" ]; then
-      echo "bd init fallback must force reinitialize existing workspace" >&2
+      echo "bd init fallback must reinit-local the existing workspace" >&2
       exit 2
     fi
     printf '1\n' > %q
