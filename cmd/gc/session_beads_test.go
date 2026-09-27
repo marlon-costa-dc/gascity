@@ -721,7 +721,6 @@ func TestSyncSessionBeads_StampsProviderFamilyMetadata(t *testing.T) {
 			Command:      "claude",
 			ResolvedProvider: &config.ResolvedProvider{
 				Name:            "claude-max",
-				Kind:            "claude",
 				BuiltinAncestor: "claude",
 			},
 		},
@@ -773,7 +772,6 @@ func TestSyncSessionBeads_BackfillsProviderFamilyMetadata(t *testing.T) {
 			Command:      "claude",
 			ResolvedProvider: &config.ResolvedProvider{
 				Name:            "claude-max",
-				Kind:            "claude",
 				BuiltinAncestor: "claude",
 			},
 		},

@@ -27,6 +27,26 @@ is_running() {
   managed_runtime_tcp_reachable "$GC_DOLT_PORT"
 }
 
+# gc forwards the caller's pre-leaf scope (`gc --city X dolt sql ...`) to pack
+# commands. That scope is already resolved into GC_CITY_PATH, and `dolt sql`
+# rejects it as a positional argument, so the scope flags never reach dolt.
+remaining=$#
+while [ "$remaining" -gt 0 ]; do
+  arg=$1
+  shift
+  remaining=$((remaining - 1))
+  case $arg in
+    --city | --rig)
+      if [ "$remaining" -gt 0 ]; then
+        shift
+        remaining=$((remaining - 1))
+      fi
+      ;;
+    --city=* | --rig=*) ;;
+    *) set -- "$@" "$arg" ;;
+  esac
+done
+
 if is_running; then
   # Build connection args.
   args=""
