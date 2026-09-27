@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -460,6 +461,79 @@ func TestCountBeadStoreRowsIncludesClosedBeads(t *testing.T) {
 	}
 }
 
+type storeHealthCounterStore struct {
+	beads.Store
+	count     int
+	countErr  error
+	gotQuery  *beads.ListQuery
+	listCalls int
+}
+
+func (s *storeHealthCounterStore) Count(_ context.Context, query beads.ListQuery, _ ...string) (int, error) {
+	s.gotQuery = &query
+	return s.count, s.countErr
+}
+
+func (s *storeHealthCounterStore) List(query beads.ListQuery) ([]beads.Bead, error) {
+	s.listCalls++
+	return s.Store.List(query)
+}
+
+func TestCountBeadStoreRowsPrefersCounterWithoutHydration(t *testing.T) {
+	store := &storeHealthCounterStore{Store: beads.NewMemStore(), count: 41252}
+
+	got, err := countBeadStoreRows(context.Background(), newFakeState(t), store)
+	if err != nil {
+		t.Fatalf("countBeadStoreRows: %v", err)
+	}
+	if got != 41252 {
+		t.Fatalf("countBeadStoreRows = %d, want Counter result 41252", got)
+	}
+	if store.listCalls != 0 {
+		t.Fatalf("List called %d times, want 0 (Counter path must not hydrate)", store.listCalls)
+	}
+	if store.gotQuery == nil || !store.gotQuery.IncludeClosed || !store.gotQuery.AllowScan {
+		t.Fatalf("Count query = %+v, want AllowScan and IncludeClosed set", store.gotQuery)
+	}
+}
+
+func TestCountBeadStoreRowsFallsBackWhenCountUnsupported(t *testing.T) {
+	store := &storeHealthCounterStore{
+		Store:    beads.NewMemStore(),
+		countErr: fmt.Errorf("counting beads: %w", beads.ErrCountUnsupported),
+	}
+	if _, err := store.Create(beads.Bead{Title: "x"}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := countBeadStoreRows(context.Background(), newFakeState(t), store)
+	if err != nil {
+		t.Fatalf("countBeadStoreRows: %v", err)
+	}
+	if got != 1 {
+		t.Fatalf("countBeadStoreRows = %d, want 1 from List fallback", got)
+	}
+	if store.listCalls == 0 {
+		t.Fatal("List never called, want hydrating fallback on ErrCountUnsupported")
+	}
+}
+
+func TestCountBeadStoreRowsReturnsCounterError(t *testing.T) {
+	wantErr := errors.New("store health count failed")
+	store := &storeHealthCounterStore{Store: beads.NewMemStore(), countErr: wantErr}
+
+	got, err := countBeadStoreRows(context.Background(), newFakeState(t), store)
+	if got != 0 {
+		t.Errorf("countBeadStoreRows = %d, want zero value on Counter error", got)
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("countBeadStoreRows error = %v, want %v", err, wantErr)
+	}
+	if store.listCalls != 0 {
+		t.Fatalf("List called %d times after non-unsupported Counter error, want 0", store.listCalls)
+	}
+}
+
 func TestComputeStoreHealthReturnsRowCountError(t *testing.T) {
 	wantErr := errors.New("store health row scan failed")
 	state := newFakeState(t)
@@ -538,5 +612,150 @@ func TestBuildStatusBodyIncludesBeadsDiagnostic(t *testing.T) {
 	}
 	if body.Beads.PreflightReason == "" {
 		t.Fatal("preflight_reason = empty, want fallback reason")
+	}
+}
+
+// storeHealthWitnessStore is a counting store that has already handed this
+// process a row. It is the state that turns a later zero for a whole-ledger
+// read from a small ledger into a failed measurement.
+type storeHealthWitnessStore struct {
+	*storeHealthCounterStore
+	sawRows bool
+}
+
+func (s *storeHealthWitnessStore) SawRows() bool { return s.sawRows }
+
+func newStoreHealthWitnessStore(inner *storeHealthCounterStore, sawRows bool) *storeHealthWitnessStore {
+	return &storeHealthWitnessStore{storeHealthCounterStore: inner, sawRows: sawRows}
+}
+
+// TestCountBeadStoreRowsRefusesACounterZeroTheStoreContradicts covers the
+// branch where the backend answered a bare COUNT with zero. The count
+// succeeded, so nothing upstream of here has an error to report, and the zero
+// would otherwise be certified as measured and become the denominator of the
+// maintenance ratio.
+func TestCountBeadStoreRowsRefusesACounterZeroTheStoreContradicts(t *testing.T) {
+	store := newStoreHealthWitnessStore(&storeHealthCounterStore{Store: beads.NewMemStore(), count: 0}, true)
+
+	got, err := countBeadStoreRows(context.Background(), newFakeState(t), store)
+	if got != 0 {
+		t.Errorf("countBeadStoreRows = %d, want zero value when the count is unavailable", got)
+	}
+	if !errors.Is(err, errRowCountContradicted) {
+		t.Fatalf("countBeadStoreRows error = %v, want errRowCountContradicted", err)
+	}
+	if !strings.Contains(err.Error(), countBranchCounter) {
+		t.Fatalf("error = %q, want it to name the %q branch that answered", err, countBranchCounter)
+	}
+}
+
+// TestCountBeadStoreRowsRefusesAListFallbackZeroTheStoreContradicts covers the
+// branch every bd-backed city takes, since BdStore implements no Counter. An
+// empty whole-ledger list is the shape the store layer already diagnoses and
+// deliberately lets succeed; refusing it belongs here, at the one consumer for
+// which zero was never a usable answer.
+func TestCountBeadStoreRowsRefusesAListFallbackZeroTheStoreContradicts(t *testing.T) {
+	store := newStoreHealthWitnessStore(&storeHealthCounterStore{
+		Store:    beads.NewMemStore(),
+		countErr: fmt.Errorf("counting beads: %w", beads.ErrCountUnsupported),
+	}, true)
+
+	got, err := countBeadStoreRows(context.Background(), newFakeState(t), store)
+	if got != 0 {
+		t.Errorf("countBeadStoreRows = %d, want zero value when the count is unavailable", got)
+	}
+	if !errors.Is(err, errRowCountContradicted) {
+		t.Fatalf("countBeadStoreRows error = %v, want errRowCountContradicted", err)
+	}
+	if !strings.Contains(err.Error(), countBranchList) {
+		t.Fatalf("error = %q, want it to name the %q branch that answered", err, countBranchList)
+	}
+	if store.listCalls == 0 {
+		t.Fatal("List never called; the fallback branch is the one under test")
+	}
+}
+
+// TestCountBeadStoreRowsKeepsAZeroFromAnEmptyLedger is the other half of the
+// contract. A city that genuinely holds nothing must keep reporting a healthy
+// zero, so the guard fires on contradiction and never on the number alone.
+func TestCountBeadStoreRowsKeepsAZeroFromAnEmptyLedger(t *testing.T) {
+	store := newStoreHealthWitnessStore(&storeHealthCounterStore{Store: beads.NewMemStore(), count: 0}, false)
+
+	got, err := countBeadStoreRows(context.Background(), newFakeState(t), store)
+	if err != nil {
+		t.Fatalf("countBeadStoreRows error = %v, want nil for a store with no evidence against its zero", err)
+	}
+	if got != 0 {
+		t.Fatalf("countBeadStoreRows = %d, want 0", got)
+	}
+}
+
+// TestCountBeadStoreRowsKeepsAZeroFromAStoreThatCannotWitnessItself pins the
+// behavior for every store implementing no witness, which is what keeps this
+// change from turning an unrelated backend's healthy zero into a partial error.
+func TestCountBeadStoreRowsKeepsAZeroFromAStoreThatCannotWitnessItself(t *testing.T) {
+	store := beads.NewMemStore()
+	if _, ok := beads.Store(store).(beads.RowWitness); ok {
+		t.Fatal("MemStore implements RowWitness; this test no longer covers the witness-less case")
+	}
+
+	got, err := countBeadStoreRows(context.Background(), newFakeState(t), store)
+	if err != nil {
+		t.Fatalf("countBeadStoreRows error = %v, want nil", err)
+	}
+	if got != 0 {
+		t.Fatalf("countBeadStoreRows = %d, want 0", got)
+	}
+}
+
+// TestCountBeadStoreRowsLeavesARealCountAlone keeps the guard off the answers
+// it has no business touching: only zero is ambiguous.
+func TestCountBeadStoreRowsLeavesARealCountAlone(t *testing.T) {
+	store := newStoreHealthWitnessStore(&storeHealthCounterStore{Store: beads.NewMemStore(), count: 41252}, true)
+
+	got, err := countBeadStoreRows(context.Background(), newFakeState(t), store)
+	if err != nil {
+		t.Fatalf("countBeadStoreRows error = %v, want nil", err)
+	}
+	if got != 41252 {
+		t.Fatalf("countBeadStoreRows = %d, want 41252", got)
+	}
+}
+
+// TestBuildStatusBodyOmitsStoreHealthWhenTheRowCountIsContradicted is the
+// regression test in the operator's own terms: a store holding rows never
+// renders a successful count of zero.
+//
+// It asserts the whole route rather than the guard alone, because the value of
+// refusing the zero is entirely in where the refusal lands — the block is
+// omitted and the reason is attached, instead of `Live rows: 0` and a ratio
+// derived from a count nobody took reading as under-threshold by luck.
+func TestBuildStatusBodyOmitsStoreHealthWhenTheRowCountIsContradicted(t *testing.T) {
+	state := newFakeState(t)
+	state.cityBeadStore = newStoreHealthWitnessStore(&storeHealthCounterStore{Store: beads.NewMemStore(), count: 0}, true)
+	s := &Server{state: state}
+
+	body := s.buildStatusBody(context.Background(), false)
+	if body.StoreHealth != nil {
+		t.Fatalf("StoreHealth = %+v, want omitted when the row count is unavailable", body.StoreHealth)
+	}
+	if !body.Partial {
+		t.Error("Partial = false, want true so the absent block is visible as a gap rather than as silence")
+	}
+	var got string
+	for _, entry := range body.PartialErrors {
+		if strings.HasPrefix(entry, "store health: ") {
+			got = entry
+			break
+		}
+	}
+	if got == "" {
+		t.Fatalf("PartialErrors = %q, want a store health entry naming why the block is absent", body.PartialErrors)
+	}
+	if !strings.Contains(got, countBranchCounter) {
+		t.Errorf("partial error = %q, want it to name the branch that answered", got)
+	}
+	if !strings.Contains(got, "after already returning rows") {
+		t.Errorf("partial error = %q, want it to say what disproved the zero", got)
 	}
 }
