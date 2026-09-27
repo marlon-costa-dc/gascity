@@ -6341,6 +6341,8 @@ esac
 			cmd.Env = sanitizedBaseEnv(append(gcBeadsBdTestHomeEnv(t),
 				"GC_CITY_PATH="+cityPath,
 				"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+				"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+				"BEADS_DOLT_SERVER_PORT=1",
 			)...)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
@@ -6671,6 +6673,8 @@ esac
 		"GC_CITY_PATH="+cityPath,
 		"GC_BIN="+fakeGC,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -6802,6 +6806,8 @@ esac
 		"GC_CITY_PATH="+cityPath,
 		"GC_BIN="+fakeGC,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -6912,6 +6918,8 @@ esac
 		"GC_CITY_PATH="+cityPath,
 		"GC_BIN="+fakeGC,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -6976,6 +6984,8 @@ exit 0
 	cmd.Env = sanitizedBaseEnv(append(gcBeadsBdTestHomeEnv(t),
 		"GC_CITY_PATH="+cityPath,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -7124,6 +7134,8 @@ esac
 		"GC_CITY_PATH="+cityPath,
 		"GC_BIN="+fakeGC,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -7290,6 +7302,8 @@ esac
 		"GC_CITY_PATH="+cityPath,
 		"GC_BIN="+fakeGC,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -7469,6 +7483,8 @@ esac
 	cmd.Env = sanitizedBaseEnv(append(gcBeadsBdTestHomeEnv(t),
 		"GC_CITY_PATH="+cityPath,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -7566,6 +7582,8 @@ esac
 	cmd.Env = sanitizedBaseEnv(append(gcBeadsBdTestHomeEnv(t),
 		"GC_CITY_PATH="+cityPath,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -7600,6 +7618,11 @@ func runGcBeadsBdHQInitForTest(t *testing.T, script, cityPath, binDir string) ([
 	cmd := exec.Command(script, "init", cityPath, "gc", "hq")
 	cmd.Env = sanitizedBaseEnv(append(gcBeadsBdTestHomeEnv(t),
 		"GC_CITY_PATH="+cityPath,
+		// Pin the dolt server to a deterministically dead endpoint: the
+		// schema probe must never reach the host's shared server, whose
+		// answer depends on whatever else is running on this box.
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
 	)...)
 	return cmd.CombinedOutput()
@@ -7962,6 +7985,8 @@ esac
 	cmd.Env = sanitizedBaseEnv(append(gcBeadsBdTestHomeEnv(t),
 		"GC_CITY_PATH="+cityPath,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -8091,6 +8116,8 @@ esac
 	cmd.Env = sanitizedBaseEnv(append(gcBeadsBdTestHomeEnv(t),
 		"GC_CITY_PATH="+cityPath,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -8228,6 +8255,8 @@ esac
 	cmd.Env = sanitizedBaseEnv(append(gcBeadsBdTestHomeEnv(t),
 		"GC_CITY_PATH="+cityPath,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -8273,6 +8302,8 @@ func TestGcBeadsBdInitDoltliteInitializesDelegatedBdWrites(t *testing.T) {
 		"BD_NON_INTERACTIVE=1",
 		"BD_BIN="+bdPath,
 		"PATH="+os.Getenv("PATH"),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -8333,6 +8364,8 @@ func TestGcBeadsBdInitDoltliteRejectsUnsafeCustomTypes(t *testing.T) {
 		"GC_BEADS_BACKEND=doltlite",
 		"BEADS_BACKEND=doltlite",
 		"GC_BEADS_CUSTOM_TYPES=task,bad'type",
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -11835,6 +11868,8 @@ esac
 		"GC_BEADS=bd",
 		"GC_BIN="+gcWrapper,
 		"PATH="+strings.Join([]string{binDir, os.Getenv("PATH")}, string(os.PathListSeparator)),
+		"BEADS_DOLT_SERVER_HOST=127.0.0.1",
+		"BEADS_DOLT_SERVER_PORT=1",
 	)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
