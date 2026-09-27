@@ -20,6 +20,7 @@ go_test(
         "beadmail_test.go",
         "conformance_test.go",
         "handoff_archive_test.go",
+        "handoff_self_address_test.go",
         "handoff_test.go",
         "testenv_import_test.go",
     ],
