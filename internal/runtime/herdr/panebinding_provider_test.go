@@ -42,7 +42,7 @@ func newFakeHerdrProvider(t *testing.T) (*Provider, string) {
 // their own generated names rather than this file's own sequence.
 func newFakeHerdrProviderForSession(t *testing.T, session string) (*Provider, string) {
 	t.Helper()
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	shortHome(t)
 	state := t.TempDir()
 	metaDir := t.TempDir()
 	script := filepath.Join(t.TempDir(), "herdr")

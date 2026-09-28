@@ -1179,6 +1179,11 @@ test-bazel: $(BAZEL)
 test-workspacesvc:
 	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-workspacesvc -- -count=1 -timeout 5m ./internal/workspacesvc
 
+.PHONY: test-herdr-contract
+## test-herdr-contract: execute the complete herdr provider contract suite
+test-herdr-contract:
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-herdr-contract -- -count=1 -timeout 5m ./internal/runtime/herdr
+
 $(BAZEL):
 	@mkdir -p "$(@D)"
 	GOBIN="$(@D)" go install github.com/bazelbuild/bazelisk@v$(BAZELISK_VERSION)
