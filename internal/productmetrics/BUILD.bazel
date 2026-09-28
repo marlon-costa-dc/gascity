@@ -48,6 +48,8 @@ go_library(
 
 go_test(
     name = "productmetrics_test",
+    # Trust checks require the host's actual filesystem ownership.
+    tags = ["no-sandbox", "no-remote"],  # keep
     srcs = [
         "config_state_test.go",
         "control_unix_test.go",

@@ -122,6 +122,8 @@ runs:
 
     - name: Install released bd v${{ inputs.bd-version }}
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: ${{ github.action_path }}/../../scripts/install-bd-archive.sh "${{ inputs.bd-version }}" --cache
 
     - name: Install Claude CLI

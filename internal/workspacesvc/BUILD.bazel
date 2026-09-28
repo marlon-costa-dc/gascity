@@ -38,6 +38,9 @@ go_test(
         "validate_test.go",
     ],
     embed = [":workspacesvc"],
+    # Bazel's process-wrapper adopts orphans even without sandboxing.
+    # make test-bazel runs this entire suite through make test-workspacesvc.
+    tags = ["requires-host-parentage"],  # keep
     deps = [
         "//internal/beads",
         "//internal/citylayout",

@@ -13,6 +13,8 @@ go_library(
 
 go_test(
     name = "gchome_test",
+    # Trust checks require the host's actual filesystem ownership.
+    tags = ["no-sandbox", "no-remote"],  # keep
     srcs = [
         "gchome_test.go",
         "testenv_import_test.go",
