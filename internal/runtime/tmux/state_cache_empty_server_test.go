@@ -57,7 +57,7 @@ func TestTmuxFetcher_EmptyServerFromRawStderr(t *testing.T) {
 // Control: a genuinely unreachable server must still fail differently. Without
 // this the test above would also pass if FetchState swallowed every error.
 func TestTmuxFetcher_UnreachableServerStillUnavailable(t *testing.T) {
-	f := &tmuxFetcher{tm: &Tmux{cfg: Config{SocketName: "city-with-no-server"}, exec: &fakeExecutor{err: ErrNoServer}}}
+	f := &tmuxFetcher{tm: &Tmux{cfg: DefaultConfig(), exec: &fakeExecutor{err: ErrNoServer}}}
 
 	_, err := f.FetchState(context.Background())
 	if !errors.Is(err, gcruntime.ErrRuntimeUnavailable) {

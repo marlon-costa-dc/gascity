@@ -484,6 +484,10 @@ test-ci-policy:
 test: test-fsys-darwin-compile
 	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" GC_FAST_UNIT=1 scripts/go-test-observable test -- -p=4 -count=1 -timeout 15m ./...
 
+.PHONY: test-runtime-observation
+test-runtime-observation:
+	$(TEST_ENV) GC_TMUX_INTEGRATION=1 GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-runtime-observation -- -count=1 -timeout 5m ./internal/runtime/tmux
+
 ## test-herdr-live: run the live herdr journeys against a real herdr server —
 ## the provider's own tier under internal/runtime/herdr, plus the controller's
 ## event-driven liveness journeys under cmd/gc. These drive panes, force

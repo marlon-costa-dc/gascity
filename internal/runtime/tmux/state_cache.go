@@ -213,28 +213,6 @@ func (c *StateCache) refresh() {
 			log.Printf("tmux state cache: refresh failed in %v: %v", elapsed, err)
 			c.mu.Lock()
 			c.lastError = err
-			// Two distinct failure regimes, keyed on whether the cache was ever
-			// primed (fetchedAt set by a prior success):
-			//
-			//   UNPRIMED + genuine no-server (a fresh city with no tmux server
-			//   yet): initialize to an EMPTY snapshot so the cache is primed.
-			//   Without this, currentState() sees a nil Sessions map and forces
-			//   a fresh list-panes spawn plus a failure log on EVERY IsRunning()
-			//   call — a re-spawn/log storm in the exact steady state (no server)
-			//   where nothing will change until one is started. An empty primed
-			//   snapshot correctly reports all sessions not-running and holds as
-			//   a cache hit until the TTL lapses.
-			//
-			//   PRIMED then now-unreachable: preserve last-known-good (do NOT
-			//   touch fetchedAt or sessions) until the staleTTL cliff. A server
-			//   that was up then briefly vanished (supervisor restart, socket
-			//   stall) must not wipe a good snapshot and drain healthy pool slots
-			//   — that is #4082's intent.
-			if c.fetchedAt.IsZero() && isNoServerError(err) {
-				c.state = runtimeStateSnapshot{Sessions: make(map[string]sessionRuntimeState)}
-				c.fetchedAt = time.Now()
-				c.dirty = false
-			}
 			c.mu.Unlock()
 			return nil, err
 		}
@@ -341,22 +319,18 @@ func (f *tmuxFetcher) FetchState(ctx context.Context) (runtimeStateSnapshot, err
 			// the whole city not-running. See ga-jnavd.
 			return runtimeStateSnapshot{Sessions: make(map[string]sessionRuntimeState)}, nil
 		}
-		if isNoServerError(err) {
-			// An unreachable tmux server is an observation FAILURE, not the
-			// fact "no sessions exist". Returning an empty *success* here let
-			// refresh() overwrite the cache's last-known-good and instantly
-			// report every session as not-running, so a brief server blip (a
-			// supervisor restart, a transient socket stall) drove the
-			// reconciler to drain/close healthy pool slots. Surface it as
-			// runtime.ErrRuntimeUnavailable instead: refresh() then preserves
-			// last-known-good until the existing staleTTL cliff, bounding the
-			// trust window. Genuine session ends evict from the cache via
-			// Stop()/EvictSession, so they are not masked by this preservation
-			// (the only residual is an externally-killed LAST session, whose
-			// cleanup is delayed by at most staleTTL — the intended trade).
-			// isNoServerError still matches the wrapped error (it contains the
-			// original "no server running" cause), so downstream absorbers are
-			// unaffected.
+		if errors.Is(err, ErrNoServer) {
+			// A protocol failure alone cannot distinguish an absent server
+			// from a live server whose socket is inaccessible. Corroborate
+			// absence using the same socket owner used before session creation.
+			if f.tm.cfg.SocketName != "" {
+				path := namedSocketPath(f.tm.cfg.SocketName)
+				observationErr := observeNamedSocket(ctx, path)
+				if observationErr == nil {
+					return runtimeStateSnapshot{Sessions: make(map[string]sessionRuntimeState)}, nil
+				}
+				return runtimeStateSnapshot{}, fmt.Errorf("%w: %w: %w", runtime.ErrRuntimeUnavailable, err, observationErr)
+			}
 			return runtimeStateSnapshot{}, fmt.Errorf("%w: %w", runtime.ErrRuntimeUnavailable, err)
 		}
 		return runtimeStateSnapshot{}, err

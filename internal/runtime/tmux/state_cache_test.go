@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"runtime"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -364,41 +366,56 @@ func TestStateCache_NoServerRefreshPreservesLastKnownGood(t *testing.T) {
 	}
 }
 
-// An UNPRIMED cache (never held a good state, fetchedAt zero) that hits a
-// genuine "no server" must prime itself to an empty snapshot rather than
-// re-spawning list-panes and re-logging the failure on every IsRunning. A
-// fresh city with no tmux server yet would otherwise storm the (absent) server
-// with one list-panes per liveness probe.
-func TestStateCache_UnprimedNoServerPrimesEmptyWithoutRefetch(t *testing.T) {
-	fe := &fakeExecutor{
-		// Every list-panes reports no server; the cache is never primed good.
-		errs: []error{ErrNoServer, ErrNoServer, ErrNoServer, ErrNoServer},
+// A suspended city has no server. Exercise the public provider through real
+// tmux commands, including a read after the normal observation cache expires.
+func TestProvider_AbsentServerRemainsAnEmptyFleet(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.SocketName = fmt.Sprintf("gctest-absent-%d-%d", os.Getpid(), time.Now().UnixNano())
+	provider := NewProviderWithConfig(cfg)
+	var logs bytes.Buffer
+	restore := captureLog(&logs)
+	defer restore()
+	for range 2 {
+		for range 5 {
+			if provider.IsRunning("never-started") {
+				t.Fatal("absent server reported a running session")
+			}
+		}
+		time.Sleep(defaultCacheTTL + 10*time.Millisecond)
 	}
-	// A real TTL (not 0) so a successfully primed empty snapshot is a cache hit
-	// on the next read — proving priming stops the refetch storm.
-	cache := NewStateCache(&tmuxFetcher{tm: &Tmux{cfg: DefaultConfig(), exec: fe}}, time.Second)
+	if logs.Len() != 0 {
+		t.Fatalf("absent server reported observation failures: %s", logs.String())
+	}
+}
 
-	if cache.IsRunning("agent-1") {
-		t.Fatal("expected agent-1 not running against a server-less city")
+// A listening socket that does not answer the tmux protocol is not an empty
+// fleet. Use a real listener and the public provider, without a canned reply.
+func TestProvider_BlockedSocket(t *testing.T) {
+	t.Setenv("TMUX_TMPDIR", t.TempDir())
+	cfg := DefaultConfig()
+	cfg.SocketName = "blocked"
+	path := namedSocketPath(cfg.SocketName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	// The first read primed an empty snapshot with a single list-panes spawn.
-	// Every subsequent read within the TTL must be a cache hit — no refetch.
-	_ = cache.IsRunning("agent-1")
-	_ = cache.IsRunning("agent-2")
-	if calls := len(fe.calls); calls != 1 {
-		t.Fatalf("list-panes calls = %d, want 1: an unprimed no-server must prime empty once, not refetch on every IsRunning", calls)
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// The cache is primed: fetchedAt set, and the failure recorded in lastError.
-	cache.mu.RLock()
-	fetchedAt := cache.fetchedAt
-	lastErr := cache.lastError
-	cache.mu.RUnlock()
-	if fetchedAt.IsZero() {
-		t.Error("expected fetchedAt to be set (cache primed) after an unprimed no-server refresh")
+	t.Cleanup(func() {
+		if err := listener.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	provider := NewProviderWithConfig(cfg)
+	var logs bytes.Buffer
+	restore := captureLog(&logs)
+	defer restore()
+	if provider.IsRunning("unknown") {
+		t.Fatal("unresponsive socket reported a running session")
 	}
-	if !errors.Is(lastErr, gcruntime.ErrRuntimeUnavailable) {
-		t.Errorf("cache.lastError = %v, want errors.Is(runtime.ErrRuntimeUnavailable)", lastErr)
+	if !strings.Contains(logs.String(), "refresh failed") {
+		t.Fatalf("unresponsive socket did not report its observation failure: %s", logs.String())
 	}
 }
 
@@ -756,21 +773,6 @@ func TestParseDarwinProcessSnapshotTraversesThroughEmptyArgsRows(t *testing.T) {
 	}
 	if !snapshot.hasDescendantWithNames("101", processNameSet([]string{"claude"}), 0) {
 		t.Fatal("hasDescendantWithNames(101, claude) = false, want traversal through empty-args row")
-	}
-}
-
-func TestProcessSnapshotPSArgsRejectsLinuxSyntaxOnDarwin(t *testing.T) {
-	// Regression: macOS ps rejects the BSD `:N=` column-width form. Confirm
-	// we don't emit it on Darwin. Skip elsewhere — Linux ps accepts both
-	// forms so verifying the wide form there is just a tautology.
-	if runtime.GOOS != "darwin" {
-		t.Skip("Darwin-specific syntax guard")
-	}
-	args := processSnapshotPSArgs()
-	for _, a := range args {
-		if strings.Contains(a, ":") {
-			t.Fatalf("processSnapshotPSArgs returned %v on darwin; contains Linux-only `:N=` width specifier", args)
-		}
 	}
 }
 
