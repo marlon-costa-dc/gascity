@@ -46,11 +46,11 @@ fetch_upstream_tag() {
 
 # Newest upstream release tag that is already an ancestor of the integration head.
 current_base() {
-	local tag
+	local head="$1" tag
 	while read -r tag; do
 		[[ "$tag" =~ $release_re ]] || continue
 		git rev-parse -q --verify "refs/tags/${tag}^{commit}" >/dev/null || fetch_upstream_tag "$tag"
-		if git merge-base --is-ancestor "$tag" "origin/${integration}"; then
+		if git merge-base --is-ancestor "$tag" "$head"; then
 			echo "$tag"
 			return 0
 		fi
@@ -119,9 +119,9 @@ require_integration_head() {
 cmd_release() {
 	require_integration_head
 	local base label head n tag
-	base=$(current_base)
+	head=$(git rev-parse HEAD)
+	base=$(current_base "$head")
 	label=$(fork_label)
-	head=$(git rev-parse "origin/${integration}")
 	n=0
 	while read -r tag; do
 		[[ "$tag" =~ ^${base}-${label}\.([0-9]+)$ ]] || continue
