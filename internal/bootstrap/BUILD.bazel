@@ -2,10 +2,10 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "bootstrap",
-    srcs = glob(
-        ["*.go"],
-        exclude = ["*_test.go"],
-    ),
+    srcs = [
+        "bootstrap.go",
+        "collision.go",
+    ],
     importpath = "github.com/gastownhall/gascity/internal/bootstrap",
     visibility = ["//:__subpackages__"],
     embedsrcs = ["//internal/bootstrap/packs/core:pack_files"],
