@@ -6,7 +6,11 @@ GOOS   := $(shell go env GOOS)
 GOARCH := $(shell go env GOARCH)
 
 BIN_DIR := $(shell go env GOPATH)/bin
-GOLANGCI_LINT := $(BIN_DIR)/golangci-lint
+# Keep the repository's declared formatter separate from host/other-project tools.
+# Its compiler also affects gofmt output, so match setup-go's go.mod authority.
+TOOL_CACHE_DIR := $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/gascity/tools
+GOLANGCI_LINT_TOOLCHAIN := $(shell awk '$$1 == "go" { print "go" $$2; exit }' go.mod)
+GOLANGCI_LINT := $(TOOL_CACHE_DIR)/golangci-lint/$(GOLANGCI_LINT_VERSION)/$(GOLANGCI_LINT_TOOLCHAIN)/golangci-lint
 
 BINARY     := gc
 BUILD_DIR  := bin
@@ -309,6 +313,8 @@ QUALITY_GATE_GOFLAGS = $$(go env GOFLAGS | sed -E 's/(^|[[:space:]])-mod=[^[:spa
 CI_STATIC_SELECT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))scripts/ci-static-select
 CI_STATIC_GO ?= go
 
+fmt fmt-check fmt-check-changed fmt-staged lint lint-full lint-new lint-changed lint-affected: export GOTOOLCHAIN := $(GOLANGCI_LINT_TOOLCHAIN)
+
 ## lint: run full-repo golangci-lint
 lint: lint-full
 
@@ -377,6 +383,12 @@ fmt-check-changed: $(GOLANGCI_LINT)
 ## fmt: auto-fix formatting
 fmt: $(GOLANGCI_LINT)
 	$(GOLANGCI_LINT) fmt ./...
+
+.PHONY: fmt-staged
+## fmt-staged: format staged Go files with the repository's pinned formatter
+fmt-staged: $(GOLANGCI_LINT)
+	@set -e; files=$$(git diff --cached --name-only --diff-filter=ACM -- '*.go'); \
+	printf '%s\n' "$$files" | scripts/precommit-format-staged-go "$(GOLANGCI_LINT)"
 
 ## vet: run go vet
 vet:
@@ -891,21 +903,9 @@ install-tools: $(GOLANGCI_LINT) install-oapi-codegen
 
 $(GOLANGCI_LINT):
 	@echo "Installing golangci-lint v$(GOLANGCI_LINT_VERSION)..."
-	@attempt=1; max_attempts=5; delay=2; \
-	while [ $$attempt -le $$max_attempts ]; do \
-		echo "golangci-lint install attempt $$attempt/$$max_attempts"; \
-		if GOBIN=$(BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION); then \
-			exit 0; \
-		fi; \
-		if [ $$attempt -lt $$max_attempts ]; then \
-			echo "golangci-lint install failed; retrying in $${delay}s..." >&2; \
-			sleep $$delay; \
-		fi; \
-		attempt=$$((attempt + 1)); \
-		delay=$$((delay * 2)); \
-	done; \
-	echo "ERROR: failed to install golangci-lint v$(GOLANGCI_LINT_VERSION) after $$max_attempts attempts" >&2; \
-	exit 1
+	@mkdir -p "$(@D)"
+	@test -n "$(GOLANGCI_LINT_TOOLCHAIN)" || { echo "go.mod must declare the formatter's Go toolchain" >&2; exit 1; }
+	GOTOOLCHAIN="$(GOLANGCI_LINT_TOOLCHAIN)" GOBIN="$(@D)" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION)
 
 ## install-oapi-codegen: install pinned oapi-codegen so the spec→client drift
 ## test (TestGeneratedClientInSync) can regenerate client_gen.go without skipping.

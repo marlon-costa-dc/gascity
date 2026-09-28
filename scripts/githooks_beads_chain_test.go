@@ -42,7 +42,10 @@ func runChain(t *testing.T, env []string, args ...string) (int, string) {
 	t.Helper()
 	root := repoRoot(t)
 	cmd := testCommand(filepath.Join(root, beadsChainPath), args...)
-	cmd.Dir = root
+	cmd.Dir = t.TempDir()
+	if err := os.Mkdir(filepath.Join(cmd.Dir, ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -62,6 +65,17 @@ func asExitError(err error, target **exec.ExitError) bool {
 		*target = exitErr
 	}
 	return ok
+}
+
+func TestBeadsChainDoesNotInvokeTrackerOutsideConfiguredCheckout(t *testing.T) {
+	binDir := t.TempDir()
+	writeExecutable(t, filepath.Join(binDir, "bd"), "#!/usr/bin/env sh\necho 'unexpected tracker invocation' >&2\nexit 47\n")
+	cmd := testCommand(filepath.Join(repoRoot(t), beadsChainPath), "pre-commit")
+	cmd.Dir = t.TempDir()
+	cmd.Env = chainEnv(t, binDir)
+	if out, err := cmd.CombinedOutput(); err != nil || len(out) != 0 {
+		t.Fatalf("unconfigured checkout invoked tracker: %v\n%s", err, out)
+	}
 }
 
 // TestGitHooksCoverEveryBeadsManagedHook is the regression guard for when

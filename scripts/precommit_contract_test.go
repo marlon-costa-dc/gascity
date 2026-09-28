@@ -29,7 +29,7 @@ printf '\n'
 		t.Fatalf("write source: %v", err)
 	}
 
-	cmd := exec.Command(filepath.Join(repoRoot, "scripts", "precommit-format-staged-go"))
+	cmd := exec.Command(filepath.Join(repoRoot, "scripts", "precommit-format-staged-go"), fakeLint)
 	cmd.Dir = repoRoot
 	cmd.Env = []string{
 		"PATH=" + binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
@@ -55,6 +55,35 @@ printf '\n'
 	}
 	if string(content) != "package main\n" {
 		t.Fatalf("formatted content = %q, want package main with newline", content)
+	}
+}
+
+func TestPreCommitFormatterPreservesFirstFailureAndSource(t *testing.T) {
+	root := repoRoot(t)
+	formatter := filepath.Join(t.TempDir(), "failing-formatter")
+	writeExecutable(t, formatter, "#!/usr/bin/env bash\nprintf 'formatter failure\\n' >&2\nexit 47\n")
+	source := filepath.Join(t.TempDir(), "source.go")
+	original := []byte("package sample\n")
+	if err := os.WriteFile(source, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(filepath.Join(root, "scripts", "precommit-format-staged-go"), formatter)
+	cmd.Dir = root
+	cmd.Stdin = strings.NewReader(source + "\n")
+	output, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	if !asExitError(err, &exitErr) || exitErr.ExitCode() != 47 {
+		t.Fatalf("formatter exit = %v, want 47; output: %s", err, output)
+	}
+	if !strings.Contains(string(output), "formatter failure") {
+		t.Fatalf("first formatter error was lost: %s", output)
+	}
+	content, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != string(original) {
+		t.Fatalf("formatter failure changed source: %q", content)
 	}
 }
 

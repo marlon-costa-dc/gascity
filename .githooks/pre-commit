@@ -18,7 +18,7 @@ if [ -z "$staged_go_files" ] && [ -z "$staged_web_src" ] && [ -z "$staged_docs" 
 fi
 
 if [ -n "$staged_go_files" ]; then
-  printf '%s\n' "$staged_go_files" | scripts/precommit-format-staged-go
+  make fmt-staged
   printf '%s\n' "$staged_go_files" | xargs git add
 
   make lint-changed LINT_CHANGED_SCOPE=staged LINT_FLAGS="--new-from-rev=HEAD --whole-files --fix" || exit 1
