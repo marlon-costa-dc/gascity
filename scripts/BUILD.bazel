@@ -2,6 +2,8 @@ load("@rules_go//go:def.bzl", "go_test")
 
 go_test(
     name = "scripts_test",
+    # These contracts invoke installed host tools and their filesystem caches.
+    tags = ["no-sandbox", "no-remote"],  # keep
     srcs = [
         "acceptance_run_selection_test.go",
         "add_testenv_import_test.go",
