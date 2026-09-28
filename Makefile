@@ -1133,6 +1133,16 @@ k8s-secret:
 	kubectl -n "$$ns" create secret generic claude-credentials $$args; \
 	echo "Secret 'claude-credentials' created in namespace '$$ns'"
 
+.PHONY: fork-release fork-publish
+
+## fork-release: tag the integrated fork head for the native RC release workflow
+fork-release: check-gomod-replace
+	scripts/fork/fork.sh release
+
+## fork-publish: publish the reviewed draft release tagged at the integration head
+fork-publish: check-gomod-replace
+	scripts/fork/fork.sh publish
+
 ## help: show this help
 help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## //' | column -t -s ':'
