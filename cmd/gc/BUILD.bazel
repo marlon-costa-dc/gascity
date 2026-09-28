@@ -628,6 +628,7 @@ go_binary(
 go_test(
     name = "gc_test",
     size = "large",
+    shard_count = 6,
     srcs = [
         "adoption_barrier_test.go",
         "agent_home_worktree_cleanup_test.go",
