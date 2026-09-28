@@ -319,8 +319,8 @@ func (realExecutor) execute(args []string) (string, error) {
 
 func (realExecutor) executeCtx(ctx context.Context, args []string) (string, error) {
 	cmd := exec.CommandContext(ctx, "tmux", args...)
-	// Killing the client does not close output descriptors inherited by a
-	// descendant. Bound the pipe drain as well as the client lifetime.
+	// Output descriptors transferred to the server or inherited by a
+	// descendant can outlive the client. Bound their drain as well.
 	if deadline, ok := ctx.Deadline(); ok {
 		cmd.WaitDelay = max(time.Until(deadline), time.Nanosecond)
 	}

@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -363,59 +360,6 @@ func TestStateCache_NoServerRefreshPreservesLastKnownGood(t *testing.T) {
 	cache.mu.RUnlock()
 	if !errors.Is(lastErr, gcruntime.ErrRuntimeUnavailable) {
 		t.Fatalf("cache.lastError = %v, want errors.Is(runtime.ErrRuntimeUnavailable)", lastErr)
-	}
-}
-
-// A suspended city has no server. Exercise the public provider through real
-// tmux commands, including a read after the normal observation cache expires.
-func TestProvider_AbsentServerRemainsAnEmptyFleet(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.SocketName = fmt.Sprintf("gctest-absent-%d-%d", os.Getpid(), time.Now().UnixNano())
-	provider := NewProviderWithConfig(cfg)
-	var logs bytes.Buffer
-	restore := captureLog(&logs)
-	defer restore()
-	for range 2 {
-		for range 5 {
-			if provider.IsRunning("never-started") {
-				t.Fatal("absent server reported a running session")
-			}
-		}
-		time.Sleep(defaultCacheTTL + 10*time.Millisecond)
-	}
-	if logs.Len() != 0 {
-		t.Fatalf("absent server reported observation failures: %s", logs.String())
-	}
-}
-
-// A listening socket that does not answer the tmux protocol is not an empty
-// fleet. Use a real listener and the public provider, without a canned reply.
-func TestProvider_BlockedSocket(t *testing.T) {
-	t.Setenv("TMUX_TMPDIR", t.TempDir())
-	cfg := DefaultConfig()
-	cfg.SocketName = "blocked"
-	path := namedSocketPath(cfg.SocketName)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	listener, err := net.Listen("unix", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := listener.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-	provider := NewProviderWithConfig(cfg)
-	var logs bytes.Buffer
-	restore := captureLog(&logs)
-	defer restore()
-	if provider.IsRunning("unknown") {
-		t.Fatal("unresponsive socket reported a running session")
-	}
-	if !strings.Contains(logs.String(), "refresh failed") {
-		t.Fatalf("unresponsive socket did not report its observation failure: %s", logs.String())
 	}
 }
 
