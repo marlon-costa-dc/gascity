@@ -78,6 +78,7 @@ go_test(
         "startcrash_redaction_test.go",
         "startup_oversized_nudge_test.go",
         "startup_test.go",
+        "state_cache_darwin_test.go",
         "state_cache_empty_server_test.go",
         "state_cache_snapshot_backoff_test.go",
         "state_cache_test.go",

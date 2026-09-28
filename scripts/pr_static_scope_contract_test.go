@@ -850,6 +850,7 @@ type prStaticScopeFixture struct {
 	goLog              string
 	realGo             string
 	homeDir            string
+	goModCache         string
 }
 
 func newPRStaticScopeFixture(t *testing.T, files map[string]string) prStaticScopeFixture {
@@ -903,6 +904,7 @@ exec "$STATIC_SCOPE_REAL_GO" "$@"
 		goLog:              goLog,
 		realGo:             realGo,
 		homeDir:            t.TempDir(),
+		goModCache:         goEnvValue(t, "GOMODCACHE"),
 	}
 	setupMakefile := filepath.Join(t.TempDir(), "git-init.mk")
 	writeTestFile(t, setupMakefile, `.PHONY: init
@@ -955,7 +957,7 @@ func (f prStaticScopeFixture) commandEnv() []string {
 	env := make([]string, 0, len(os.Environ())+7)
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
-		if name == "HOME" ||
+		if name == "HOME" || name == "GOMODCACHE" ||
 			// A forwarded GOROOT can pair a 1.2x driver with a different
 			// toolchain's compile binaries (bazel forwards GOROOT for its own
 			// type-checking tests); the real go must resolve its own.
@@ -978,6 +980,9 @@ func (f prStaticScopeFixture) commandEnv() []string {
 	}
 	return append(env,
 		"HOME="+f.homeDir,
+		// The pinned compiler may be downloaded as a module. Keep its
+		// read-only cache outside the disposable Git/config home.
+		"GOMODCACHE="+f.goModCache,
 		"STATIC_SCOPE_LINT_LOG="+f.lintLog,
 		"STATIC_SCOPE_GO_LOG="+f.goLog,
 		"STATIC_SCOPE_REAL_GO="+f.realGo,

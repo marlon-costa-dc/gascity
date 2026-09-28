@@ -85,6 +85,11 @@ go_test(
         exclude = ["BUILD.bazel"],
     ),
     embed = [":productmetrics"],
+    # Trust checks require the host's actual filesystem ownership.
+    tags = [
+        "no-remote",
+        "no-sandbox",
+    ],  # keep
     deps = [
         "//internal/testenv",
     ] + select({

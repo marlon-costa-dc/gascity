@@ -1456,6 +1456,15 @@ go_test(
         "//examples/lifecycle:pack_files",
     ],
     embed = [":gc_lib"],
+    shard_count = 6,
+    # These contracts spawn the installed bd binary (caching-store reads use a
+    # bd subprocess until the reconciler converges) and observe real process
+    # parentage, which the process-wrapper sandbox falsifies by adopting
+    # orphans outside the PID1/systemd-user reaping contract.
+    tags = [
+        "no-remote",
+        "no-sandbox",
+    ],  # keep
     deps = [
         "//:gascity",
         "//examples/bd",

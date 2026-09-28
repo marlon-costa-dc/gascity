@@ -33,14 +33,15 @@ jobs:
       # Hoisted so the step-level `if:` below can see it (empty on forks,
       # where secrets are unavailable — the job then runs locally).
       RBE_EXECUTOR: ${{ secrets.RBE_EXECUTOR }}
+      DOLT_VERSION: "2.1.7"
+      BD_VERSION: "v1.3.0"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Install bazel via bazelisk
-        run: |
-          curl -sSfL -o /tmp/bazelisk \
-            https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
-          sudo install -m 0755 /tmp/bazelisk /usr/local/bin/bazel
+      - uses: ./.github/actions/setup-gascity-ubuntu
+        with:
+          dolt-version: ${{ env.DOLT_VERSION }}
+          bd-version: ${{ env.BD_VERSION }}
 
       - name: Configure remote execution (if secrets present)
         if: env.RBE_EXECUTOR != ''
@@ -75,15 +76,10 @@ jobs:
           }
 
       - name: bazel build //...
-        run: bazel build //...
+        run: make build-bazel
 
       - name: bazel test //...
-        run: |
-          if [ -f .bazelrc.local ]; then
-            bazel test //... --config=remote-exec --test_output=errors --keep_going
-          else
-            bazel test //... --test_output=errors --keep_going
-          fi
+        run: make test-bazel
 
       - name: Upload test logs
         if: failure()

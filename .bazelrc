@@ -14,7 +14,6 @@ test --flaky_test_attempts=2
 # per-test tmpdir short, like `go test` does with TMPDIR=/tmp. /tmp/bt is
 # creatable by any user (CI runners, remote workers, dev machines alike).
 test --test_tmpdir=/tmp/bt
-test --sandbox_writable_path=/tmp/bt
 
 # GOROOT is resolved hermetically from runfiles (@go_sdk//:srcs) by
 # internal/bazeltest; no client export is required.

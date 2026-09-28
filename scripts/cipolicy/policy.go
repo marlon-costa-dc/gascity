@@ -90,7 +90,7 @@ const (
 	// 'TestBeadsProxiedDefault$'` step. No new trigger, no new permission, no
 	// provider selector.
 	expectedNightlyExecutionHash = "71ba351dc01c14d41da3371544d5926dd471069a9066b6a81ff8803f65fe6cf8"
-	expectedSetupActionHash      = "8f2d6b3a57f11d4f33a41211b1d3d5362d1437ba40c7b6db068abb98e731e5ac"
+	expectedSetupActionHash      = "1b803fa0984a1d605c52ee217f64580bf74ba47531b4f74bdbead00b55406dd2"
 )
 
 var requiredFilterPaths = map[string][]string{

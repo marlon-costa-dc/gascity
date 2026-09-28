@@ -56,6 +56,8 @@ runs:
       # builds bd from source instead of installing a released tarball.
       if: ${{ inputs.bd-version != '' }}
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: ${{ github.action_path }}/../../scripts/install-bd-archive.sh "${{ inputs.bd-version }}"
 
     - name: Install Claude CLI

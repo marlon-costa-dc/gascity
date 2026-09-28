@@ -9,6 +9,10 @@ BIN_DIR := $(shell go env GOPATH)/bin
 # Keep the repository's declared formatter separate from host/other-project tools.
 # Its compiler also affects gofmt output, so match setup-go's go.mod authority.
 TOOL_CACHE_DIR := $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/gascity/tools
+BAZELISK_VERSION := 1.29.0
+BAZEL := $(TOOL_CACHE_DIR)/bazelisk/$(BAZELISK_VERSION)/bazelisk
+BAZEL_REPOSITORY_FLAGS := --repo_env=GO_REPOSITORY_USE_HOST_MODCACHE=1
+BAZEL_CONFIG_FLAGS := $(if $(wildcard .bazelrc.local),--config=remote-exec)
 GOLANGCI_LINT_TOOLCHAIN := $(shell awk '$$1 == "go" { print "go" $$2; exit }' '$(dir $(abspath $(lastword $(MAKEFILE_LIST))))go.mod')
 GOLANGCI_LINT := $(TOOL_CACHE_DIR)/golangci-lint/$(GOLANGCI_LINT_VERSION)/$(GOLANGCI_LINT_TOOLCHAIN)/golangci-lint
 
@@ -313,7 +317,7 @@ QUALITY_GATE_GOFLAGS = $$(go env GOFLAGS | sed -E 's/(^|[[:space:]])-mod=[^[:spa
 CI_STATIC_SELECT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))scripts/ci-static-select
 CI_STATIC_GO ?= go
 
-fmt fmt-check fmt-check-changed fmt-staged lint lint-full lint-new lint-changed lint-affected: export GOTOOLCHAIN := $(GOLANGCI_LINT_TOOLCHAIN)
+fmt fmt-check fmt-check-changed fmt-staged lint lint-full lint-new lint-changed lint-affected vet: export GOTOOLCHAIN := $(GOLANGCI_LINT_TOOLCHAIN)
 
 ## lint: run full-repo golangci-lint
 lint: lint-full
@@ -411,7 +415,6 @@ GOPATH_VAL    := $(shell go env GOPATH)
 GOCACHE_VAL   := $(shell go env GOCACHE)
 GOMODCACHE_VAL := $(shell go env GOMODCACHE)
 GOTMPDIR_VAL  := $(shell go env GOTMPDIR)
-GOROOT_VAL    := $(shell go env GOROOT)
 TEST_ENV = env -i \
 	PATH="$$PATH" \
 	HOME="$$HOME" \
@@ -430,7 +433,8 @@ TEST_ENV = env -i \
 	GOCACHE="$(GOCACHE_VAL)" \
 	GOMODCACHE="$(GOMODCACHE_VAL)" \
 	GOTMPDIR="$(GOTMPDIR_VAL)" \
-	GOROOT="$${GOROOT:-$(GOROOT_VAL)}" \
+	GOROOT="$${GOROOT-}" \
+	GOTOOLCHAIN="$(GOLANGCI_LINT_TOOLCHAIN)" \
 	GOENV="$${GOENV-}" \
 	GOFLAGS="$${GOFLAGS-}" \
 	GO111MODULE="$${GO111MODULE-}" \
@@ -483,6 +487,12 @@ test-ci-policy:
 ## Wrapped in $(TEST_ENV) — see comment above for why.
 test: test-fsys-darwin-compile
 	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" GC_FAST_UNIT=1 scripts/go-test-observable test -- -p=4 -count=1 -timeout 15m ./...
+
+.PHONY: test-runtime-observation
+test-runtime-observation:
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-runtime-resources -- -count=1 -timeout 5m ./internal/testpolicy/resourcecensus
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-runtime-manifest -- -run '^TestRuntimeTmuxManifest' -count=1 -timeout 5m ./scripts
+	$(TEST_ENV) GC_TMUX_INTEGRATION=1 GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-runtime-observation -- -tags=integration -run '^(TestProvider_(AbsentServerRemainsAnEmptyFleet|BlockedSocket)|TestTmuxFetcher_.*|TestStateCache_(EmptyServerPrimesCacheAndEndsRefreshStorm|RecoversAfterServerRefills))$$' -count=1 -timeout 5m ./internal/runtime/tmux
 
 ## test-herdr-live: run the live herdr journeys against a real herdr server —
 ## the provider's own tier under internal/runtime/herdr, plus the controller's
@@ -1150,6 +1160,30 @@ help:
 ## bazel-sync: regenerate bazel BUILD files (gazelle) and the hermetic repo
 ## source tree used by whole-repo scan guards. Run after adding packages.
 .PHONY: bazel-sync
-bazel-sync:
-	bazel run //:gazelle
+bazel-sync: $(BAZEL)
+	$(BAZEL) run $(BAZEL_REPOSITORY_FLAGS) //:gazelle
 	python3 tools/bazel/repo_tree.py
+
+.PHONY: build-bazel test-bazel
+## build-bazel: compile the complete Bazel inventory
+build-bazel: $(BAZEL)
+	$(BAZEL) build $(BAZEL_REPOSITORY_FLAGS) $(BAZEL_CONFIG_FLAGS) //... --jobs=4
+
+## test-bazel: execute Bazel suites and the host-parentage service suite
+test-bazel: $(BAZEL)
+	$(BAZEL) test $(BAZEL_REPOSITORY_FLAGS) $(BAZEL_CONFIG_FLAGS) //... --jobs=4 --flaky_test_attempts=1 --test_tag_filters=-requires-host-parentage --test_tmpdir="$(or $(TMPDIR),$(HOME)/tmp)" --test_output=errors
+	$(MAKE) test-workspacesvc
+
+.PHONY: test-workspacesvc
+## test-workspacesvc: execute the complete service suite with native host parentage
+test-workspacesvc:
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-workspacesvc -- -count=1 -timeout 5m ./internal/workspacesvc
+
+.PHONY: test-herdr-contract
+## test-herdr-contract: execute the complete herdr provider contract suite
+test-herdr-contract:
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-herdr-contract -- -count=1 -timeout 5m ./internal/runtime/herdr
+
+$(BAZEL):
+	@mkdir -p "$(@D)"
+	GOBIN="$(@D)" go install github.com/bazelbuild/bazelisk@v$(BAZELISK_VERSION)
