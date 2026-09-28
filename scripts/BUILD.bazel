@@ -2,6 +2,7 @@ load("@rules_go//go:def.bzl", "go_test")
 
 go_test(
     name = "scripts_test",
+    shard_count = 4,
     srcs = [
         "acceptance_run_selection_test.go",
         "add_testenv_import_test.go",
