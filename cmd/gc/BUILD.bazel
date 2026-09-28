@@ -628,7 +628,6 @@ go_binary(
 go_test(
     name = "gc_test",
     size = "large",
-    shard_count = 6,
     srcs = [
         "adoption_barrier_test.go",
         "agent_home_worktree_cleanup_test.go",
@@ -1457,6 +1456,7 @@ go_test(
         "//examples/lifecycle:pack_files",
     ],
     embed = [":gc_lib"],
+    shard_count = 6,
     deps = [
         "//:gascity",
         "//examples/bd",
