@@ -692,14 +692,12 @@ const (
 	// about to answer.
 	admissionNoGreetingSpacing = time.Second
 	// admissionPostRecoverGraceAttempts bounds the fork-free wait between a
-	// spent recover and the re-admission. The provider's ping returns while
-	// the replacement Dolt child is still booting, and re-admitting inside
-	// that boot window reads a healthy restart as a fresh zombie — on slower
-	// runners, repeatedly, burning one generation after another until the
-	// lane ends terminal over a proxy that was coming up the whole time.
-	admissionPostRecoverGraceAttempts = 8
-	// admissionPostRecoverGrace spaces those re-probes: eight two-second
-	// dials cover a slow Dolt boot without spending a single bd verb.
+	// spent recover and the re-admission. The provider's ping can return while
+	// the replacement Dolt child is still booting. The grace matches the
+	// provider's 30-second server readiness budget and spends no bd verbs.
+	admissionPostRecoverGraceAttempts = 15
+	// admissionPostRecoverGrace spaces probes of the currently published
+	// endpoint while the replacement child starts.
 	admissionPostRecoverGrace = 2 * time.Second
 	// admissionDrainPoll is the drain loop's cadence for the cheap half: two
 	// file reads, no socket.
@@ -1173,19 +1171,12 @@ func (in AdmissionInput) escalateZombie(ctx context.Context, root string, ep pro
 		pin, retry, verdict := in.spendRecover(ctx, root, key, recoverClaim)
 		if retry {
 			// The recover's own ping returns while the replacement Dolt child
-			// may still be booting. Re-admitting inside that window walks a
-			// fresh ladder over the NEW generation and can spend its recover
-			// too — generation after generation — so spend the fork-free
-			// grace first: sleeps and dials only, never a provider verb.
-			for attempt := 0; attempt < admissionPostRecoverGraceAttempts; attempt++ {
-				if err := in.Sleep(ctx, admissionPostRecoverGrace); err != nil {
-					break
-				}
-				probe := in.Probe(ctx, ep, in.Database)
-				if probe.Outcome != proxyendpoint.ProbeAcceptedNoGreeting {
-					break
-				}
-			}
+			// may still be booting. The provider can publish a new dynamic
+			// port during that start, so probing ep here would keep dialing the
+			// retired generation and leave the new one to the zombie ladder.
+			// Follow the validated record after each wait, probing only a live
+			// endpoint and never spending another provider verb.
+			in.waitForRecoveredEndpoint(ctx, root)
 		}
 		return pin, retry, verdict
 	}
@@ -1264,6 +1255,45 @@ func (in AdmissionInput) spendRecover(ctx context.Context, root string, key prox
 	}
 	return Pin{}, true, NewNonTerminalProxiedVerdictError(ProxiedVerdictBackendUnreachable,
 		"recovered the provider; re-admitting", nil)
+}
+
+// waitForRecoveredEndpoint gives the provider's replacement Dolt child its
+// declared startup window before the no-greeting ladder evaluates the new
+// generation. It re-reads the endpoint record on every pass because the
+// provider allocates a dynamic port when it restarts the proxy; the endpoint
+// observed before Recover is no longer authoritative.
+func (in AdmissionInput) waitForRecoveredEndpoint(ctx context.Context, root string) {
+	for attempt := 0; attempt < admissionPostRecoverGraceAttempts; attempt++ {
+		if err := in.Sleep(ctx, admissionPostRecoverGrace); err != nil {
+			return
+		}
+
+		endpoint := proxyendpoint.Inspect(root, in.ProcessTable)
+		switch endpoint.Verdict {
+		case proxyendpoint.VerdictLive:
+			probe := in.Probe(ctx, endpoint, in.Database)
+			switch probe.Outcome {
+			case proxyendpoint.ProbeServed:
+				return
+			case proxyendpoint.ProbeRefused, proxyendpoint.ProbeAcceptedNoGreeting:
+				continue
+			case proxyendpoint.ProbeUnknown:
+				if proxyendpoint.IsIndeterminate(probe.Err) {
+					continue
+				}
+				return
+			default:
+				return
+			}
+		case proxyendpoint.VerdictNoRecord, proxyendpoint.VerdictDead, proxyendpoint.VerdictUndetermined:
+			// Publication and process startup can be observed between steps.
+			// Admission reclassifies the final state after this bounded wait.
+			continue
+		default:
+			// Do not wait through a fact that admission treats as a refusal.
+			return
+		}
+	}
 }
 
 // sharesCityProxyRoot reports whether this scope is not the city but resolves

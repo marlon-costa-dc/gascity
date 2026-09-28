@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -112,8 +113,38 @@ func TestWatchdogWorkflow_RequiredCheckJobExists(t *testing.T) {
 	}
 
 	timeout, ok := found["timeout-minutes"].(int)
-	if !ok || timeout <= 0 || timeout > 35 {
-		t.Fatalf("job %q timeout-minutes = %v, want a bounded value > 0 and <= 35 (slightly above the 25m observation deadline)", RequiredCheckName, found["timeout-minutes"])
+	observationMinutes := int(ObservationDeadline / time.Minute)
+	if !ok || timeout <= observationMinutes || timeout > observationMinutes+10 {
+		t.Fatalf("job %q timeout-minutes = %v, want more than the %dm observation deadline and at most 10m setup allowance", RequiredCheckName, found["timeout-minutes"], observationMinutes)
+	}
+}
+
+func TestWatchdogObservationCoversRequiredTopologyBudget(t *testing.T) {
+	path := filepath.Join("..", "..", ".github", "workflows", "ci.yml")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(body, &doc); err != nil {
+		t.Fatal(err)
+	}
+	jobs, ok := doc["jobs"].(map[string]any)
+	if !ok {
+		t.Fatal("CI jobs must be a mapping")
+	}
+	for _, name := range []string{"beads-topology-acceptance", "beads-proxied-native-acceptance"} {
+		job, ok := jobs[name].(map[string]any)
+		if !ok {
+			t.Fatalf("required job %q is missing", name)
+		}
+		minutes, ok := job["timeout-minutes"].(int)
+		if !ok || minutes <= 0 {
+			t.Fatalf("required job %q has no positive execution budget", name)
+		}
+		if ObservationDeadline <= time.Duration(minutes)*time.Minute {
+			t.Fatalf("watchdog deadline %s expires before required job %q budget %dm plus setup and publication", ObservationDeadline, name, minutes)
+		}
 	}
 }
 
