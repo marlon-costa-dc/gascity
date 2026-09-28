@@ -317,7 +317,7 @@ QUALITY_GATE_GOFLAGS = $$(go env GOFLAGS | sed -E 's/(^|[[:space:]])-mod=[^[:spa
 CI_STATIC_SELECT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))scripts/ci-static-select
 CI_STATIC_GO ?= go
 
-fmt fmt-check fmt-check-changed fmt-staged lint lint-full lint-new lint-changed lint-affected: export GOTOOLCHAIN := $(GOLANGCI_LINT_TOOLCHAIN)
+fmt fmt-check fmt-check-changed fmt-staged lint lint-full lint-new lint-changed lint-affected vet: export GOTOOLCHAIN := $(GOLANGCI_LINT_TOOLCHAIN)
 
 ## lint: run full-repo golangci-lint
 lint: lint-full
@@ -415,7 +415,6 @@ GOPATH_VAL    := $(shell go env GOPATH)
 GOCACHE_VAL   := $(shell go env GOCACHE)
 GOMODCACHE_VAL := $(shell go env GOMODCACHE)
 GOTMPDIR_VAL  := $(shell go env GOTMPDIR)
-GOROOT_VAL    := $(shell go env GOROOT)
 TEST_ENV = env -i \
 	PATH="$$PATH" \
 	HOME="$$HOME" \
@@ -434,7 +433,8 @@ TEST_ENV = env -i \
 	GOCACHE="$(GOCACHE_VAL)" \
 	GOMODCACHE="$(GOMODCACHE_VAL)" \
 	GOTMPDIR="$(GOTMPDIR_VAL)" \
-	GOROOT="$${GOROOT:-$(GOROOT_VAL)}" \
+	GOROOT="$${GOROOT-}" \
+	GOTOOLCHAIN="$(GOLANGCI_LINT_TOOLCHAIN)" \
 	GOENV="$${GOENV-}" \
 	GOFLAGS="$${GOFLAGS-}" \
 	GO111MODULE="$${GO111MODULE-}" \
