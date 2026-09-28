@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,78 +13,73 @@ import (
 
 func TestPreCommitFormatterPreservesFileMode(t *testing.T) {
 	repoRoot := repoRoot(t)
-	binDir := t.TempDir()
-	fakeLint := filepath.Join(binDir, "golangci-lint")
-	writeExecutable(t, fakeLint, `#!/usr/bin/env bash
+	for _, tc := range []struct {
+		name        string
+		exitCode    int
+		wantContent string
+	}{
+		{name: "formatted", wantContent: "package main\n"},
+		{name: "first_failure_preserves_source", exitCode: 47, wantContent: "package main"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			binDir := t.TempDir()
+			fakeLint := filepath.Join(binDir, "golangci-lint")
+			writeExecutable(t, fakeLint, `#!/usr/bin/env bash
 set -euo pipefail
 if [ "$#" -ne 2 ] || [ "$1" != "fmt" ] || [ "$2" != "--stdin" ]; then
   echo "unexpected golangci-lint args: $*" >&2
   exit 2
 fi
+if [ "$FORMATTER_EXIT" != 0 ]; then
+  printf 'formatter failure\n' >&2
+  exit "$FORMATTER_EXIT"
+fi
 cat
 printf '\n'
 `)
 
-	source := filepath.Join(t.TempDir(), "needs_format.go")
-	if err := os.WriteFile(source, []byte("package main"), 0o644); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
+			source := filepath.Join(t.TempDir(), "needs_format.go")
+			if err := os.WriteFile(source, []byte("package main"), 0o644); err != nil {
+				t.Fatalf("write source: %v", err)
+			}
 
-	cmd := exec.Command(filepath.Join(repoRoot, "scripts", "precommit-format-staged-go"), fakeLint)
-	cmd.Dir = repoRoot
-	cmd.Env = []string{
-		"PATH=" + binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
-		"HOME=" + t.TempDir(),
-		"TMPDIR=" + t.TempDir(),
-	}
-	cmd.Stdin = strings.NewReader(source + "\n")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("precommit formatter failed: %v\n%s", err, out)
-	}
+			cmd := exec.Command(filepath.Join(repoRoot, "scripts", "precommit-format-staged-go"), fakeLint)
+			cmd.Dir = repoRoot
+			cmd.Env = []string{
+				"PATH=" + binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"HOME=" + t.TempDir(),
+				"TMPDIR=" + t.TempDir(),
+				"FORMATTER_EXIT=" + strconv.Itoa(tc.exitCode),
+			}
+			cmd.Stdin = strings.NewReader(source + "\n")
+			out, err := cmd.CombinedOutput()
+			if tc.exitCode != 0 {
+				var exitErr *exec.ExitError
+				if !asExitError(err, &exitErr) || exitErr.ExitCode() != tc.exitCode {
+					t.Fatalf("formatter exit = %v, want %d; output: %s", err, tc.exitCode, out)
+				}
+				if !strings.Contains(string(out), "formatter failure") {
+					t.Fatalf("first formatter error was lost: %s", out)
+				}
+			} else if err != nil {
+				t.Fatalf("precommit formatter failed: %v\n%s", err, out)
+			}
 
-	info, err := os.Stat(source)
-	if err != nil {
-		t.Fatalf("stat formatted source: %v", err)
-	}
-	if got := info.Mode().Perm(); got != 0o644 {
-		t.Fatalf("formatted source mode = %o, want 644", got)
-	}
-	content, err := os.ReadFile(source)
-	if err != nil {
-		t.Fatalf("read formatted source: %v", err)
-	}
-	if string(content) != "package main\n" {
-		t.Fatalf("formatted content = %q, want package main with newline", content)
-	}
-}
-
-func TestPreCommitFormatterPreservesFirstFailureAndSource(t *testing.T) {
-	root := repoRoot(t)
-	formatter := filepath.Join(t.TempDir(), "failing-formatter")
-	writeExecutable(t, formatter, "#!/usr/bin/env bash\nprintf 'formatter failure\\n' >&2\nexit 47\n")
-	source := filepath.Join(t.TempDir(), "source.go")
-	original := []byte("package sample\n")
-	if err := os.WriteFile(source, original, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command(filepath.Join(root, "scripts", "precommit-format-staged-go"), formatter)
-	cmd.Dir = root
-	cmd.Stdin = strings.NewReader(source + "\n")
-	output, err := cmd.CombinedOutput()
-	var exitErr *exec.ExitError
-	if !asExitError(err, &exitErr) || exitErr.ExitCode() != 47 {
-		t.Fatalf("formatter exit = %v, want 47; output: %s", err, output)
-	}
-	if !strings.Contains(string(output), "formatter failure") {
-		t.Fatalf("first formatter error was lost: %s", output)
-	}
-	content, err := os.ReadFile(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(content) != string(original) {
-		t.Fatalf("formatter failure changed source: %q", content)
+			info, err := os.Stat(source)
+			if err != nil {
+				t.Fatalf("stat formatted source: %v", err)
+			}
+			if got := info.Mode().Perm(); got != 0o644 {
+				t.Fatalf("formatted source mode = %o, want 644", got)
+			}
+			content, err := os.ReadFile(source)
+			if err != nil {
+				t.Fatalf("read formatted source: %v", err)
+			}
+			if string(content) != tc.wantContent {
+				t.Fatalf("formatted content = %q, want %q", content, tc.wantContent)
+			}
+		})
 	}
 }
 
