@@ -48,14 +48,12 @@ const (
 	// M2, beads.AdmissionInput.CityRoot).
 	proxiedProviderRecoverOp = "recover"
 
-	// proxiedOneShotAdmissionBudget bounds admission for a command a human is
-	// waiting on. A one-shot that cannot be admitted quickly takes the bd front
-	// door, which is the store it has today.
-	proxiedOneShotAdmissionBudget = 10 * time.Second
-	// proxiedLongLivedAdmissionBudget bounds admission for a store held for the
-	// process lifetime. It is the drain ceiling plus room for the ladder: a
-	// controller boot may legitimately wait out a proxy that is shutting down.
-	proxiedLongLivedAdmissionBudget = 90 * time.Second
+	// proxiedAdmissionTimeout covers the drain ceiling and the provider's
+	// readiness/recovery operations for both one-shot and long-lived stores.
+	// A shorter one-shot deadline used to cancel bd before it could report a
+	// failed ping, preventing admission from reaching the recovery operation.
+	// A caller's earlier deadline still bounds the entire operation.
+	proxiedAdmissionTimeout = 90 * time.Second
 
 	// proxiedAdmissionPasses caps the outer ladder. The rungs themselves are
 	// bounded by the generation sets (one ping and one recover per generation,
@@ -382,7 +380,7 @@ func (o *proxiedNativeOpener) storeOpener() func(context.Context, bool) (beads.S
 // caller that assembled the env map by hand has nothing to pass to
 // beads.NewProxiedStore.
 func (o *proxiedNativeOpener) open(parent context.Context, longLived bool) (beads.Store, beads.ProxiedOpenReport, error) {
-	ctx, cancel := context.WithTimeout(parent, proxiedAdmissionBudget(longLived))
+	ctx, cancel := context.WithTimeout(parent, proxiedAdmissionTimeout)
 	defer cancel()
 
 	pin, err := o.admit(ctx, longLived)
@@ -689,13 +687,6 @@ func (o *proxiedNativeOpener) backoff(ctx context.Context, d time.Duration) erro
 	case <-timer.C:
 		return nil
 	}
-}
-
-func proxiedAdmissionBudget(longLived bool) time.Duration {
-	if longLived {
-		return proxiedLongLivedAdmissionBudget
-	}
-	return proxiedOneShotAdmissionBudget
 }
 
 // proxiedPrefixAgreement is H10, checked once, with both handles open.
