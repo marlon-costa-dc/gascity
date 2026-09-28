@@ -1142,7 +1142,7 @@ test_fallback_cannot_detect_staleness_after_status_leaves_in_progress() {
 
 install_guard_hook() {
     local repo="$1"
-    mkdir -p "$repo/scripts" "$repo/.githooks/lib"
+    mkdir -p "$repo/scripts" "$repo/.githooks/lib" "$repo/.beads"
     cp "$LIB" "$repo/scripts/push-ownership-guard.sh"
     cp "$REPO_ROOT/.githooks/pre-push" "$repo/.githooks/pre-push"
     chmod +x "$repo/.githooks/pre-push"

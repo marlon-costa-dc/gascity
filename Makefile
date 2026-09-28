@@ -9,7 +9,7 @@ BIN_DIR := $(shell go env GOPATH)/bin
 # Keep the repository's declared formatter separate from host/other-project tools.
 # Its compiler also affects gofmt output, so match setup-go's go.mod authority.
 TOOL_CACHE_DIR := $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/gascity/tools
-GOLANGCI_LINT_TOOLCHAIN := $(shell awk '$$1 == "go" { print "go" $$2; exit }' go.mod)
+GOLANGCI_LINT_TOOLCHAIN := $(shell awk '$$1 == "go" { print "go" $$2; exit }' '$(dir $(abspath $(lastword $(MAKEFILE_LIST))))go.mod')
 GOLANGCI_LINT := $(TOOL_CACHE_DIR)/golangci-lint/$(GOLANGCI_LINT_VERSION)/$(GOLANGCI_LINT_TOOLCHAIN)/golangci-lint
 
 BINARY     := gc
