@@ -29,15 +29,14 @@ func requireProcFS(t *testing.T) {
 }
 
 // spawnOrphanForTest spawns argv detached through an intermediate shell so
-// the child re-parents to init (ppid 1), simulating a service process that
+// the child reparents to init or the detected user subreaper, simulating a service process that
 // survived a supervisor hard exit. extraEnv entries are appended to the
 // orphan's environment. It returns only once the orphan's
 // /proc/<pid>/cmdline reads as argv: right after spawn the exec transition
 // can transiently expose an empty or stale command line, which would make
-// identity matching flaky for callers asserting on a live match. Skips the
-// test on hosts without /proc and on hosts where a child-subreaper
-// intercepts re-parenting, since the production filter requires ppid 1 read
-// from /proc.
+// identity matching flaky for callers asserting on a live match. The
+// production sweep supports both init and the detected user subreaper as the
+// orphan parent, so the fixture follows the host's actual model.
 func spawnOrphanForTest(t *testing.T, argv []string, extraEnv []string) int {
 	t.Helper()
 	requireProcFS(t)
@@ -54,17 +53,21 @@ func spawnOrphanForTest(t *testing.T, argv []string, extraEnv []string) int {
 	}
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 
+	wantParent := detectUserSubreaperPID(os.Getpid())
+	if wantParent <= 1 {
+		wantParent = 1
+	}
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		ppid, err := processParentPIDForTest(pid)
 		if err != nil {
 			t.Fatalf("orphan %d exited before re-parenting: %v", pid, err)
 		}
-		if ppid == 1 {
+		if ppid == wantParent {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Skipf("orphan %d re-parented to %d, not init; host has a child subreaper", pid, ppid)
+			t.Fatalf("orphan %d re-parented to %d, want init or detected user subreaper %d", pid, ppid, wantParent)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -93,6 +96,12 @@ func processParentPIDForTest(pid int) (int, error) {
 		return 0, fmt.Errorf("malformed stat for pid %d", pid)
 	}
 	return strconv.Atoi(fields[1])
+}
+
+func orphanIdentityForTest(serviceName, stateRoot string, command []string) orphanIdentity {
+	id := newOrphanIdentity(serviceName, stateRoot, command)
+	id.subreaperPID = detectUserSubreaperPID(os.Getpid())
+	return id
 }
 
 func processAliveForTest(pid int) bool {
@@ -220,7 +229,7 @@ func TestFindOrphanedServiceProcessesSkipsWhenSweeperIsInit(t *testing.T) {
 	marker := fmt.Sprintf("86342.0%d", os.Getpid())
 	stateRoot := t.TempDir()
 	command := []string{"sleep", marker}
-	id := newOrphanIdentity("orphan-reap-test", stateRoot, command)
+	id := orphanIdentityForTest("orphan-reap-test", stateRoot, command)
 	pid := spawnOrphanForTest(t, command, []string{
 		"GC_SERVICE_NAME=orphan-reap-test",
 		"GC_SERVICE_STATE_ROOT=" + stateRoot,
@@ -264,16 +273,16 @@ func TestLiveMatchingOrphansDropsIdentityMismatch(t *testing.T) {
 	})
 
 	for name, id := range map[string]orphanIdentity{
-		"command mismatch":    newOrphanIdentity("orphan-reap-test", stateRoot, []string{"sleep", "not-" + marker}),
-		"service mismatch":    newOrphanIdentity("some-other-service", stateRoot, command),
-		"state-root mismatch": newOrphanIdentity("orphan-reap-test", stateRoot+"-other-city", command),
+		"command mismatch":    orphanIdentityForTest("orphan-reap-test", stateRoot, []string{"sleep", "not-" + marker}),
+		"service mismatch":    orphanIdentityForTest("some-other-service", stateRoot, command),
+		"state-root mismatch": orphanIdentityForTest("orphan-reap-test", stateRoot+"-other-city", command),
 	} {
 		if got := liveMatchingOrphans([]int{pid}, id); len(got) != 0 {
 			t.Errorf("%s: liveMatchingOrphans kept pid %d: %v", name, pid, got)
 		}
 	}
 
-	if got := liveMatchingOrphans([]int{pid}, newOrphanIdentity("orphan-reap-test", stateRoot, command)); len(got) != 1 {
+	if got := liveMatchingOrphans([]int{pid}, orphanIdentityForTest("orphan-reap-test", stateRoot, command)); len(got) != 1 {
 		t.Fatalf("liveMatchingOrphans dropped live matching pid %d: %v", pid, got)
 	}
 }

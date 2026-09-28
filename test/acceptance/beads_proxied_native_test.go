@@ -652,6 +652,11 @@ type childCrashExpectation struct {
 // record and not something to wave through.
 func (c *proxiedNativeCity) childCrashRow(t *testing.T, want childCrashExpectation, baseGeneration string) string {
 	t.Helper()
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("%s provider invocations before failure:\n%s", want.label, c.calls.Describe())
+		}
+	})
 	_, servers := doltFamilyPIDs(t, c.proxyDir)
 	if len(servers) == 0 {
 		t.Fatalf("no dolt sql-server under %s to kill", c.proxyDir)

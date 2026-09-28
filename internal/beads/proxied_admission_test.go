@@ -565,22 +565,42 @@ func TestAdmitTable(t *testing.T) {
 		}
 	})
 
-	t.Run("a recover's restart greets within the grace and pins", func(t *testing.T) {
+	t.Run("recovery grace follows the replacement dynamic port", func(t *testing.T) {
 		// The row the post-recover grace exists for: the provider ping that
 		// ends the recover returns while the replacement Dolt child is still
-		// booting, so the first re-admission probe reads accept-without-greet
-		// exactly like the zombie. The grace waits that boot out with dials,
-		// and the endpoint that greets inside the window PINS instead of
-		// spending a second generation's recover or ending terminal.
+		// booting. Its proxy publishes a new dynamic port, so waiting on the
+		// pre-recover endpoint would miss readiness and walk the zombie ladder
+		// again. The grace must follow the validated record and pin the new
+		// endpoint without spending a second provider recover.
 		f := newAdmissionFixture(t, "-1")
 		ops := &admissionOps{}
 		opened := 0
+		var postRecoverPorts []int
+		newPortProbes := 0
+		ops.onRecov = func() error {
+			f.record.PID = 6002
+			f.record.Port = 44562
+			f.record.Birth = proxyendpoint.BirthToken("boot-fixture", "88990011")
+			f.persist()
+			return nil
+		}
 
 		in := baseAdmissionInput(f, ops)
 		in.LongLived = true
 		in.Probe = func(_ context.Context, ep proxyendpoint.Endpoint, database string) proxyendpoint.ProbeResult {
-			if _, recovers := ops.counts(); recovers == 0 {
+			_, recovers := ops.counts()
+			if recovers == 0 || ep.Record.Port == 44561 {
+				if recovers > 0 {
+					postRecoverPorts = append(postRecoverPorts, ep.Record.Port)
+				}
 				return proxyendpoint.ProbeResult{Outcome: proxyendpoint.ProbeAcceptedNoGreeting}
+			}
+			if ep.Record.Port == 44562 {
+				postRecoverPorts = append(postRecoverPorts, ep.Record.Port)
+				newPortProbes++
+				if newPortProbes == 1 {
+					return proxyendpoint.ProbeResult{Outcome: proxyendpoint.ProbeAcceptedNoGreeting}
+				}
 			}
 			return servedProbe(pinnedCursors(), new(int))(context.Background(), ep, database)
 		}
@@ -593,6 +613,14 @@ func TestAdmitTable(t *testing.T) {
 		openIfAdmitted(pin, &opened)
 		if opened != 1 {
 			t.Fatalf("a restart that greeted inside the grace did not yield an openable pin")
+		}
+		for _, port := range postRecoverPorts {
+			if port != 44562 {
+				t.Fatalf("post-recover grace probed stale port %d, want current port 44562; probes=%v", port, postRecoverPorts)
+			}
+		}
+		if newPortProbes < 2 {
+			t.Fatalf("the readiness grace probed the replacement port %d times, want to wait through one not-ready answer", newPortProbes)
 		}
 		if pings, recovers := ops.counts(); pings != 1 || recovers != 1 {
 			t.Fatalf("the grace row spent %d ping / %d recover, want exactly 1/1", pings, recovers)

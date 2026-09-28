@@ -18,6 +18,10 @@ set -eu
 hook_name="${1:?beads-chain: hook name required}"
 shift
 
+# Git runs these hooks from the checkout root. Tracker discovery must not
+# escape a checkout that has no configured Beads store.
+[ -d .beads ] || exit 0
+
 # Contributors without beads installed still get the repo's own gates.
 command -v bd >/dev/null 2>&1 || exit 0
 

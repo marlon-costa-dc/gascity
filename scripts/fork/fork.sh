@@ -5,6 +5,7 @@
 #                                               the integration branch and open the PR
 #   scripts/fork/fork.sh release                tag the merged integration head as the
 #                                               next fork prerelease (<base>-<label>.<N>)
+#   scripts/fork/fork.sh publish                publish the draft at the integration head
 #   scripts/fork/fork.sh pair [<bd-fork-tag>]   link the bd fork release this build
 #                                               pairs with (repos that link beads only)
 #
@@ -45,11 +46,11 @@ fetch_upstream_tag() {
 
 # Newest upstream release tag that is already an ancestor of the integration head.
 current_base() {
-	local tag
+	local head="$1" tag
 	while read -r tag; do
 		[[ "$tag" =~ $release_re ]] || continue
 		git rev-parse -q --verify "refs/tags/${tag}^{commit}" >/dev/null || fetch_upstream_tag "$tag"
-		if git merge-base --is-ancestor "$tag" "origin/${integration}"; then
+		if git merge-base --is-ancestor "$tag" "$head"; then
 			echo "$tag"
 			return 0
 		fi
@@ -107,12 +108,20 @@ cmd_sync() {
 		--body "Upstream ${upstream_branch} ${target} with the fork delta re-applied (\`git diff ${base} origin/${integration}\`). Created by scripts/fork/fork.sh sync; see FORK.md."
 }
 
-cmd_release() {
+require_integration_head() {
 	fetch_integration
+	[[ "$(git rev-parse HEAD)" == "$(git rev-parse "origin/${integration}")" ]] ||
+		die "checkout HEAD must equal origin/${integration}; integrate and validate before publishing"
+	git diff --quiet && git diff --cached --quiet ||
+		die "tracked changes must be committed and integrated before publishing"
+}
+
+cmd_release() {
+	require_integration_head
 	local base label head n tag
-	base=$(current_base)
+	head=$(git rev-parse HEAD)
+	base=$(current_base "$head")
 	label=$(fork_label)
-	head=$(git rev-parse "origin/${integration}")
 	n=0
 	while read -r tag; do
 		[[ "$tag" =~ ^${base}-${label}\.([0-9]+)$ ]] || continue
@@ -129,7 +138,21 @@ cmd_release() {
 	git diff --stat "$synced" "$head"
 	git tag -a "$tag" -m "Fork release ${tag}: upstream ${upstream_branch} ${synced} (${base} line) + fork delta" "$head"
 	git push origin "refs/tags/${tag}"
-	echo "fork.sh: pushed ${tag}; the release workflow publishes it"
+	echo "fork.sh: pushed ${tag}; the release workflow builds the draft"
+}
+
+cmd_publish() {
+	require_integration_head
+	local tag label
+	tag=$(git describe --exact-match --tags HEAD) || die "integration HEAD has no release tag"
+	label=$(fork_label)
+	[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-${label}\.[0-9]+$ ]] ||
+		die "integration HEAD must carry a ${label} fork release tag"
+	local release
+	release=$(gh release view "$tag" -R "$self" --json isDraft,assets)
+	jq -e '.isDraft == true and (.assets | length > 0) and all(.assets[]; .state == "uploaded")' <<<"$release" >/dev/null ||
+		die "$tag must be a draft release with uploaded assets"
+	gh release edit "$tag" -R "$self" --draft=false --prerelease
 }
 
 cmd_pair() {
@@ -161,6 +184,7 @@ cmd_pair() {
 case "${1:-}" in
 sync) cmd_sync ;;
 release) cmd_release ;;
+publish) cmd_publish ;;
 pair) shift && cmd_pair "$@" ;;
-*) die "usage: fork.sh sync | release | pair [<bd-fork-tag>]" ;;
+*) die "usage: fork.sh sync | release | publish | pair [<bd-fork-tag>]" ;;
 esac

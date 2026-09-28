@@ -47,12 +47,19 @@ When the default branch already contains the upstream head, `sync` prints
 After the PR is merged:
 
 ```bash
-scripts/fork/fork.sh release
+make fork-release
 ```
 
 This tags the merged head as the next `<base>-<label>.N`, records the synced
 upstream commit in the tag annotation, and pushes the tag. The fork release
-workflow then builds and publishes the prerelease.
+workflow then builds a draft prerelease. Both release commands require the
+checkout HEAD to equal the current integration head, with no tracked changes.
+After the workflow succeeds and its artifacts are verified, publish that draft
+from the same integrated, tagged checkout:
+
+```bash
+make fork-publish
+```
 
 ## bd ↔ gc pairing
 

@@ -77,7 +77,9 @@ const (
 	// internal/bootstrap/packs/core/assets/scripts/** so a reaper.sh-only
 	// change runs the real-Dolt reaper tests. Reviewed delta: one filter path,
 	// no new job, trigger or permission.
-	expectedCIExecutionHash     = "3867d237bbeb9a9fa74eb8dd6e948f05ef4004a24d51785590c49834fd8bae77"
+	// Cache action pins move from v4 to v6.1.0 for the Node 24 runtime;
+	// cache inputs, workflow triggers, jobs, and permissions are unchanged.
+	expectedCIExecutionHash     = "c8773454656d2617f1b5b03c3219ee6484d30d36b3ff753c76e91bbbc945807c"
 	expectedNightlyTriggersHash = "0a4400a09ac567e90adf8be1232eef1f14e36efd8dba3e143aa6e36f5b7a36f5"
 	// Nightly: reviewed delta Beads v1.3.0-rc.2 -> v1.3.0, then (round3 review,
 	// completeness) one new job, beads-proxied-perf: ubuntu-latest,

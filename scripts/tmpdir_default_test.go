@@ -67,13 +67,9 @@ func TestMakefileTestEnvTMPDirDefaultLeavesSocketPathHeadroom(t *testing.T) {
 func runMakefileTestEnvTMPDirPrintTarget(t *testing.T, extraEnv []string) string {
 	t.Helper()
 	repoRoot := repoRoot(t)
-	makefile, err := os.ReadFile(filepath.Join(repoRoot, "Makefile"))
-	if err != nil {
-		t.Fatalf("read Makefile: %v", err)
-	}
 	tmp := t.TempDir()
 	testMakefile := filepath.Join(tmp, "Makefile")
-	content := string(makefile) + `
+	content := "include " + filepath.Join(repoRoot, "Makefile") + `
 .PHONY: print-test-env-tmpdir
 print-test-env-tmpdir:
 	@$(TEST_ENV) sh -c 'echo TMPDIR=$$TMPDIR'

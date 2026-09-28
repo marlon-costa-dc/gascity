@@ -293,12 +293,8 @@ exit 0
 
 func runMakefileCGOPrintTarget(t *testing.T, repoRoot, tmp, binDir string, args ...string) string {
 	t.Helper()
-	makefile, err := os.ReadFile(filepath.Join(repoRoot, "Makefile"))
-	if err != nil {
-		t.Fatalf("read Makefile: %v", err)
-	}
 	testMakefile := filepath.Join(tmp, "Makefile")
-	makefileContent := string(makefile) + `
+	makefileContent := "include " + filepath.Join(repoRoot, "Makefile") + `
 .PHONY: print-cgo-flags
 print-cgo-flags:
 	@printf 'CGO_CPPFLAGS=%s\n' '$(CGO_CPPFLAGS)'

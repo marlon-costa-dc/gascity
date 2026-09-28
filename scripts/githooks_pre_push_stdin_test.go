@@ -52,7 +52,7 @@ cat > "$BD_STDIN_RECORD"
 printf '%s\n' "$*" >> "$MAKE_RECORD"
 `)
 
-	for _, dir := range []string{".githooks/lib", "scripts"} {
+	for _, dir := range []string{".githooks/lib", "scripts", ".beads"} {
 		if err := os.MkdirAll(filepath.Join(repo, dir), 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}
@@ -140,6 +140,24 @@ func (f *prePushFixture) read(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(body)
+}
+
+func TestPrePushWithoutTrackerStillRunsNativeSuite(t *testing.T) {
+	f := newPrePushFixture(t)
+	if err := os.Remove(filepath.Join(f.repo, ".beads")); err != nil {
+		t.Fatal(err)
+	}
+	writeExecutable(t, filepath.Join(f.repo, "scripts", "push-ownership-guard.sh"), "#!/usr/bin/env bash\nexit 47\n")
+	refLine := "refs/heads/main " + f.commitNew + " refs/heads/main " + f.commitOld + "\n"
+	if code, out := f.run(t, refLine); code != 0 {
+		t.Fatalf("pre-push outside tracker boundary: exit %d\n%s", code, out)
+	}
+	if got := f.read(t, f.bdStdin); got != "" {
+		t.Fatalf("unconfigured checkout invoked beads: %q", got)
+	}
+	if got := f.read(t, f.makeRuns); !strings.Contains(got, "test-fast-parallel") {
+		t.Fatalf("native suite was not reached: %q", got)
+	}
 }
 
 // TestPrePushReplaysRefListToBeadsAndSuiteScan pins the composition introduced

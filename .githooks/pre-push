@@ -55,7 +55,7 @@ done < <(replay_refs)
 # (reassign/close/hold/reroute) that landed after this push was queued
 # must not be allowed to clobber a branch another agent has since taken
 # over. Bypass: `git push --no-verify`.
-if [ "$any_non_deletion" -eq 1 ]; then
+if [ "$any_non_deletion" -eq 1 ] && [ -d "$repo_root/.beads" ]; then
   # shellcheck source=../scripts/push-ownership-guard.sh disable=SC1091
   . "$repo_root/scripts/push-ownership-guard.sh"
   if ! assert_bead_still_claimed; then
