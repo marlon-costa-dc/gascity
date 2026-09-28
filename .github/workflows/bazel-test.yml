@@ -33,10 +33,13 @@ jobs:
       # Hoisted so the step-level `if:` below can see it (empty on forks,
       # where secrets are unavailable — the job then runs locally).
       RBE_EXECUTOR: ${{ secrets.RBE_EXECUTOR }}
+      DOLT_VERSION: "2.1.7"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - uses: ./.github/actions/setup-gascity-ubuntu
+        with:
+          dolt-version: ${{ env.DOLT_VERSION }}
 
       - name: Configure remote execution (if secrets present)
         if: env.RBE_EXECUTOR != ''
