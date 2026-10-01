@@ -39,6 +39,18 @@ func (g *Git) IsRepoCtx(ctx context.Context) bool {
 	return err == nil
 }
 
+// TracksPath reports whether path, relative to the working directory, is in
+// the index. `git ls-files` exits 0 and prints nothing for a path git does not
+// know, so an untracked path is a plain false; any probe failure (for example a
+// working directory that is not a repository) is returned.
+func (g *Git) TracksPath(path string) (bool, error) {
+	out, err := g.run("ls-files", "--", path)
+	if err != nil {
+		return false, fmt.Errorf("checking whether %s is tracked: %w", path, err)
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
 // CurrentBranch returns the current branch name. Returns "HEAD" if detached.
 func (g *Git) CurrentBranch() (string, error) {
 	return g.CurrentBranchCtx(context.Background())
