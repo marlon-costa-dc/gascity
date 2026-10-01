@@ -102,7 +102,7 @@ const (
 	// fork links the bd fork release named by go.mod's replace (deps.env
 	// BD_FORK_VERSION), so the cursors follow that library;
 	// TestSchemaCursorsMatchPinnedBeads enforces the equality.
-	SchemaCursorMain = 67
+	SchemaCursorMain = 69
 	// SchemaCursorIgnored is schema.LatestIgnoredVersion() for the pinned
 	// library.
 	SchemaCursorIgnored = 27

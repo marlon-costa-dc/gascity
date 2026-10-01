@@ -149,6 +149,32 @@ func TestIsRepo(t *testing.T) {
 	}
 }
 
+func TestTracksPath(t *testing.T) {
+	repo := initTestRepo(t)
+	for _, name := range []string{"tracked.txt", "untracked.txt"} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte("x\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	runGit(t, repo, "add", "tracked.txt")
+	g := New(repo)
+
+	tracked, err := g.TracksPath("tracked.txt")
+	if err != nil || !tracked {
+		t.Errorf("TracksPath(tracked.txt) = %v, %v; want true, nil", tracked, err)
+	}
+	untracked, err := g.TracksPath("untracked.txt")
+	if err != nil || untracked {
+		t.Errorf("TracksPath(untracked.txt) = %v, %v; want false, nil", untracked, err)
+	}
+
+	notRepo := t.TempDir()
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(notRepo))
+	if _, err := New(notRepo).TracksPath("tracked.txt"); err == nil {
+		t.Error("TracksPath outside a repository returned no error")
+	}
+}
+
 func TestCurrentBranch(t *testing.T) {
 	repo := initTestRepo(t)
 	g := New(repo)
