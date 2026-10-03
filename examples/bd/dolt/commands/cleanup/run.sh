@@ -3,8 +3,7 @@
 #
 # Discovers databases from the authoritative rig registry (all registered rigs,
 # including external rigs outside GC_CITY_PATH). By default, lists orphaned
-# databases (dry-run). Use --database NAME to select one exact orphan. Use
-# --force to remove selected orphans.
+# databases (dry-run). Use --force to remove them.
 # Use --max to set a safety limit (refuses if more orphans than --max).
 #
 # Removal strategy: when the dolt SQL server is reachable, --force issues
@@ -21,7 +20,6 @@ set -e
 force=false
 max_orphans=50
 server_down_ok=false
-target_database=""
 PACK_DIR="${GC_PACK_DIR:-$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)}"
 . "$PACK_DIR/assets/scripts/runtime.sh"
 data_dir="$DOLT_DATA_DIR"
@@ -31,20 +29,12 @@ while [ $# -gt 0 ]; do
     --force) force=true; shift ;;
     --max)   max_orphans="$2"; shift 2 ;;
     --server-down-ok) server_down_ok=true; shift ;;
-    --database)
-      [ $# -ge 2 ] || { echo "gc dolt cleanup: --database requires NAME" >&2; exit 1; }
-      [ -n "$2" ] || { echo "gc dolt cleanup: --database requires a non-empty NAME" >&2; exit 1; }
-      [ -z "$target_database" ] || { echo "gc dolt cleanup: --database may be supplied only once" >&2; exit 1; }
-      target_database="$2"
-      shift 2
-      ;;
     -h|--help)
-      echo "Usage: gc dolt cleanup [--database NAME] [--force] [--max N] [--server-down-ok]"
+      echo "Usage: gc dolt cleanup [--force] [--max N] [--server-down-ok]"
       echo ""
       echo "Find Dolt databases not referenced by any registered rig."
       echo ""
       echo "Flags:"
-      echo "  --database NAME    Select one exact orphaned database"
       echo "  --force            Actually remove orphaned databases"
       echo "  --max N            Refuse if more than N orphans (default: 50)"
       echo "  --server-down-ok   Permit filesystem rm fallback when the dolt"
@@ -58,142 +48,20 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ -n "$target_database" ]; then
-  case "$target_database" in
-    [A-Za-z0-9_]*)
-      case "$target_database" in
-        *[!A-Za-z0-9_-]*)
-          echo "gc dolt cleanup: invalid --database target '$target_database': name contains forbidden characters (allowed: A-Z, a-z, 0-9, _, -)" >&2
-          exit 1
-          ;;
-      esac
-      ;;
-    *)
-      echo "gc dolt cleanup: invalid --database target '$target_database': name must start with [A-Za-z0-9_]" >&2
-      exit 1
-      ;;
-  esac
-fi
-
 if [ ! -d "$data_dir" ]; then
-  if [ -n "$target_database" ]; then
-    echo "gc dolt cleanup: database '$target_database' not found under '$data_dir'" >&2
-    exit 1
-  fi
   echo "No orphaned databases found."
   exit 0
 fi
 
-# metadata_files() — discover databases from authoritative rig registry.
-# Uses gc rig list --json when available (all rigs, including external).
-# Falls back to filesystem glob when gc is unavailable (local rigs only).
-# Outputs: pathnames of .beads/metadata.json files (space-safe).
-metadata_files() {
-  printf '%s\n' "$GC_CITY_PATH/.beads/metadata.json"
-
-  if command -v gc >/dev/null 2>&1; then
-    rig_paths=$(gc rig list --json 2>/dev/null \
-      | if command -v jq >/dev/null 2>&1; then
-          jq -r '.rigs[].path' 2>/dev/null
-        else
-          grep '"path"' | sed 's/.*"path": *"//;s/".*//'
-        fi) || true
-    if [ -n "$rig_paths" ]; then
-      printf '%s\n' "$rig_paths" | while IFS= read -r p; do
-        [ -n "$p" ] && printf '%s\n' "$p/.beads/metadata.json"
-      done
-      return
-    fi
-  fi
-
-  # Fallback: scan local rigs/ directory only. Cannot discover external rigs
-  # when gc is unavailable — acceptable degradation.
-  find "$GC_CITY_PATH/rigs" -path '*/.beads/metadata.json' 2>/dev/null || true
-}
-
-# Collect referenced database names from metadata.json files.
-referenced=""
-while IFS= read -r meta; do
-  [ -z "$meta" ] && continue
-  [ -f "$meta" ] || continue
-  db=$(grep -o '"dolt_database"[[:space:]]*:[[:space:]]*"[^"]*"' "$meta" 2>/dev/null | sed 's/.*"dolt_database"[[:space:]]*:[[:space:]]*"//;s/"//' || true)
-  [ -n "$db" ] && referenced="$referenced $db "
-done <<EOF
-$(metadata_files)
-EOF
-
-if [ -n "$target_database" ]; then
-  case "$(printf '%s' "$target_database" | tr '[:upper:]' '[:lower:]')" in
-    information_schema|mysql|dolt_cluster|performance_schema|sys|__gc_probe)
-      echo "gc dolt cleanup: database '$target_database' is a system database, not an orphaned rig database" >&2
-      exit 1
-      ;;
-  esac
-  case "$referenced" in
-    *" $target_database "*)
-      echo "gc dolt cleanup: database '$target_database' is registered; refusing exact orphan cleanup" >&2
-      exit 1
-      ;;
-  esac
-  if [ ! -d "$data_dir/$target_database" ]; then
-    echo "gc dolt cleanup: database '$target_database' not found under '$data_dir'" >&2
-    exit 1
-  fi
-  if [ ! -d "$data_dir/$target_database/.dolt" ]; then
-    echo "gc dolt cleanup: database '$target_database' is not a Dolt database under '$data_dir'" >&2
-    exit 1
-  fi
-fi
-
-# Find orphans.
-orphans=""
-orphan_count=0
-for d in "$data_dir"/*/; do
-  [ ! -d "$d/.dolt" ] && continue
-  name="$(basename "$d")"
-  case "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')" in information_schema|mysql|dolt_cluster|performance_schema|sys|__gc_probe) continue ;; esac
-  if [ -n "$target_database" ] && [ "$name" != "$target_database" ]; then
-    continue
-  fi
-  case "$referenced" in
-    *" $name "*) continue ;; # referenced, not orphan
-  esac
-  # Calculate size. Use du -sk (POSIX, KB) and multiply — du -sb is GNU-only;
-  # macOS BSD du has no -b flag, which would leave size_bytes empty and break
-  # the integer comparisons below.
-  size_kb=$(du -sk "$d" 2>/dev/null | cut -f1)
-  size_bytes=$(( ${size_kb:-0} * 1024 ))
-  if [ "$size_bytes" -ge 1073741824 ]; then
-    size=$(awk "BEGIN {printf \"%.1f GB\", $size_bytes/1073741824}")
-  elif [ "$size_bytes" -ge 1048576 ]; then
-    size=$(awk "BEGIN {printf \"%.1f MB\", $size_bytes/1048576}")
-  elif [ "$size_bytes" -ge 1024 ]; then
-    size=$(awk "BEGIN {printf \"%.1f KB\", $size_bytes/1024}")
-  else
-    size="${size_bytes} B"
-  fi
-  orphans="$orphans$name|$size|$d
-"
-  orphan_count=$((orphan_count + 1))
-done
-
-if [ "$orphan_count" -eq 0 ]; then
-  if [ -n "$target_database" ]; then
-    echo "gc dolt cleanup: database '$target_database' is not orphaned" >&2
-    exit 1
-  fi
-  echo "No orphaned databases found."
-  exit 0
-fi
-
-# Precompute the non-HQ allowlist once from `gc rig list --json`. This lets us
-# fail closed if the registry query or jq parse fails at runtime (not just if
-# the binaries are missing), and avoids spawning N subprocess pairs for N
-# orphans. The allowlist file is empty iff no non-HQ rigs are registered —
-# distinguished from a *failed* query, which exits before any delete runs.
-#
 # compute_allowlist_file — write one non-HQ rig path per line to $1, or fail
-# with exit 1 if the pipeline can't be completed.
+# with exit 1 if the pipeline can't be completed. Both the by-name
+# `referenced` set (via metadata_files, below) and the by-path overlap guard
+# (used at removal time) are sourced from this single, fail-closed
+# enumeration, so a failed or unparseable registry query can no longer leave
+# one guard silently unprotected while the other still holds — previously
+# metadata_files() ran its own independent, fail-open `gc rig list --json`
+# call and quietly fell back to a partial filesystem scan on any failure,
+# which could reclassify a live rig's database as an orphan.
 compute_allowlist_file() {
   _out=$1
   if ! command -v gc >/dev/null 2>&1; then
@@ -236,29 +104,117 @@ overlapping_rig_path() {
   done < "$allowlist_file"
 }
 
-# Build the allowlist. Under --force, failure aborts before any rm -rf.
-# Under dry-run, failure degrades to "no annotations" — we still print the
-# table so operators can see what exists.
+# Compute the allowlist once, up front — before metadata_files() runs, since
+# metadata_files() sources its non-HQ rig paths from this same enumeration
+# (see below) instead of re-querying `gc rig list --json` independently.
+# allowlist_ready=false means the registry query could not be verified; the
+# --force abort on that state stays at its original point, immediately after
+# orphan detection, so a clean disk (no orphan-looking directories at all)
+# still short-circuits before any registry requirement.
 allowlist_file=$(mktemp)
 trap 'rm -f "$allowlist_file" "${refused_tmp:-}"' EXIT
 allowlist_ready=true
 if ! compute_allowlist_file "$allowlist_file"; then
   allowlist_ready=false
-  if [ "$force" = true ]; then
-    exit 1
-  fi
-  : > "$allowlist_file"  # empty → no overlap annotations in dry-run
+  : > "$allowlist_file"  # empty → no overlap annotations, no referenced names
 fi
 
-# Print orphan table. Under dry-run, annotate entries that --force would refuse
-# so users can preview refusals without running the destructive command.
+# metadata_files() — one metadata.json path per referenced database: HQ
+# always, plus each non-HQ rig from the validated allowlist above. When the
+# allowlist could not be validated (gc missing, registry query failed, or
+# unparseable output) and gc IS on PATH, fail closed here too instead of
+# silently substituting a local filesystem scan that would look complete
+# while missing every external (or HQ-data-dir-colocated) rig — exactly the
+# false-orphan bug this guards against. Only when gc itself is unavailable
+# do we fall back to scanning local rigs/ (cannot discover external rigs
+# either way; the caller must still treat the result as unverified — see the
+# STATUS column below).
+metadata_files() {
+  printf '%s\n' "$GC_CITY_PATH/.beads/metadata.json"
+
+  if [ "$allowlist_ready" = true ]; then
+    while IFS= read -r p; do
+      [ -n "$p" ] && printf '%s\n' "$p/.beads/metadata.json"
+    done < "$allowlist_file"
+    return
+  fi
+
+  if command -v gc >/dev/null 2>&1; then
+    return
+  fi
+
+  find "$GC_CITY_PATH/rigs" -path '*/.beads/metadata.json' 2>/dev/null || true
+}
+
+# Collect referenced database names from metadata.json files.
+referenced=""
+while IFS= read -r meta; do
+  [ -z "$meta" ] && continue
+  [ -f "$meta" ] || continue
+  db=$(grep -o '"dolt_database"[[:space:]]*:[[:space:]]*"[^"]*"' "$meta" 2>/dev/null | sed 's/.*"dolt_database"[[:space:]]*:[[:space:]]*"//;s/"//' || true)
+  [ -n "$db" ] && referenced="$referenced $db "
+done <<EOF
+$(metadata_files)
+EOF
+
+# Find orphans.
+orphans=""
+orphan_count=0
+for d in "$data_dir"/*/; do
+  [ ! -d "$d/.dolt" ] && continue
+  name="$(basename "$d")"
+  case "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')" in information_schema|mysql|dolt_cluster|performance_schema|sys|__gc_probe) continue ;; esac
+  case "$referenced" in
+    *" $name "*) continue ;; # referenced, not orphan
+  esac
+  # Calculate size. Use du -sk (POSIX, KB) and multiply — du -sb is GNU-only;
+  # macOS BSD du has no -b flag, which would leave size_bytes empty and break
+  # the integer comparisons below.
+  size_kb=$(du -sk "$d" 2>/dev/null | cut -f1)
+  size_bytes=$(( ${size_kb:-0} * 1024 ))
+  if [ "$size_bytes" -ge 1073741824 ]; then
+    size=$(awk "BEGIN {printf \"%.1f GB\", $size_bytes/1073741824}")
+  elif [ "$size_bytes" -ge 1048576 ]; then
+    size=$(awk "BEGIN {printf \"%.1f MB\", $size_bytes/1048576}")
+  elif [ "$size_bytes" -ge 1024 ]; then
+    size=$(awk "BEGIN {printf \"%.1f KB\", $size_bytes/1024}")
+  else
+    size="${size_bytes} B"
+  fi
+  orphans="$orphans$name|$size|$d
+"
+  orphan_count=$((orphan_count + 1))
+done
+
+if [ "$orphan_count" -eq 0 ]; then
+  echo "No orphaned databases found."
+  exit 0
+fi
+
+# Under --force, abort before any rm -rf if the allowlist could not be
+# verified — the same fail-closed contract compute_allowlist_file has always
+# had, checked here (after the clean-disk short-circuit above, before the
+# destructive path below).
+if [ "$allowlist_ready" != true ] && [ "$force" = true ]; then
+  exit 1
+fi
+
+# Print orphan table. Under dry-run, annotate entries that --force would
+# refuse, or that could not be confirmed as real orphans at all because the
+# rig registry enumeration failed (referenced is then incomplete by
+# construction — see metadata_files above), so users can preview both kinds
+# of refusal without running the destructive command.
 printf "%-30s  %-12s  %s\n" "NAME" "SIZE" "STATUS"
 echo "$orphans" | while IFS='|' read -r name size path; do
   [ -z "$name" ] && continue
   status=""
-  if [ "$force" != true ] && [ "$allowlist_ready" = true ]; then
-    overlap=$(overlapping_rig_path "$path")
-    [ -n "$overlap" ] && status="refused: overlaps rig at $overlap"
+  if [ "$force" != true ]; then
+    if [ "$allowlist_ready" = true ]; then
+      overlap=$(overlapping_rig_path "$path")
+      [ -n "$overlap" ] && status="refused: overlaps rig at $overlap"
+    else
+      status="unverified: rig registry query failed; not confirmed orphan"
+    fi
   fi
   printf "%-30s  %-12s  %s\n" "$name" "$size" "$status"
 done

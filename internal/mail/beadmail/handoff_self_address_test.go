@@ -8,75 +8,53 @@ import (
 	"github.com/gastownhall/gascity/internal/session"
 )
 
-// poolSessionDirectory resolves selectors against a fixed session set. It
-// models the production shape of a pool member: the session bead carries a
-// session_name ("builder-<id>") but no alias, so the only address its own
-// commands can name it by is the raw session ID.
-type poolSessionDirectory struct {
-	infos []session.Info
-}
-
-func (d poolSessionDirectory) resolve(selector string) (session.Info, error) {
-	for _, info := range d.infos {
-		for _, route := range session.RecipientRoutesFromInfo(info) {
-			if route == selector {
-				return info, nil
-			}
-		}
+// newPooledFleet returns a store holding the production shape of a pool
+// member -- a session bead with a session_name ("builder-<id>") but no alias,
+// so the only address its own commands can name it by is the raw session ID --
+// next to an aliased session that must never see the pool member's mail.
+func newPooledFleet(t *testing.T) (beads.Store, beads.Bead) {
+	t.Helper()
+	store := beads.NewMemStore()
+	builder, err := store.Create(beads.Bead{
+		Type:     session.BeadType,
+		Labels:   []string{session.LabelSession},
+		Metadata: map[string]string{"session_name": "builder-pool"},
+	})
+	if err != nil {
+		t.Fatalf("Create pooled session: %v", err)
 	}
-	return session.Info{}, session.ErrSessionNotFound
-}
-
-func (d poolSessionDirectory) ResolveAddress(selector string, _ bool) (session.Info, error) {
-	return d.resolve(selector)
-}
-
-func (d poolSessionDirectory) ResolveMailboxAddress(selector string, _ bool) (session.Info, error) {
-	return d.resolve(selector)
-}
-
-func (d poolSessionDirectory) ListAddresses(bool) ([]session.Info, error) {
-	return d.infos, nil
-}
-
-var (
-	pooledBuilder = session.Info{
-		ID:                  "gm-wisp-gpenji",
-		SessionNameMetadata: "builder-gm-wisp-gpenji",
+	if _, err := store.Create(beads.Bead{
+		Type:   session.BeadType,
+		Labels: []string{session.LabelSession},
+		Metadata: map[string]string{
+			"alias":        "mayor",
+			"session_name": "mayor",
+		},
+	}); err != nil {
+		t.Fatalf("Create mayor session: %v", err)
 	}
-	namedMayor = session.Info{
-		ID:                  "gm-wisp-mayor01",
-		Alias:               "mayor",
-		SessionNameMetadata: "mayor",
-	}
-	fleetDirectory = poolSessionDirectory{infos: []session.Info{pooledBuilder, namedMayor}}
-)
+	return store, builder
+}
 
 // TestSendHandoffSelfAddressedPersistsOneAddress proves that a self-handoff --
 // the shape gc handoff --auto sends from the PreCompact hook, where the caller
 // passes ONE address as both From and To -- must not persist as two different
 // addresses.
 //
-// SendHandoff normalizes only the From side (resolveSenderRoute ->
-// senderDisplayAddress, beadmail.go:189/233) and stores intent.To verbatim as
-// the bead Assignee (beadmail.go:197/213). For a pooled session with no alias,
-// addressed by its own raw session ID, senderDisplayAddress falls through to
-// the SessionNameMetadata branch (beadmail.go:249-251) and rewrites From to
-// "builder-<id>" while Assignee stays "<id>".
-//
-// Both strings name the same session and delivery is unaffected --
-// matchesRecipientRoute compares the assignee against
-// session.RecipientRoutesFromInfo, which contains the ID -- but the persisted
-// row now reads as agent-to-agent mail to every consumer that compares the two
-// fields.
+// SendHandoff normalizes the From side through resolveSenderRoute ->
+// senderDisplayAddress. For a pooled session with no alias, addressed by its
+// own raw session ID, that falls through to the session_name branch and
+// rewrites From to "builder-<...>", while intent.To used to be stored verbatim
+// as the bead Assignee. Both strings name the same session and delivery is
+// unaffected, but the persisted row read as agent-to-agent mail to every
+// consumer that compares the two fields.
 func TestSendHandoffSelfAddressedPersistsOneAddress(t *testing.T) {
-	store := beads.NewMemStore()
-	p := NewWithSessionDirectory(store, fleetDirectory)
+	store, builder := newPooledFleet(t)
+	p := New(store)
 
-	const selfAddress = "gm-wisp-gpenji"
 	msg, err := p.SendHandoff(mail.HandoffIntent{
-		From:        selfAddress,
-		To:          selfAddress,
+		From:        builder.ID,
+		To:          builder.ID,
 		Subject:     "context cycle",
 		ThreadID:    "thread-deadbeef",
 		ExtraLabels: []string{mail.AutoHandoffLabel, mail.ArchiveAfterInjectLabel},
@@ -98,22 +76,17 @@ func TestSendHandoffSelfAddressedPersistsOneAddress(t *testing.T) {
 	}
 }
 
-// TestSelfHandoffFromPooledSessionStaysInItsOwnInbox falsifies the delivery
-// half of ga-28neu4: the claim that a compaction marker whose From and
-// Assignee differ "lands in someone else's inbox and fires a real 'you have
-// mail' notification".
-//
-// It does not. matchesRecipientRoute compares the bead assignee against
-// session.RecipientRoutesFromInfo by exact string equality, and that route set
-// contains the session's own ID -- so the marker is delivered to exactly the
-// session that sent it, and is invisible to every other mailbox.
+// TestSelfHandoffFromPooledSessionStaysInItsOwnInbox is the delivery guard:
+// the marker reaches exactly the session that sent it, under either rendering
+// of its address, and no other mailbox sees it. It passes before and after the
+// fix above, proving that change affects only how the row reads.
 func TestSelfHandoffFromPooledSessionStaysInItsOwnInbox(t *testing.T) {
-	store := beads.NewMemStore()
-	p := NewWithSessionDirectory(store, fleetDirectory)
+	store, builder := newPooledFleet(t)
+	p := New(store)
 
 	msg, err := p.SendHandoff(mail.HandoffIntent{
-		From:        pooledBuilder.ID,
-		To:          pooledBuilder.ID,
+		From:        builder.ID,
+		To:          builder.ID,
 		Subject:     "context cycle",
 		ThreadID:    "thread-deadbeef",
 		ExtraLabels: []string{mail.AutoHandoffLabel, mail.ArchiveAfterInjectLabel},
@@ -122,9 +95,7 @@ func TestSelfHandoffFromPooledSessionStaysInItsOwnInbox(t *testing.T) {
 		t.Fatalf("SendHandoff: %v", err)
 	}
 
-	// The sending session sees its own marker, addressed by either of the two
-	// renderings of its address.
-	for _, selector := range []string{pooledBuilder.ID, pooledBuilder.SessionNameMetadata} {
+	for _, selector := range []string{builder.ID, builder.Metadata["session_name"]} {
 		got, err := p.Inbox(selector)
 		if err != nil {
 			t.Fatalf("Inbox(%q): %v", selector, err)
@@ -134,7 +105,6 @@ func TestSelfHandoffFromPooledSessionStaysInItsOwnInbox(t *testing.T) {
 		}
 	}
 
-	// No other mailbox sees it. This is the claim ga-28neu4 rests on.
 	others, err := p.Inbox("mayor")
 	if err != nil {
 		t.Fatalf("Inbox(mayor): %v", err)

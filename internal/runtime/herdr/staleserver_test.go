@@ -21,6 +21,7 @@ func shortHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(configHome) })
+	t.Setenv("HOME", configHome)
 	t.Setenv("XDG_CONFIG_HOME", configHome)
 }
 

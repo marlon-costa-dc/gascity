@@ -48,7 +48,10 @@ const (
 	RequiredCheckName = "Evidence / critical-path suites"
 	// ObservationDeadline bounds how long the watchdog observes a head
 	// commit before failing closed.
-	ObservationDeadline = 25 * time.Minute
+	// Required topology acceptance has a 90-minute job budget. Observation
+	// includes ten minutes for runner setup and summary publication;
+	// otherwise healthy, still-running suites are failed before their budget.
+	ObservationDeadline = 100 * time.Minute
 )
 
 // CheckRun is a single GitHub check run observation for a head commit.

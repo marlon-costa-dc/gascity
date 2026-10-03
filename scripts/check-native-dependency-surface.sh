@@ -1,17 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-max_modules="${GC_NATIVE_DEP_MAX_MODULES:-727}"
-# max_binary_bytes re-baselined 2026-08-29 (ga-iuznq2). The build below now
-# adds -trimpath and CGO_ENABLED=0, which removes cross-host path-embedding
-# and native C-object (dolthub/gozstd, ICU) variance that previously made
-# this cap non-deterministic between machines. Measured 172,098,757 bytes on
-# this host, corroborating an independent 172,098,813 measured elsewhere
-# (within 56 bytes -- residual build-id/timestamp noise). First-party code
-# grows the binary ~90KB/day, so 180,000,000 gives ~88 days of headroom.
-# Re-baseline with fresh measurement + growth-rate evidence, not an
-# arbitrary bump, when this next fails.
-max_binary_bytes="${GC_NATIVE_DEP_MAX_BINARY_BYTES:-180000000}"
+# max_modules re-baselined 2026-09-01 for beads v1.3.0-rc.1: measured 727 before
+# and 737 after, with ten additions and no removals. Re-measured 2026-09-10 on
+# the move to v1.3.0-rc.2: still 737, so the cap is carried forward unchanged
+# rather than re-derived. Nine are the OpenAPI
+# toolchain behind bd's new `bd serve` HTTP API (kin-openapi, oapi-codegen/v2,
+# speakeasy-api/{openapi,jsonpath}, oasdiff/{yaml,yaml3}, vmware-labs/yaml-jsonpath,
+# dprotaso/go-yit) plus zeebo/errs; the tenth is cloud.google.com/go/pubsub/v2,
+# pulled through by the google.golang.org/api bump MVS forced alongside it. None
+# of the OpenAPI stack links into gc -- only bd's internal/httpapi/apigen imports
+# it, which the root beads package never reaches.
+# max_modules re-baselined 2026-09-29 for the beads fork v1.3.0-fd.6 pairing
+# (PR #29): measured 761, up from 737. The +24 are the fork's upstream-main
+# sync (fd.6, beads #54) bringing the charm.land TUI stack
+# (bubbles/bubbletea/glamour/huh/lipgloss v2) and the
+# cloud.google.com/go/* service surface its metrics/jira tooling reaches
+# through google.golang.org/api. Same shape as the 2026-09-01 re-baseline:
+# first-party-driven growth behind the paired bd replace, none of it linked
+# into gc itself.
+max_modules="${GC_NATIVE_DEP_MAX_MODULES:-761}"
+# max_binary_bytes re-baselined 2026-09-29 for the beads fork v1.3.0-fd.6
+# pairing (PR #29): measured 180,671,133 on this host. The prior cap of
+# 180,000,000 was set 2026-08-29 against a 172.1MB measurement; the +8.6MB is
+# the fd.6 fork's upstream-main sync (charm.land TUI stack plus the
+# cloud.google.com service surface its metrics tooling reaches), the same
+# first-party-driven step the 2026-09-01 module re-baseline recorded. At the
+# documented ~90KB/day first-party growth rate, 188,000,000 restores ~81
+# days of headroom.
+max_binary_bytes="${GC_NATIVE_DEP_MAX_BINARY_BYTES:-188000000}"
 max_aws_modules="${GC_NATIVE_DEP_MAX_AWS_MODULES:-25}"
 max_azure_modules="${GC_NATIVE_DEP_MAX_AZURE_MODULES:-9}"
 max_dolthub_modules="${GC_NATIVE_DEP_MAX_DOLTHUB_MODULES:-15}"

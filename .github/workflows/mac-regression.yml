@@ -75,7 +75,7 @@ concurrency:
 
 env:
   DOLT_VERSION: "2.1.7"
-  BD_VERSION: "v1.1.0"
+  BD_VERSION: "v1.3.0"
 
 # Tier routing is centralized in the `gate` job below, which always runs
 # and computes run_smoke/run_full/run_review_formulas plus a human-readable
@@ -229,7 +229,7 @@ jobs:
           # SA5011 false-positive flood on main (ga-v7x9vk).
           echo "goversion=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
       - name: Restore golangci-lint cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/golangci-lint
           # Exact-key-only restore (no restore-keys fallback): a broad prefix

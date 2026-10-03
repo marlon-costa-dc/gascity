@@ -18,6 +18,7 @@ import (
 var doctorCityStoreDependentNames = []string{
 	"beads-store",
 	"v2-routed-to-namespace",
+	"executor-identity-residue",
 	"census-owner-liveness",
 	"run-target-routed-to-backfill",
 	"route-recovery-quarantine",
@@ -27,6 +28,8 @@ var doctorCityStoreDependentNames = []string{
 	"backlog-depth",
 	"order-tracking-retention",
 	"session-model",
+	"startup-health-episodes",
+	"gate-sandbox-reads",
 	"custom-types:city",
 	"hold-label-conventions:city",
 }
@@ -52,6 +55,62 @@ func TestIsBeadStoreUnreachable(t *testing.T) {
 		if got := isBeadStoreUnreachable(tc.err); got != tc.want {
 			t.Errorf("isBeadStoreUnreachable(%v) = %v, want %v", tc.err, got, tc.want)
 		}
+	}
+}
+
+// probeStore records its List calls; every other method goes through the nil
+// embedded interface and panics, so a probe that reached for anything but a
+// bounded List fails loudly here.
+type probeStore struct {
+	beads.Store
+	lists []beads.ListQuery
+}
+
+func (s *probeStore) List(q beads.ListQuery) ([]beads.Bead, error) {
+	s.lists = append(s.lists, q)
+	return nil, nil
+}
+
+// The probe must decide through the run's factory — whose open IS the proxied
+// lane's admission — and never again beside it: a raw bd fork here has no
+// ladder, so gating the store checks on it declared every recoverable zombie
+// an outage and gated off the one check that heals the scope.
+func TestDefaultDoctorBeadStorePreflight_ProbesThroughTheRunFactory(t *testing.T) {
+	t.Parallel()
+	const city = "/gc-preflight-test/city"
+	store := &probeStore{}
+	opens := 0
+	var openedFor string
+	factory := func(dir string) (beads.Store, error) {
+		opens++
+		openedFor = dir
+		return store, nil
+	}
+
+	if err := defaultDoctorBeadStorePreflight(city, factory); err != nil {
+		t.Fatalf("probe errored on a served store: %v", err)
+	}
+	if opens != 1 || openedFor != city {
+		t.Fatalf("factory opens = %d (for %q), want exactly 1 for %q", opens, openedFor, city)
+	}
+	if len(store.lists) != 1 {
+		t.Fatalf("List calls = %d, want exactly 1", len(store.lists))
+	}
+	if q := store.lists[0]; q.Status != "open" || q.Limit != 1 {
+		t.Fatalf("probe query = %+v, want the bounded open read (Status open, Limit 1)", q)
+	}
+}
+
+// An open that refused is the probe's verdict, byte for byte: the outage
+// classification downstream keys on the open's own error shapes.
+func TestDefaultDoctorBeadStorePreflight_FactoryErrorIsTheProbeVerdict(t *testing.T) {
+	t.Parallel()
+	want := errors.New("no proxy record under the scope")
+	err := defaultDoctorBeadStorePreflight("/gc-preflight-test/city", func(string) (beads.Store, error) {
+		return nil, want
+	})
+	if !errors.Is(err, want) {
+		t.Fatalf("probe error = %v, want the factory open error %v", err, want)
 	}
 }
 
@@ -107,9 +166,9 @@ func TestBuildDoctorChecks_SkipsStoreChecksWhenStoreUnreachable(t *testing.T) {
 	if !strings.Contains(res.Message, "doltlite") {
 		t.Fatalf("preflight message = %q, want doltlite residual note", res.Message)
 	}
-	// Thirteen city checks plus three per active rig, two rigs active.
-	if !strings.Contains(res.Message, "skipped 19 store checks") {
-		t.Fatalf("preflight message = %q, want skip count 19", res.Message)
+	// Sixteen city checks plus three per active rig, two rigs active.
+	if !strings.Contains(res.Message, "skipped 22 store checks") {
+		t.Fatalf("preflight message = %q, want skip count 22", res.Message)
 	}
 	if !strings.Contains(res.Message, "2 rigs") {
 		t.Fatalf("preflight message = %q, want rig count 2", res.Message)

@@ -293,12 +293,8 @@ exit 0
 
 func runMakefileCGOPrintTarget(t *testing.T, repoRoot, tmp, binDir string, args ...string) string {
 	t.Helper()
-	makefile, err := os.ReadFile(filepath.Join(repoRoot, "Makefile"))
-	if err != nil {
-		t.Fatalf("read Makefile: %v", err)
-	}
 	testMakefile := filepath.Join(tmp, "Makefile")
-	makefileContent := string(makefile) + `
+	makefileContent := "include " + filepath.Join(repoRoot, "Makefile") + `
 .PHONY: print-cgo-flags
 print-cgo-flags:
 	@printf 'CGO_CPPFLAGS=%s\n' '$(CGO_CPPFLAGS)'
@@ -346,7 +342,14 @@ func filteredMakefileCGOTestEnv() []string {
 		}
 		filtered = append(filtered, entry)
 	}
-	return filtered
+	// The Makefile's CGO probes invoke `go env`; with an isolated HOME that
+	// would download a toolchain into t.TempDir(), whose read-only module
+	// cache files then defeat TempDir cleanup. Pin the local toolchain and
+	// keep any module-cache writes out of the temp home.
+	return append(filtered,
+		"GOTOOLCHAIN=local",
+		"GOMODCACHE="+filepath.Join(os.TempDir(), "gc-makefile-cgo-gomodcache"),
+	)
 }
 
 func assertContains(t *testing.T, haystack, needle string) {

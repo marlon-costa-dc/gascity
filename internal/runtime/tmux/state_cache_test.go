@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -364,44 +363,6 @@ func TestStateCache_NoServerRefreshPreservesLastKnownGood(t *testing.T) {
 	}
 }
 
-// An UNPRIMED cache (never held a good state, fetchedAt zero) that hits a
-// genuine "no server" must prime itself to an empty snapshot rather than
-// re-spawning list-panes and re-logging the failure on every IsRunning. A
-// fresh city with no tmux server yet would otherwise storm the (absent) server
-// with one list-panes per liveness probe.
-func TestStateCache_UnprimedNoServerPrimesEmptyWithoutRefetch(t *testing.T) {
-	fe := &fakeExecutor{
-		// Every list-panes reports no server; the cache is never primed good.
-		errs: []error{ErrNoServer, ErrNoServer, ErrNoServer, ErrNoServer},
-	}
-	// A real TTL (not 0) so a successfully primed empty snapshot is a cache hit
-	// on the next read — proving priming stops the refetch storm.
-	cache := NewStateCache(&tmuxFetcher{tm: &Tmux{cfg: DefaultConfig(), exec: fe}}, time.Second)
-
-	if cache.IsRunning("agent-1") {
-		t.Fatal("expected agent-1 not running against a server-less city")
-	}
-	// The first read primed an empty snapshot with a single list-panes spawn.
-	// Every subsequent read within the TTL must be a cache hit — no refetch.
-	_ = cache.IsRunning("agent-1")
-	_ = cache.IsRunning("agent-2")
-	if calls := len(fe.calls); calls != 1 {
-		t.Fatalf("list-panes calls = %d, want 1: an unprimed no-server must prime empty once, not refetch on every IsRunning", calls)
-	}
-
-	// The cache is primed: fetchedAt set, and the failure recorded in lastError.
-	cache.mu.RLock()
-	fetchedAt := cache.fetchedAt
-	lastErr := cache.lastError
-	cache.mu.RUnlock()
-	if fetchedAt.IsZero() {
-		t.Error("expected fetchedAt to be set (cache primed) after an unprimed no-server refresh")
-	}
-	if !errors.Is(lastErr, gcruntime.ErrRuntimeUnavailable) {
-		t.Errorf("cache.lastError = %v, want errors.Is(runtime.ErrRuntimeUnavailable)", lastErr)
-	}
-}
-
 func TestStateCache_RefreshFailurePreservesLastKnownGood(t *testing.T) {
 	f := &mockFetcher{
 		sessions: map[string]bool{"agent-1": true},
@@ -756,21 +717,6 @@ func TestParseDarwinProcessSnapshotTraversesThroughEmptyArgsRows(t *testing.T) {
 	}
 	if !snapshot.hasDescendantWithNames("101", processNameSet([]string{"claude"}), 0) {
 		t.Fatal("hasDescendantWithNames(101, claude) = false, want traversal through empty-args row")
-	}
-}
-
-func TestProcessSnapshotPSArgsRejectsLinuxSyntaxOnDarwin(t *testing.T) {
-	// Regression: macOS ps rejects the BSD `:N=` column-width form. Confirm
-	// we don't emit it on Darwin. Skip elsewhere — Linux ps accepts both
-	// forms so verifying the wide form there is just a tautology.
-	if runtime.GOOS != "darwin" {
-		t.Skip("Darwin-specific syntax guard")
-	}
-	args := processSnapshotPSArgs()
-	for _, a := range args {
-		if strings.Contains(a, ":") {
-			t.Fatalf("processSnapshotPSArgs returned %v on darwin; contains Linux-only `:N=` width specifier", args)
-		}
 	}
 }
 

@@ -1,31 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-status=0
+formatter="${1:?pass the formatter selected by the root Makefile}"
+tmp=""
+trap 'if [ -n "$tmp" ]; then rm -f "$tmp"; fi' EXIT
 
 while IFS= read -r file; do
-  if [ -z "$file" ] || [ ! -f "$file" ]; then
+  if [ -z "$file" ]; then
     continue
+  fi
+  if [ ! -f "$file" ]; then
+    printf 'pre-commit: staged Go file is unavailable: %s\n' "$file" >&2
+    exit 1
   fi
 
-  tmp=$(mktemp "${TMPDIR:-/tmp}/gc-precommit-fmt.XXXXXX")
-  if ! golangci-lint fmt --stdin <"$file" >"$tmp"; then
-    rm -f "$tmp"
-    status=1
-    continue
-  fi
+  tmp=$(mktemp "${file}.gc-precommit-fmt.XXXXXX")
+  "$formatter" fmt --stdin <"$file" >"$tmp"
 
   if cmp -s "$file" "$tmp"; then
     rm -f "$tmp"
+    tmp=""
     continue
   fi
 
   cat "$tmp" >"$file"
   rm -f "$tmp"
+  tmp=""
 done
-
-if [ "$status" -ne 0 ]; then
-  echo "pre-commit: golangci-lint fmt failed for one or more staged Go files" >&2
-fi
-
-exit "$status"

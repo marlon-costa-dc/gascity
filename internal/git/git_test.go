@@ -23,7 +23,7 @@ func initTestRepo(t *testing.T) string {
 
 // runGit runs a git command in dir and fails the test on error.
 // Strips git env vars to prevent interference from pre-commit hooks.
-func runGit(t *testing.T, dir string, args ...string) {
+func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
@@ -38,6 +38,7 @@ func runGit(t *testing.T, dir string, args ...string) {
 	if err != nil {
 		t.Fatalf("git %s: %s: %v", strings.Join(args, " "), out, err)
 	}
+	return string(out)
 }
 
 // runGitAllowFail runs a git command in dir and returns its combined output
@@ -145,6 +146,32 @@ func TestIsRepo(t *testing.T) {
 	g2 := New(notRepo)
 	if g2.IsRepo() {
 		t.Error("IsRepo() = true for non-repo, want false")
+	}
+}
+
+func TestTracksPath(t *testing.T) {
+	repo := initTestRepo(t)
+	for _, name := range []string{"tracked.txt", "untracked.txt"} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte("x\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	runGit(t, repo, "add", "tracked.txt")
+	g := New(repo)
+
+	tracked, err := g.TracksPath("tracked.txt")
+	if err != nil || !tracked {
+		t.Errorf("TracksPath(tracked.txt) = %v, %v; want true, nil", tracked, err)
+	}
+	untracked, err := g.TracksPath("untracked.txt")
+	if err != nil || untracked {
+		t.Errorf("TracksPath(untracked.txt) = %v, %v; want false, nil", untracked, err)
+	}
+
+	notRepo := t.TempDir()
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(notRepo))
+	if _, err := New(notRepo).TracksPath("tracked.txt"); err == nil {
+		t.Error("TracksPath outside a repository returned no error")
 	}
 }
 

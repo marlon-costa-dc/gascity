@@ -1,27 +1,3 @@
-//go:build beads_rowlock
-
-// This file implements the native optimistic-concurrency (CAS) write path. It
-// is excluded from the default build because it depends on beads library APIs
-// -- Issue.RowVersion, Storage.UpdateIssueChecked, Storage.CloseIssueChecked --
-// that exist only on the library line whose embedded migrations reach 0059.
-//
-// The fence those APIs implement is backed by the issues.row_lock column, which
-// migration 0054 creates. Every live store in this city is at schema 53, so the
-// column does not exist and the fence cannot function regardless of this file:
-// beads.conditional_writes is correspondingly `off` (origin=builtin).
-//
-// Building against the 0059 line to satisfy these symbols is not free: the
-// library applies its embedded migrations on open (initSchema -> MigrateUp,
-// ungated except for ReadOnly/Gateway), so it would migrate all 16 databases
-// 53 -> 59 one way. See beads gc-5oauf and gct-83zky.
-//
-// Nothing breaks structurally when this file is absent: callers reach the CAS
-// path through beads.ConditionalWriterFor, a runtime type assertion that
-// returns ErrConditionalWriteUnsupported when NativeDoltStore does not
-// implement ConditionalWriter.
-//
-// Build with `-tags beads_rowlock` once the store line and the schema agree.
-
 package beads
 
 import (
@@ -44,6 +20,9 @@ var (
 // transaction, but only while the exact opaque row version still matches.
 // It returns the final in-transaction row only after the transaction commits.
 func (s *NativeDoltStore) CloseWithMetadataIfMatch(id string, expectedRevision int64, metadata map[string]string) (Bead, error) {
+	if err := s.readOnlyGuard(); err != nil {
+		return Bead{}, err
+	}
 	storage, release, err := s.acquireStorage()
 	if err != nil {
 		return Bead{}, err
@@ -125,6 +104,9 @@ func (s *NativeDoltStore) probeConditionalWriteCapability() (bool, string) {
 // UpdateIfMatch applies row-backed opts only while id still has
 // expectedRevision.
 func (s *NativeDoltStore) UpdateIfMatch(id string, expectedRevision int64, opts UpdateOpts) error {
+	if err := s.readOnlyGuard(); err != nil {
+		return err
+	}
 	if err := validateConditionalUpdateOpts(opts); err != nil {
 		return fmt.Errorf("conditional update %s: %w", id, err)
 	}
@@ -158,6 +140,9 @@ func (s *NativeDoltStore) UpdateIfMatch(id string, expectedRevision int64, opts 
 
 // CloseIfMatch closes id only while it still has expectedRevision.
 func (s *NativeDoltStore) CloseIfMatch(id string, expectedRevision int64) error {
+	if err := s.readOnlyGuard(); err != nil {
+		return err
+	}
 	storage, release, err := s.acquireStorage()
 	if err != nil {
 		return err
@@ -189,6 +174,9 @@ func (s *NativeDoltStore) CloseIfMatch(id string, expectedRevision int64) error 
 
 // DeleteIfMatch deletes id only while it still has expectedRevision.
 func (s *NativeDoltStore) DeleteIfMatch(id string, expectedRevision int64) error {
+	if err := s.readOnlyGuard(); err != nil {
+		return err
+	}
 	storage, release, err := s.acquireStorage()
 	if err != nil {
 		return err
@@ -276,6 +264,9 @@ func (s *NativeDoltStore) conditionalWriteError(
 // objects, and arrays. The transaction compares through that public string
 // view, then replaces only the selected raw JSON member with a JSON string.
 func (s *NativeDoltStore) CompareAndSetMetadataKey(id, key, expected, next string) (bool, error) {
+	if err := s.readOnlyGuard(); err != nil {
+		return false, err
+	}
 	storage, release, err := s.acquireStorage()
 	if err != nil {
 		return false, err

@@ -1,3 +1,46 @@
+<!-- AIHUB-INVIOLABLE-LAW-PRELUDE v1 -->
+# AIHUB Inviolable Law — Strict Prelude
+
+1. Truth: never claim done/green/resolved without command, exit code, decisive output.
+2. Root cause: exterminate bypass, fallback, shim, suppression, stub, hardcode, catch-based normalization, retry, compatibility, partial execution, keyring, or old+new coexistence.
+3. Tracker boundary: without repository `.beads/`, invoke neither `bd` nor `gc` and create no substitute. Otherwise use only the selected, available canonical tracker. If explicitly suspended, preserve authorized Git/PR/CI evidence and never declare DONE.
+4. Research first: inspect code, docs, canonical sources before acting; never invent APIs, flags, facts, or behavior.
+5. Owner first: use the project's declared facades/primitives; do not reimplement them locally.
+6. Gate persistence: a failure stops only that invocation. Correct its owner,
+   republish, and rerun until green; never switch phase or repository because a
+   check, review, approval, or merge is pending. Escalate only after every
+   authorized technical action is exhausted and the remaining condition is
+   genuinely external or requires new authority.
+7. Landing: native gates, commit, fast-forward push, bead evidence.
+8. Divergence: FF push rejected → integrate by cooperation: `git merge --no-ff` the integration base into your lane, resolve conflicts, revalidate, land. Never rebase or force-push an authorized change or integration branch; adopt all current worktree state and fix it forward.
+9. Escalation: impossible rule → exact error. Rule conflict → present both with numbers. Unclear → one targeted question. Never guess.
+10. Precedence: NEWEST > OLDEST. USER REQUEST > BEADS > ADRs > SKILLs > DOCS > default. Adjust lower/older to higher/newer. Doubt → ASK USER FIRST.
+11. Workspaces: follow `rules/coordination/gascity.md`. Every manual task uses a dedicated Git worktree, branch, and physical `.venv`, never the primary checkout. Gas City suspension keeps orchestration inactive. Worktrees and staging stay on the destination filesystem, never `/tmp`; no borrowed environment, backup, or archive. Retire worktrees after verified integration.
+12. Phase closure: keep the phase active through check repair, review resolution,
+    independent approval, merge into the configured integration branch, and
+    post-merge proof. Only then, with its Bead closed with evidence, is it DONE.
+    When the operator states that no independent reviewer exists and authorizes
+    an administrative merge, that authorization replaces the approval row alone;
+    every other row stays mandatory and closure records the approval as
+    operator-authorized, never as satisfied.
+13. Root Make only: diagnostics, validation, generation, tests, Waza,
+    publication, and deployment run only through selector-free verbs in the
+    repository root Makefile; bare verbs perform their declared operation. A full
+    suite has its own verb, first runs the incremental verb, and uses the same
+    persistent external testmon database.
+14. Red means red: a warning, skip, empty output, missing tool, missing report,
+    zero collection, caught exception, retry, or normalized failure is RED. The
+    only acceptable zero-execution test result is a typed incremental testmon
+    cache hit with an integrity-checked database and complete deselection
+    accounting; it is never reported as tests passed. The first exception and
+    raw traceback escape unchanged.
+<!-- /AIHUB-INVIOLABLE-LAW-PRELUDE -->
+
+# AGENTS.md — gascity
+
+> Packaged governance `agents-governance` `0.5.0` owns the capability indexes: 66 agents, 96 rules, 137 skills. Consume them through `GovernanceBundle`; do not copy their bodies here.
+
+<!-- AIHUB-AGENTS-SCOPE-LOCAL-BEGIN -->
 # Gas City
 
 Gas City is an orchestration-builder SDK — a Go toolkit for composing
@@ -447,6 +490,14 @@ GOCACHE="$tmp" TMPDIR="$tmp" go build ./cmd/gc/
 test-result cache, not the compiled-object cache, and does not corrupt
 concurrent builds.
 
+**Hermetic Git test config is mirrored.** `Makefile`'s `TEST_ENV` and the
+nested `env -i` wrappers in `scripts/test-local-parallel`,
+`scripts/test-go-test-shard`, and `scripts/test-integration-shard` must all pin
+`GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null`. Updating only the
+Makefile is insufficient because each nested runner rebuilds the environment
+and would otherwise restore user Git configuration through the preserved
+`HOME`.
+
 ## Code quality gates
 
 Before considering any task complete:
@@ -456,8 +507,10 @@ Before considering any task complete:
 - Broader process/integration coverage uses the sharded targets documented in
   `TESTING.md` instead of one monolithic `go test ./...` sweep
 - `go vet ./...` clean
-- `.githooks/pre-commit` is active locally (`git config core.hooksPath`
-  prints `.githooks`) and has run for the staged change
+- `.githooks/pre-commit` is active locally (verify with `make check-hooks`)
+  and has run for the staged change. See "Git hook ownership" below — beads'
+  installer silently takes `core.hooksPath` over, and a bypassed hook cannot
+  report its own absence.
 - `make dashboard-ci` passes for any change touching `internal/api/`,
   `internal/api/openapi.json`, `docs/reference/schema/openapi.*`,
   `internal/api/dashboardspa/`, or generated dashboard types
@@ -467,6 +520,32 @@ Before considering any task complete:
 - Every exported function has a doc comment
 - No premature abstractions
 - Tests cover happy path AND edge cases
+
+## Git hook ownership
+
+**`.githooks` is the single owner of `core.hooksPath`.** Install it with
+`make setup`; verify it with `make check-hooks`.
+
+Only one directory can own `core.hooksPath`, and beads' installer claims it
+for `.beads/hooks`. Those hooks exec `bd hooks run <hook>` without chaining
+onward, so while beads owns the path every gate in `.githooks` — staged-Go
+formatting, `lint-changed`, the three codegen+stage steps, `make vet`, and the
+push-time suite — is skipped on every commit. Nothing reports this: git simply
+stops invoking the hooks, so commits look clean while spec-derived drift lands
+on the mainline until a later suite failure surfaces the drift.
+
+Reclaiming the path does not disable beads. Each `.githooks` hook forwards to
+`.githooks/lib/beads-chain.sh`, which runs `bd hooks run <hook>` with the same
+timeout and exit-code carve-outs beads' own integration block used. Adding a
+hook that beads manages means adding its `.githooks` counterpart too —
+`TestGitHooksCoverEveryBeadsManagedHook` in `scripts/` fails otherwise.
+
+Beads' installer can reclaim `core.hooksPath` at any time. When it does,
+`make check-hooks` fails and `make setup` puts it back.
+
+`make spec-ci` (run by the required `preflight-generated` CI job) is the
+backstop for spec/client drift, but it only sees work that reaches a PR —
+locally merged branches depend on the pre-commit gate actually running.
 
 ## Non-Interactive Shell Commands
 
@@ -535,6 +614,13 @@ bd close <id>         # Complete work
    NOTE: gascity Dolt is LOCAL-ONLY (no remote). Do NOT run `bd dolt push`,
    `bd dolt pull`, or `bd dolt remote add` here -- they fail and re-introduce
    a doomed `origin` remote (ga-9wsri). Use `git push` only.
+
+   That same no-remote shape is why bd >= 1.3.0 refuses to auto-apply pending
+   schema migrations to gascity's shared Dolt sql-server: migrating would lock
+   out every co-resident bd still on the old schema. If a bd WRITE fails with a
+   refusal naming pending migrations, the sanctioned fix is `bd migrate schema`
+   run once by a designated migrator after every bd client is upgraded -- NOT
+   `bd dolt pull`, and not an ad-hoc `BD_ALLOW_REMOTE_MIGRATE=1`.
 5. **Clean up** - Clear stashes, prune remote branches
 6. **Verify** - All changes committed AND pushed
 7. **Hand off** - Provide context for next session
@@ -608,3 +694,18 @@ These apply to all code in this project — frontend and server:
   Take advantage of that feedback to fix those errors!
 - **Use Centralized Semantic Constant Values** using enums and constants instead
   of spreading magic numbers throughout the code.
+
+<!-- migrated from CLAUDE.md -->
+@AGENTS.md
+
+## Claude Code
+
+Keep only Claude-specific guidance here. Prefer shared project rules in `AGENTS.md`.
+
+<!-- migrated from GEMINI.md -->
+@AGENTS.md
+
+## Gemini CLI
+
+Keep only Gemini-specific guidance here. Prefer shared project rules in `AGENTS.md`.
+<!-- AIHUB-AGENTS-SCOPE-LOCAL-END -->

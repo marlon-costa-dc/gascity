@@ -1,3 +1,11 @@
+// cleanup_test.go pins the dry-run and --force behavior of
+// commands/cleanup/run.sh when the rig registry query fails. See ga-a5mi0k:
+// metadata_files() and compute_allowlist_file() both call
+// `gc rig list --json`, but only the allowlist call is fail-closed —
+// metadata_files() degrades to a local-only filesystem scan that cannot see
+// external rigs, so a failed registry query previously produced a dry-run
+// row with no annotation at all for a live external rig's database,
+// indistinguishable from a confirmed orphan.
 package dolt_test
 
 import (
@@ -8,172 +16,113 @@ import (
 	"testing"
 )
 
+// cleanupScript is the on-disk path to the cleanup command script.
 const cleanupScript = "commands/cleanup/run.sh"
 
-type cleanupFixture struct {
-	root     string
-	cityPath string
-	dataDir  string
-	binDir   string
+// writeFailingGCStub writes a `gc` stub to binDir that fails every
+// invocation, simulating `gc rig list --json` erroring out. Cleanup's
+// run.sh only ever shells out to `gc rig list --json` (in metadata_files()
+// and compute_allowlist_file()), so an unconditional failure is sufficient
+// to exercise the "registry query failed" path without branching on args.
+func writeFailingGCStub(t *testing.T, binDir string) {
+	t.Helper()
+	writeExecutable(t, filepath.Join(binDir, "gc"), "#!/bin/sh\nexit 1\n")
 }
 
-func newCleanupFixture(t *testing.T) cleanupFixture {
-	t.Helper()
+// TestCleanupDryRunAnnotatesUnverifiedOnRegistryFailure pins exit_contract
+// item 4 on ga-a5mi0k: when `gc rig list --json` fails, dry-run must mark
+// every row "unverified" instead of leaving the STATUS column blank. Today,
+// metadata_files() silently falls back to a local find() scan rooted at
+// $GC_CITY_PATH/rigs, which cannot discover an external rig's database (one
+// registered outside the city path, like the HQ-colocated live stores
+// gascity, my_db, mcdclient, etc.) — so its row prints with no annotation,
+// indistinguishable from a confirmed orphan.
+func TestCleanupDryRunAnnotatesUnverifiedOnRegistryFailure(t *testing.T) {
+	cityPath := t.TempDir()
+
+	// dataDir holds one "orphan": a live external rig's database. Its rig
+	// registration would only be visible via `gc rig list --json` — the
+	// local-only find() fallback is rooted at $GC_CITY_PATH/rigs and
+	// structurally cannot see it, mirroring the HQ-colocated case where the
+	// shared Dolt data dir shares no path prefix with the rig's registered
+	// path.
+	dataDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dataDir, "extdb", ".dolt"), 0o755); err != nil {
+		t.Fatalf("mkdir extdb: %v", err)
+	}
+
+	binDir := t.TempDir()
+	writeFailingGCStub(t, binDir)
 
 	root := repoRoot(t)
-	base := t.TempDir()
-	cityPath := filepath.Join(base, "city")
-	dataDir := filepath.Join(base, "data")
-	binDir := filepath.Join(base, "bin")
+	cmd := exec.Command("sh", filepath.Join(root, cleanupScript))
+	cmd.Env = append(filteredEnv("PATH"),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"GC_CITY_PATH="+cityPath,
+		"GC_PACK_DIR="+root,
+		"GC_DOLT_DATA_DIR="+dataDir,
+		"GC_DOLT_PORT=3306",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("cleanup dry-run failed: %v\n%s", err, out)
+	}
 
-	for _, dir := range []string{
-		filepath.Join(cityPath, ".beads"),
-		filepath.Join(cityPath, "rigs"),
-		filepath.Join(dataDir, "target_orphan", ".dolt"),
-		filepath.Join(dataDir, "keep_orphan", ".dolt"),
-		filepath.Join(dataDir, "city_registered", ".dolt"),
-		filepath.Join(dataDir, "not_dolt"),
-		binDir,
-	} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", dir, err)
+	var extdbLine string
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "extdb") {
+			extdbLine = line
+			break
 		}
 	}
-
-	metadata := `{"database":"dolt","backend":"dolt","dolt_database":"city_registered"}`
-	if err := os.WriteFile(filepath.Join(cityPath, ".beads", "metadata.json"), []byte(metadata), 0o644); err != nil {
-		t.Fatalf("write metadata: %v", err)
+	if extdbLine == "" {
+		t.Fatalf("extdb not listed as an orphan in dry-run output:\n%s", out)
 	}
-
-	writeExecutable(t, filepath.Join(binDir, "gc"), `#!/bin/sh
-if [ "$1" = "rig" ] && [ "$2" = "list" ] && [ "$3" = "--json" ]; then
-  printf '%s\n' '{"rigs":[]}'
-  exit 0
-fi
-echo "unexpected gc invocation: $*" >&2
-exit 1
-`)
-
-	return cleanupFixture{
-		root:     root,
-		cityPath: cityPath,
-		dataDir:  dataDir,
-		binDir:   binDir,
+	if !strings.Contains(extdbLine, "unverified") {
+		t.Fatalf("extdb row does not carry an \"unverified\" status when the rig registry query failed — "+
+			"an operator cannot distinguish this live external rig's database from a confirmed orphan:\n%s", out)
 	}
 }
 
-func (f cleanupFixture) run(t *testing.T, args ...string) (string, error) {
-	t.Helper()
+// TestCleanupForceRefusesOnRegistryFailure characterizes exit_contract item
+// 3 on ga-a5mi0k, which was already correct before this bead's fix:
+// compute_allowlist_file() aborts --force before any rm -rf / DROP DATABASE
+// when the registry query fails. This guards against a regression while
+// item 4's dry-run annotation fix lands alongside it.
+func TestCleanupForceRefusesOnRegistryFailure(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skipf("jq not found: %v", err)
+	}
 
-	cmd := exec.Command("sh", append([]string{filepath.Join(f.root, cleanupScript)}, args...)...)
-	cmd.Env = append(filteredEnv(
-		"PATH",
-		"GC_CITY_PATH",
-		"GC_PACK_DIR",
-		"GC_DOLT_DATA_DIR",
-		"GC_DOLT_HOST",
-		"GC_DOLT_PORT",
-		"GC_DOLT_USER",
-		"GC_DOLT_PASSWORD",
-	),
-		"PATH="+f.binDir+":"+os.Getenv("PATH"),
-		"GC_CITY_PATH="+f.cityPath,
-		"GC_PACK_DIR="+f.root,
-		"GC_DOLT_DATA_DIR="+f.dataDir,
-		"GC_DOLT_HOST=127.0.0.1",
-		"GC_DOLT_PORT=19999",
-		"GC_DOLT_USER=root",
-		"GC_DOLT_PASSWORD=",
+	cityPath := t.TempDir()
+
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, "extdb")
+	if err := os.MkdirAll(filepath.Join(dbPath, ".dolt"), 0o755); err != nil {
+		t.Fatalf("mkdir extdb: %v", err)
+	}
+
+	binDir := t.TempDir()
+	writeFailingGCStub(t, binDir)
+
+	root := repoRoot(t)
+	cmd := exec.Command("sh", filepath.Join(root, cleanupScript), "--force")
+	cmd.Env = append(filteredEnv("PATH"),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"GC_CITY_PATH="+cityPath,
+		"GC_PACK_DIR="+root,
+		"GC_DOLT_DATA_DIR="+dataDir,
+		"GC_DOLT_PORT=3306",
 	)
 	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
-func TestCleanupDatabaseSelectorDryRunFiltersBeforeCount(t *testing.T) {
-	f := newCleanupFixture(t)
-
-	out, err := f.run(t, "--database", "target_orphan")
-	if err != nil {
-		t.Fatalf("cleanup exact dry-run failed: %v\n%s", err, out)
+	if err == nil {
+		t.Fatalf("cleanup --force succeeded despite a failed rig registry query; it must abort before removing anything:\n%s", out)
 	}
-	for _, want := range []string{
-		"target_orphan",
-		"1 orphaned database(s). Use --force to remove.",
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("exact dry-run output missing %q:\n%s", want, out)
-		}
-	}
-	for _, forbidden := range []string{"keep_orphan", "city_registered"} {
-		if strings.Contains(out, forbidden) {
-			t.Fatalf("exact dry-run output included %q:\n%s", forbidden, out)
-		}
-	}
-}
-
-func TestCleanupWithoutDatabaseKeepsAllOrphanMode(t *testing.T) {
-	f := newCleanupFixture(t)
-
-	out, err := f.run(t)
-	if err != nil {
-		t.Fatalf("cleanup all-orphan dry-run failed: %v\n%s", err, out)
-	}
-	for _, want := range []string{
-		"target_orphan",
-		"keep_orphan",
-		"2 orphaned database(s). Use --force to remove.",
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("all-orphan output missing %q:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "city_registered") {
-		t.Fatalf("all-orphan output included registered database:\n%s", out)
-	}
-}
-
-func TestCleanupDatabaseSelectorRejectsInvalidAbsentRegisteredAndNonDoltTargets(t *testing.T) {
-	tests := []struct {
-		name   string
-		target string
-		want   string
-	}{
-		{
-			name:   "invalid name",
-			target: "bad.name",
-			want:   "gc dolt cleanup: invalid --database target 'bad.name': name contains forbidden characters (allowed: A-Z, a-z, 0-9, _, -)",
-		},
-		{
-			name:   "absent target",
-			target: "missing_orphan",
-			want:   "gc dolt cleanup: database 'missing_orphan' not found under ",
-		},
-		{
-			name:   "registered target",
-			target: "city_registered",
-			want:   "gc dolt cleanup: database 'city_registered' is registered; refusing exact orphan cleanup",
-		},
-		{
-			name:   "existing non-dolt path",
-			target: "not_dolt",
-			want:   "gc dolt cleanup: database 'not_dolt' is not a Dolt database under ",
-		},
+	if !strings.Contains(string(out), "refusing to run overlap allowlist unverified") {
+		t.Fatalf("cleanup --force failed, but not for the expected reason (registry query unverified):\n%s", out)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := newCleanupFixture(t)
-
-			out, err := f.run(t, "--database", tt.target)
-			if err == nil {
-				t.Fatalf("cleanup exact selector succeeded for %s:\n%s", tt.target, out)
-			}
-			if !strings.Contains(out, tt.want) {
-				t.Fatalf("cleanup exact selector output missing %q:\n%s", tt.want, out)
-			}
-			if _, statErr := os.Stat(filepath.Join(f.dataDir, "keep_orphan", ".dolt")); statErr != nil {
-				t.Fatalf("keep_orphan changed after reject: %v", statErr)
-			}
-		})
+	if _, statErr := os.Stat(dbPath); statErr != nil {
+		t.Fatalf("extdb was removed despite the registry query failing: %v", statErr)
 	}
 }

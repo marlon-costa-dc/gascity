@@ -2,6 +2,7 @@ package beads
 
 import (
 	"context"
+	"fmt"
 
 	beadslib "github.com/steveyegge/beads"
 )
@@ -76,9 +77,14 @@ func (s *NativeDoltStore) enrichReadyProjectionForCache(items []Bead) ([]Bead, e
 
 	var projection map[string]bool
 	err := s.withReadRetry(func(ctx context.Context, storage beadslib.Storage) error {
-		blocked, err := isBlockedBatchForStorage(ctx, storage, ids)
+		querier, ok := beadslib.AsBlockedQuerier(storage)
+		if !ok {
+			return fmt.Errorf("native ready projection: %w: storage %T does not expose beads.BlockedQuerier",
+				ErrReadyProjectionUnsupported, storage)
+		}
+		blocked, err := querier.IsBlockedBatch(ctx, ids)
 		if err != nil {
-			return err
+			return fmt.Errorf("native ready projection: %w", err)
 		}
 		projection = blocked
 		return nil

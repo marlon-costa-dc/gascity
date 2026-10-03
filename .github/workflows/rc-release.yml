@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*.*.*-rc*"
+      - "v*.*.*-fc.*"
   workflow_dispatch:
     inputs:
       tag_name:
@@ -25,7 +26,7 @@ permissions: {}
 jobs:
   rc-release:
     name: Draft RC release
-    if: ${{ github.repository == 'gastownhall/gascity' }}
+    if: ${{ github.repository == 'gastownhall/gascity' || github.event.repository.fork }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -62,7 +63,7 @@ jobs:
             tag="$GITHUB_REF_NAME"
           fi
 
-          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(rc[0-9]+|fc\.[0-9]+)$ ]]; then
             echo "ERROR: RC tag must match vMAJOR.MINOR.PATCH-rcN, got: $tag" >&2
             exit 1
           fi
@@ -146,14 +147,12 @@ jobs:
             push "https://x-access-token:${TAGGER_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$TAG_NAME"
           echo "Created tag $TAG_NAME at $TARGET_COMMIT"
 
-      - name: Reject replace directives in go.mod
+      - name: Check go.mod replace directives
         if: ${{ steps.rc.outputs.needs_create != 'true' }}
-        run: |
-          if grep -qE '^replace\s' go.mod; then
-            echo "ERROR: go.mod contains replace directives; aborting RC release." >&2
-            grep -n '^replace' go.mod
-            exit 1
-          fi
+        # The replace policy has one owner, scripts/check-gomod-replace.sh (the
+        # required CI check). It admits only the bd fork pairing named in
+        # deps.env; an inline "no replace at all" grep would contradict it.
+        run: make check-gomod-replace
 
       - name: Run GoReleaser draft prerelease
         if: ${{ steps.rc.outputs.needs_create != 'true' }}

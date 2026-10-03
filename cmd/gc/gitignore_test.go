@@ -95,6 +95,72 @@ func TestEnsureGitignoreEntries_BeadsRuntimeFilesSurviveGitClean(t *testing.T) {
 	}
 }
 
+// writeBeadsProjectionRepo builds a repository whose .gitignore un-ignores the
+// beads projection, as a repository that generates and commits
+// .beads/config.yaml and .beads/metadata.json does.
+func writeBeadsProjectionRepo(t *testing.T) (repo string, gitignore []byte) {
+	t.Helper()
+	repo = t.TempDir()
+	runGit(t, repo, "init", "-q")
+	gitignore = []byte(".beads/*\n!.beads/identity.toml\n!.beads/config.yaml\n!.beads/metadata.json\n")
+	if err := os.WriteFile(filepath.Join(repo, ".gitignore"), gitignore, 0o644); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".beads"), 0o755); err != nil {
+		t.Fatalf("mkdir .beads: %v", err)
+	}
+	for _, name := range []string{"config.yaml", "metadata.json"} {
+		if err := os.WriteFile(filepath.Join(repo, ".beads", name), []byte("projection\n"), 0o644); err != nil {
+			t.Fatalf("write .beads/%s: %v", name, err)
+		}
+	}
+	return repo, gitignore
+}
+
+func TestEnsureGitignoreEntries_KeepsUnignoreOfTrackedBeadsFiles(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not available")
+	}
+
+	repo, before := writeBeadsProjectionRepo(t)
+	runGit(t, repo, "add", ".gitignore", ".beads/config.yaml", ".beads/metadata.json")
+
+	for pass := 1; pass <= 2; pass++ {
+		if err := ensureGitignoreEntries(fsys.OSFS{}, repo, rigGitignoreEntries); err != nil {
+			t.Fatalf("pass %d: ensureGitignoreEntries: %v", pass, err)
+		}
+		after, err := os.ReadFile(filepath.Join(repo, ".gitignore"))
+		if err != nil {
+			t.Fatalf("pass %d: read .gitignore: %v", pass, err)
+		}
+		if !bytes.Equal(after, before) {
+			t.Fatalf("pass %d: tracked .gitignore rewritten:\nbefore:\n%s\nafter:\n%s", pass, before, after)
+		}
+	}
+}
+
+func TestEnsureGitignoreEntries_DropsUnignoreOfUntrackedBeadsFiles(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not available")
+	}
+
+	repo, _ := writeBeadsProjectionRepo(t)
+	runGit(t, repo, "add", ".gitignore")
+
+	if err := ensureGitignoreEntries(fsys.OSFS{}, repo, rigGitignoreEntries); err != nil {
+		t.Fatalf("ensureGitignoreEntries: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(repo, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	for _, forbidden := range []string{"!.beads/config.yaml", "!.beads/metadata.json"} {
+		if strings.Contains(string(got), forbidden) {
+			t.Errorf("untracked runtime file stayed un-ignored by %q; got:\n%s", forbidden, got)
+		}
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)

@@ -61,7 +61,7 @@ func (s *Server) humaHandleSessionCreate(ctx context.Context, input *SessionCrea
 	}
 
 	// Agent track.
-	resolved, workDir, transport, template, err := s.resolveSessionTemplateWithBareNameFallback(name)
+	resolved, _, transport, template, err := s.resolveSessionTemplateWithBareNameFallback(name)
 	if err != nil {
 		if errors.Is(err, errSessionTemplateNotFound) {
 			return nil, apierr.AgentNotFound.Msg("agent '" + name + "' not found")
@@ -106,7 +106,7 @@ func (s *Server) humaHandleSessionCreate(ctx context.Context, input *SessionCrea
 	alias = createCtx.Alias
 	explicitName := createCtx.ExplicitName
 	workDirQualifiedName := createCtx.Identity
-	workDir = createCtx.WorkDir
+	workDir := createCtx.WorkDir
 
 	launchCommand, err := config.BuildProviderLaunchCommandWithoutOptions(s.state.CityPath(), resolved, transport)
 	if err != nil {
@@ -114,11 +114,7 @@ func (s *Server) humaHandleSessionCreate(ctx context.Context, input *SessionCrea
 	}
 	command := launchCommand.Command
 	extraMeta := sessionTemplateOverridesMetadata(body.Options, body.Message)
-	if extraMeta == nil {
-		extraMeta = make(map[string]string)
-	}
-	extraMeta["agent_name"] = workDirQualifiedName
-	extraMeta["session_origin"] = "manual"
+	extraMeta = agentSessionCreateMetadata(extraMeta, workDirQualifiedName)
 	mcpServers, err := s.sessionMCPServers(template, resolved.Name, workDirQualifiedName, workDir, transport, kind, nil)
 	if err != nil {
 		return nil, apierr.Internal.Msg(err.Error())
