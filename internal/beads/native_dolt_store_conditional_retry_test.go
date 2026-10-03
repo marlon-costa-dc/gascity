@@ -1,8 +1,5 @@
-//go:build beads_rowlock
-
-// Retry behaviour of the native CAS write path. Requires beads_rowlock: every
-// test here drives UpdateIfMatch/CloseIfMatch, which exist only when
-// native_dolt_store_conditional.go is compiled. See beads gc-5oauf.
+// Retry behavior of the native CAS write path. Every test here drives
+// UpdateIfMatch/CloseIfMatch, defined in native_dolt_store_conditional.go.
 
 package beads
 

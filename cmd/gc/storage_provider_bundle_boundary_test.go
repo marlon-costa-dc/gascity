@@ -16,8 +16,10 @@ package main
 //     so an out-of-tree provider cannot leak back here by accident;
 //   - the whole storage surface compiles identically with CGO on and off, so
 //     the pure-Go driver choice is a checked property rather than a comment;
-//   - the module graph carries no replace directive, so a build of this repo
-//     resolves the dependencies its manifest names and nothing else.
+//   - the module graph carries no replace directive beyond the one
+//     operator-sanctioned beads-line redirect, and that redirect names a
+//     released fork tag, so a build of this repo resolves the dependencies
+//     its manifest names and nothing else.
 //
 // The last two are what a downstream fork relies on. A fork appends its own
 // factory in its own tree; these arms are what keep the seam it appends to
@@ -201,15 +203,28 @@ func TestStorageSurfaceCompilesIdenticallyWithAndWithoutCGO(t *testing.T) {
 	}
 }
 
-// TestModuleGraphCarriesNoReplaceDirective is the module-graph guarantee a
+// TestModuleGraphReplaceDirectivesAreSanctioned is the module-graph guarantee a
 // downstream fork builds on: this repo's dependencies are exactly what its
-// manifest names, at released versions, with nothing redirected. It is the
-// tree-side companion to scripts/check-gomod-replace.sh's released-semver-only
-// policy — that script gates what a change adds, this arm gates the result.
+// manifest names, at released versions, with nothing redirected — except the
+// one operator-sanctioned redirect the embedded beads line requires, which
+// must itself name a released fork tag. It is the tree-side companion to
+// scripts/check-gomod-replace.sh's released-semver-only policy — that script
+// gates what a change adds, this arm gates the result.
+//
+// Why the redirect is sanctioned: upstream steveyegge/beads ships embedded
+// migrations only up to 0066 (schema v66) on its 1.3.x line, while the fleet's
+// standalone bd (1.3.0-fd.6, built from the operator's fork) migrated every
+// shared tracker store to schema v69 (migrations 0067-0069 live only on the
+// fork). A binary linked against any upstream line answers every dispatcher
+// work query with "schema version mismatch: database is at v69, binary knows
+// up to v53/v66". The operator authorized consuming the fork line
+// (marlon-costa-dc/beads v1.3.0-fd.6, disaster deployment 2026-10-03) via the
+// single replace this arm admits. Local paths, pseudo-versions, and every
+// other module remain violations, as before.
 //
 // A replace this parser cannot read is a violation, not a pass: silently
 // ignoring a line we cannot parse is how a guard goes blind.
-func TestModuleGraphCarriesNoReplaceDirective(t *testing.T) {
+func TestModuleGraphReplaceDirectivesAreSanctioned(t *testing.T) {
 	root := moduleRoot(t)
 	goMod, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
@@ -220,12 +235,58 @@ func TestModuleGraphCarriesNoReplaceDirective(t *testing.T) {
 		t.Fatalf("go.mod has replace directives this guard cannot parse (lines %v); a manifest we cannot read is a violation, not a pass", malformed)
 	}
 	for _, directive := range directives {
-		t.Errorf("go.mod line %d replaces %q with %q; this module graph carries no replace directive, so a build resolves the dependencies the manifest names and nothing else",
-			directive.line, directive.oldPath, directive.newPath)
+		if sanctionedBeadsReplace(directive) {
+			continue
+		}
+		t.Errorf("go.mod line %d replaces %q with %q; the only replace this module graph carries is the beads line redirect to %q at a released v-fd tag, so a build resolves the dependencies the manifest names and nothing else",
+			directive.line, directive.oldPath, directive.newPath, sanctionedBeadsForkPath)
 	}
 	if anyGoWorkFile(t, root) {
 		t.Error("the tree commits a go.work; a workspace redirects the module graph for every go invocation started at or below it")
 	}
+}
+
+const (
+	// sanctionedBeadsModulePath is the upstream module path the embedded beads
+	// library keeps (the fork preserves it, so imports never change).
+	sanctionedBeadsModulePath = "github.com/steveyegge/beads"
+	// sanctionedBeadsForkPath is the operator's fork whose tags carry the
+	// fleet's schema line.
+	sanctionedBeadsForkPath = "github.com/marlon-costa-dc/beads"
+)
+
+// sanctionedBeadsReplace reports whether d is the one replace the tree may
+// carry: the beads module line redirected, with no old-side version, to the
+// fleet fork at a released v-fd tag (the fork's release-line shape, e.g.
+// v1.3.0-fd.6). Everything else stays a violation.
+func sanctionedBeadsReplace(d replaceDirective) bool {
+	return d.oldPath == sanctionedBeadsModulePath &&
+		d.oldVersion == "" &&
+		d.newPath == sanctionedBeadsForkPath &&
+		beadsForkReleaseVersion(d.newVersion)
+}
+
+// beadsForkReleaseVersion reports whether version names a released fork tag:
+// semver with the fork's -fd.N release-line suffix and nothing else. Pseudo-
+// versions, plain prereleases, and branch/ref tokens do not match.
+func beadsForkReleaseVersion(version string) bool {
+	canonical := strings.TrimPrefix(strings.TrimSpace(version), "v")
+	base, suffix, ok := strings.Cut(canonical, "-")
+	if !ok || suffix == "" {
+		return false
+	}
+	parts := strings.Split(base, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	numeric := func(r rune) bool { return r < '0' || r > '9' }
+	for _, part := range parts {
+		if part == "" || strings.ContainsFunc(part, numeric) {
+			return false
+		}
+	}
+	label, build, ok := strings.Cut(suffix, ".")
+	return ok && label == "fd" && build != "" && !strings.ContainsFunc(build, numeric)
 }
 
 // --- the arms, as functions over an arbitrary tree ---------------------------

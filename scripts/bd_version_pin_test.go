@@ -48,23 +48,45 @@ func TestBDVersionPins(t *testing.T) {
 	if !regexp.MustCompile(`^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`).MatchString(bdCurrent) {
 		t.Fatalf("deps.env BD_CURRENT_VERSION = %q, want a semver token", bdCurrent)
 	}
-	// The native Go store, the bleeding-edge contract-matrix cell, and the
-	// source-built agent image must all use the same upstream commit. A drift
-	// here can pair one schema catalog with another version's write behavior.
-	goMod := readFile(t, root, "go.mod")
-	goModMatch := regexp.MustCompile(`(?m)^\s*github\.com/steveyegge/beads\s+v\S+-([0-9a-f]{12})\s*$`).FindStringSubmatch(goMod)
-	if goModMatch == nil {
-		t.Fatal("go.mod missing a pseudo-version pin for github.com/steveyegge/beads")
-	}
-	if got, want := goModMatch[1], bdCurrentRef[:12]; got != want {
-		t.Fatalf("go.mod beads pseudo-version commit = %q, want BD_CURRENT_REF prefix %q", got, want)
-	}
+	// The bleeding-edge contract-matrix cell and the source-built agent image
+	// build the bd CLI from the same upstream gastownhall/beads commit
+	// (BD_CURRENT_REF); a drift there pairs one schema catalog with another
+	// version's write behavior.
 	dockerfile := readFile(t, root, "contrib/k8s/Dockerfile.agent")
 	if !strings.Contains(dockerfile, "ARG BD_SOURCE_REF="+bdCurrentRef) {
 		t.Fatalf("contrib/k8s/Dockerfile.agent BD_SOURCE_REF must equal deps.env BD_CURRENT_REF (%s)", bdCurrentRef)
 	}
 	if !strings.Contains(dockerfile, "ARG BD_BUILD="+bdCurrentRef[:10]) {
 		t.Fatalf("contrib/k8s/Dockerfile.agent BD_BUILD must equal the first 10 characters of BD_CURRENT_REF (%s)", bdCurrentRef[:10])
+	}
+
+	// The native Go store links a DIFFERENT line on purpose: the fleet's beads
+	// fork through the sanctioned replace directive, with deps.env
+	// BD_LIBRARY_VERSION as its single source of truth. The fork preserves the
+	// upstream module path, so the require line stays github.com/steveyegge/beads
+	// and the replace line carries the fork release tag. The decoupling from
+	// BD_CURRENT_REF is deliberate: the fleet's standalone bd migrated every
+	// shared tracker store to schema v69, whose migrations (0067-0069) exist
+	// only on the fork — upstream's 1.3.x line embeds migrations to 0066 and a
+	// db-ahead store is a hard skew error, so only the fork line can open a
+	// live store. The matrix cells exercise the bd CLI, not the linked library.
+	libraryVersion := env["BD_LIBRARY_VERSION"]
+	if libraryVersion == "" {
+		t.Fatal("deps.env missing BD_LIBRARY_VERSION (the native Go store's linked beads fork release)")
+	}
+	if !regexp.MustCompile(`^v\d+\.\d+\.\d+-fd\.\d+$`).MatchString(libraryVersion) {
+		t.Fatalf("deps.env BD_LIBRARY_VERSION = %q, want a fork release tag vMajor.Minor.Patch-fd.N", libraryVersion)
+	}
+	goMod := readFile(t, root, "go.mod")
+	if regexp.MustCompile(`(?m)^\s*github\.com/steveyegge/beads\s+v\d+\.\d+\.\d+\s*$`).FindString(goMod) == "" {
+		t.Fatal("go.mod missing a released-semver require pin for github.com/steveyegge/beads")
+	}
+	replaceMatch := regexp.MustCompile(`(?m)^\s*replace\s+github\.com/steveyegge/beads\s+=>\s+github\.com/marlon-costa-dc/beads\s+(\S+)\s*$`).FindStringSubmatch(goMod)
+	if replaceMatch == nil {
+		t.Fatal("go.mod missing the sanctioned beads fork replace (github.com/steveyegge/beads => github.com/marlon-costa-dc/beads)")
+	}
+	if got, want := replaceMatch[1], libraryVersion; got != want {
+		t.Fatalf("go.mod beads fork release = %q, want deps.env BD_LIBRARY_VERSION %q", got, want)
 	}
 
 	// Anchor roles, kept as distinct contracts so a promotion cannot quietly

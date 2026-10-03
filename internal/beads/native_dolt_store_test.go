@@ -2217,6 +2217,8 @@ type nativeDoltStorageSpy struct {
 	getDependentsWithMetadata   func(context.Context, string) ([]*beadslib.IssueWithDependencyMetadata, error)
 	getConfig                   func(context.Context, string) (string, error)
 	close                       func() error
+	updateIssueChecked          func(context.Context, string, map[string]interface{}, string, beadslib.UpdateIssueOptions) error
+	closeIssueChecked           func(context.Context, string, string, beadslib.CloseIssueOptions) (beadslib.CloseIssueResult, error)
 }
 
 // IsBlockedBatch satisfies the ready projection's BlockedQuerier requirement

@@ -1,10 +1,5 @@
-//go:build beads_rowlock
-
 // Asserts Ready() issues ONE GetReadyWork call carrying every open-class status
-// via WorkFilter.Statuses. Requires beads_rowlock: that field exists only on the
-// newer library line. The default build queries one status at a time
-// (native_dolt_store_norowlock.go) and is covered by the ready-projection tests.
-// See beads gc-5oauf.
+// via WorkFilter.Statuses, native to the embedded beads library line.
 
 package beads
 

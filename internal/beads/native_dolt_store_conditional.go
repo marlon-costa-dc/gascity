@@ -1,26 +1,18 @@
-//go:build beads_rowlock
-
 // This file implements the native optimistic-concurrency (CAS) write path. It
-// is excluded from the default build because it depends on beads library APIs
-// -- Issue.RowVersion, Storage.UpdateIssueChecked, Storage.CloseIssueChecked --
-// that exist only on the library line whose embedded migrations reach 0059.
+// depends on beads library APIs -- Issue.RowVersion, Storage.UpdateIssueChecked,
+// Storage.CloseIssueChecked -- all native to the embedded library line
+// (github.com/marlon-costa-dc/beads v1.3.0-fd.6, replaced in for
+// github.com/steveyegge/beads), whose embedded migrations top out at 0069.
 //
-// The fence those APIs implement is backed by the issues.row_lock column, which
-// migration 0054 creates. Every live store in this city is at schema 53, so the
-// column does not exist and the fence cannot function regardless of this file:
-// beads.conditional_writes is correspondingly `off` (origin=builtin).
+// The fence those APIs implement is backed by the issues.row_lock column,
+// created by migration 0054. Every live store runs the fleet-migrated v69
+// schema, so the column exists everywhere and the fence functions on every
+// open; opening a store runs no migrations (69 is the line's latest).
 //
-// Building against the 0059 line to satisfy these symbols is not free: the
-// library applies its embedded migrations on open (initSchema -> MigrateUp,
-// ungated except for ReadOnly/Gateway), so it would migrate all 16 databases
-// 53 -> 59 one way. See beads gc-5oauf and gct-83zky.
-//
-// Nothing breaks structurally when this file is absent: callers reach the CAS
-// path through beads.ConditionalWriterFor, a runtime type assertion that
-// returns ErrConditionalWriteUnsupported when NativeDoltStore does not
-// implement ConditionalWriter.
-//
-// Build with `-tags beads_rowlock` once the store line and the schema agree.
+// Whether the fence is exercised is operator policy: callers reach the CAS path
+// through beads.ConditionalWriterFor, a runtime type assertion, and the
+// factory-stamped beads.conditional_writes mode gates it city-globally
+// (origin=builtin default stays `off`).
 
 package beads
 

@@ -10,6 +10,16 @@
 # bypass of this required CI check — automated workers may NEVER self-authorize
 # an unreleased dependency.
 #
+# Sanctioned exception (operator 2026-10-03, disaster deployment): the embedded
+# beads library line is redirected from github.com/steveyegge/beads to the
+# fleet fork github.com/marlon-costa-dc/beads at a released fork tag
+# vX.Y.Z-fd.N. Upstream's 1.3.x line ships embedded migrations only to 0066
+# (schema v66); the fleet's standalone bd 1.3.0-fd.6 migrated every shared
+# tracker store to schema v69, so only the fork line can open them. This one
+# redirect is admitted here and by the tree-side arm
+# TestModuleGraphReplaceDirectivesAreSanctioned; every other module, local
+# path, pseudo-version, and plain prerelease stays blocked.
+#
 # Released: exactly vX.Y.Z where X, Y, Z are integers (e.g. v1.0.5, v0.0.1).
 # Blocked: pseudo-version, prerelease label, local path, git branch/ref, or
 #          any non-semver version token.
@@ -63,8 +73,13 @@ check_replace_rhs() {
 
 	# Only pure vX.Y.Z release tags are allowed. Everything else — pseudo-versions
 	# (timestamp+sha suffix), prerelease labels (-rc1, -beta), and non-semver
-	# tokens (branch names like "main", git refs) — is blocked.
+	# tokens (branch names like "main", git refs) — is blocked. The one
+	# exception is the sanctioned beads-line redirect (see header): the fleet
+	# fork's release tags vMajor.Minor.Patch-fd.N.
 	if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+		if is_sanctioned_beads_replace "$stripped" "$version"; then
+			return 0
+		fi
 		echo "check-gomod-replace: BLOCKED — replace directive targets an unreleased version:" >&2
 		echo "  $stripped" >&2
 		echo "" >&2
@@ -76,6 +91,33 @@ check_replace_rhs() {
 	fi
 
 	return 0
+}
+
+# is_sanctioned_beads_replace reports whether a replace line is the one
+# operator-sanctioned redirect: github.com/steveyegge/beads (no old-side
+# version) => github.com/marlon-costa-dc/beads at a released fork tag
+# vX.Y.Z-fd.N. Every other old/new path or version shape is refused here.
+is_sanctioned_beads_replace() {
+	local stripped="$1" version="$2"
+	local lhs="${stripped%%=>*}"
+	lhs="${lhs#"${lhs%%[![:space:]]*}"}"
+	lhs="${lhs%"${lhs##*[![:space:]]}"}"
+	# Single-line form still carries the "replace" verb; the block form does not.
+	[[ "$lhs" == "replace "* ]] && lhs="${lhs#replace }"
+	lhs="${lhs#"${lhs%%[![:space:]]*}"}"
+	[[ "$lhs" == "github.com/steveyegge/beads" ]] || return 1
+	local rhs_path
+	# Recompute the RHS path from the line: version alone is the last token.
+	local rhs="${stripped#*=>}"
+	rhs="${rhs%%//*}"
+	rhs="${rhs#"${rhs%%[![:space:]]*}"}"
+	rhs="${rhs%"${rhs##*[![:space:]]}"}"
+	if [[ "$rhs" =~ ^([^[:space:]]+)[[:space:]]+([^[:space:]]+)$ ]]; then
+		rhs_path="${BASH_REMATCH[1]}"
+		[[ "${BASH_REMATCH[2]}" == "$version" ]] || return 1
+	fi
+	[[ "$rhs_path" == "github.com/marlon-costa-dc/beads" ]] || return 1
+	[[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-fd\.[0-9]+$ ]]
 }
 
 failed=0

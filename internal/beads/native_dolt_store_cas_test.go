@@ -1,13 +1,11 @@
-//go:build beads_rowlock
-
-// The CAS (row_lock) half of the native store tests. These compile only under
-// beads_rowlock because they exercise library APIs -- Issue.RowVersion,
-// UpdateIssueChecked, CloseIssueChecked -- that exist solely on a beads line
-// whose embedded migrations reach 0054, the migration creating issues.row_lock.
+// The CAS (row_lock) half of the native store tests. They exercise library
+// APIs -- Issue.RowVersion, UpdateIssueChecked, CloseIssueChecked -- native to
+// the embedded beads line (github.com/marlon-costa-dc/beads v1.3.0-fd.6),
+// whose migration 0054 creates issues.row_lock.
 //
-// Every live store in this city is at schema 53, so the column does not exist
-// and the fence cannot function; beads.conditional_writes is `off` accordingly.
-// See beads gc-5oauf and gct-83zky.
+// Every live store runs the fleet-migrated v69 schema, so the column exists
+// everywhere and the fence functions on every open; the city-global
+// beads.conditional_writes mode stays operator policy.
 
 package beads
 
@@ -426,19 +424,21 @@ func TestNativeDoltStoreCloseWithMetadataIfMatchHasOneSameRevisionWinner(t *test
 }
 
 // UpdateIssueChecked satisfies the CAS arm of the library's Storage interface
-// so the spy remains a valid backing under beads_rowlock.
-//
-// The hook fields this once dispatched through were dropped: no test in this
-// package sets them (the CAS behaviour under test is driven through
-// nativeDoltMemStorage and retryingNativeDoltStorage), and keeping them would
-// leave two unused func fields on a struct the default build also compiles.
-func (s *nativeDoltStorageSpy) UpdateIssueChecked(_ context.Context, _ string, _ map[string]interface{}, _ string, _ beadslib.UpdateIssueOptions) error {
+// so the spy remains a valid backing for the native store. It dispatches
+// through the updateIssueChecked hook when a test sets one.
+func (s *nativeDoltStorageSpy) UpdateIssueChecked(ctx context.Context, id string, updates map[string]interface{}, actor string, opts beadslib.UpdateIssueOptions) error {
+	if s.updateIssueChecked != nil {
+		return s.updateIssueChecked(ctx, id, updates, actor, opts)
+	}
 	return nil
 }
 
 // CloseIssueChecked satisfies the CAS arm of the library's Storage interface.
-// See UpdateIssueChecked for why it carries no hook.
-func (s *nativeDoltStorageSpy) CloseIssueChecked(_ context.Context, _ string, _ string, _ beadslib.CloseIssueOptions) (beadslib.CloseIssueResult, error) {
+// It dispatches through the closeIssueChecked hook when a test sets one.
+func (s *nativeDoltStorageSpy) CloseIssueChecked(ctx context.Context, id string, actor string, opts beadslib.CloseIssueOptions) (beadslib.CloseIssueResult, error) {
+	if s.closeIssueChecked != nil {
+		return s.closeIssueChecked(ctx, id, actor, opts)
+	}
 	return beadslib.CloseIssueResult{}, nil
 }
 

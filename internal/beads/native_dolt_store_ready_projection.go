@@ -2,6 +2,7 @@ package beads
 
 import (
 	"context"
+	"fmt"
 
 	beadslib "github.com/steveyegge/beads"
 )
@@ -104,4 +105,27 @@ func (s *NativeDoltStore) enrichReadyProjectionForCache(items []Bead) ([]Bead, e
 		enriched[i].IsBlocked = cloneBoolPtr(&blocked)
 	}
 	return enriched, nil
+}
+
+// isBlockedBatchForStorage serves the ready projection's IsBlocked column from
+// the library's batch querier. The embedded beads library line
+// (github.com/marlon-costa-dc/beads v1.3.0-fd.6, replaced in for
+// github.com/steveyegge/beads) exports AsBlockedQuerier natively, and its
+// embedded migrations top out at 0069 — the schema every live store already
+// runs, with the issues.row_lock column migration 0054 created.
+func isBlockedBatchForStorage(
+	ctx context.Context,
+	storage beadslib.Storage,
+	ids []string,
+) (map[string]bool, error) {
+	querier, ok := beadslib.AsBlockedQuerier(storage)
+	if !ok {
+		return nil, fmt.Errorf("native ready projection: %w: storage %T does not expose beads.BlockedQuerier",
+			ErrReadyProjectionUnsupported, storage)
+	}
+	blocked, err := querier.IsBlockedBatch(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("native ready projection: %w", err)
+	}
+	return blocked, nil
 }

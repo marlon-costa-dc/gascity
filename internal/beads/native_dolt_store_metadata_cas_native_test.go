@@ -1,9 +1,7 @@
-//go:build beads_rowlock
-
 // Conformance suites that require NativeDoltStore to be CAS-capable. Both
 // entrypoints assert the store implements beads.MetadataCASWriter /
-// beads.ConditionalWriter, which holds only when
-// native_dolt_store_conditional.go is compiled. See beads gc-5oauf.
+// beads.ConditionalWriter, which holds because
+// native_dolt_store_conditional.go is part of every build.
 
 package beads_test
 
