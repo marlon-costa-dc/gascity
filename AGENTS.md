@@ -93,6 +93,17 @@ When working here, assume three codebases matter:
 - Treat archived plans and audits as evidence, not gospel. Confirm against
   current code and current upstream before porting.
 
+### Fork lane, process, and language boundary
+
+This fork integrates on `dc-use` (rig `gct` in the Gas City at `~/gc`). Every change
+uses a dedicated worktree and a change branch cut from `origin/dc-use`, a PR against
+`dc-use`, and `merge --no-ff`; never rebase or force-push (`~/agents` ADR-0036 and
+`rules/coordination/flext-gascity-roe.md`). Code here is idiomatic Go
+validated by this repository's root Makefile and `TESTING.md`; no flext/Python facade
+rule applies. The generated beads block below says `git pull --rebase`: that line is
+superseded here by `git fetch origin && git merge --no-ff origin/dc-use`, and a failed
+push is reported red, never retried in a loop.
+
 ### Feature archaeology workflow
 
 Use git history deliberately when a feature appears missing or regressed:
