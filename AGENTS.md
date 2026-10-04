@@ -100,9 +100,7 @@ uses a dedicated worktree and a change branch cut from `origin/dc-use`, a PR aga
 `dc-use`, and `merge --no-ff`; never rebase or force-push (`~/agents` ADR-0036 and
 `rules/coordination/flext-gascity-roe.md`). Code here is idiomatic Go
 validated by this repository's root Makefile and `TESTING.md`; no flext/Python facade
-rule applies. The generated beads block below says `git pull --rebase`: that line is
-superseded here by `git fetch origin && git merge --no-ff origin/dc-use`, and a failed
-push is reported red, never retried in a loop.
+rule applies.
 
 ### Feature archaeology workflow
 
@@ -618,8 +616,9 @@ bd close <id>         # Complete work
 3. **Update issue status** - Close finished work, update in-progress items
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
-   git pull --rebase
-   git push
+   git fetch origin
+   git merge --no-ff origin/dc-use   # integrate the lane; never rebase
+   git push                          # a failed push is red: report it, never loop
    git status  # MUST show "up to date with origin"
    ```
    NOTE: gascity Dolt is LOCAL-ONLY (no remote). Do NOT run `bd dolt push`,
@@ -641,7 +640,9 @@ bd close <id>         # Complete work
 - Work is NOT complete until `git push` succeeds
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+- If push fails, it is red: report the exact error, integrate with
+  `git merge --no-ff origin/dc-use`, revalidate, and push again — never rebase or
+  force-push
 <!-- END BEADS INTEGRATION -->
 
 ## Architecture Best Practices
