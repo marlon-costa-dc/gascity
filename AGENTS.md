@@ -25,20 +25,19 @@
     operator-authorized, never as satisfied.
 13. Root Make only: diagnostics, validation, generation, tests, Waza,
     publication, and deployment run only through selector-free verbs in the
-    repository root Makefile; bare verbs perform their declared operation. A full
-    suite has its own verb, first runs the incremental verb, and uses the same
-    persistent external testmon database.
+    repository root Makefile; bare verbs perform their declared operation. Test
+    verbs: `rules/workflow/canonical-commands.md`.
 14. Red means red: a warning, skip, empty output, missing tool, missing report,
     zero collection, caught exception, retry, or normalized failure is RED. The
-    only acceptable zero-execution test result is a typed incremental testmon
-    cache hit with an integrity-checked database and complete deselection
+    only acceptable zero-execution test result is a typed `make test` cache hit
+    with an integrity-checked database and complete deselection
     accounting; it is never reported as tests passed. The first exception and
     raw traceback escape unchanged.
 <!-- /AIHUB-INVIOLABLE-LAW-PRELUDE -->
 
 # AGENTS.md — gascity
 
-> Packaged governance `agents-governance` `0.5.0` owns the capability indexes: 66 agents, 96 rules, 137 skills. Consume them through `GovernanceBundle`; do not copy their bodies here.
+> Packaged governance `agents-governance` `0.6.3` owns the capability indexes: 71 agents, 112 rules, 141 skills. Consume them through `GovernanceBundle`; do not copy their bodies here.
 
 <!-- AIHUB-AGENTS-SCOPE-LOCAL-BEGIN -->
 # Gas City
@@ -92,6 +91,15 @@ When working here, assume three codebases matter:
   and commits often already contain the fix.
 - Treat archived plans and audits as evidence, not gospel. Confirm against
   current code and current upstream before porting.
+
+### Fork lane, process, and language boundary
+
+This fork integrates on `dc-use` (rig `gct` in the Gas City at `~/gc`). Every change
+uses a dedicated worktree and a change branch cut from `origin/dc-use`, a PR against
+`dc-use`, and `merge --no-ff`; never rebase or force-push (`~/agents` ADR-0036 and
+`rules/coordination/flext-gascity-roe.md`). Code here is idiomatic Go
+validated by this repository's root Makefile and `TESTING.md`; no flext/Python facade
+rule applies.
 
 ### Feature archaeology workflow
 
@@ -607,8 +615,9 @@ bd close <id>         # Complete work
 3. **Update issue status** - Close finished work, update in-progress items
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
-   git pull --rebase
-   git push
+   git fetch origin
+   git merge --no-ff origin/dc-use   # integrate the lane; never rebase
+   git push                          # a failed push is red: report it, never loop
    git status  # MUST show "up to date with origin"
    ```
    NOTE: gascity Dolt is LOCAL-ONLY (no remote). Do NOT run `bd dolt push`,
@@ -630,7 +639,9 @@ bd close <id>         # Complete work
 - Work is NOT complete until `git push` succeeds
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+- If push fails, it is red: report the exact error, integrate with
+  `git merge --no-ff origin/dc-use`, revalidate, and push again — never rebase or
+  force-push
 <!-- END BEADS INTEGRATION -->
 
 ## Architecture Best Practices
