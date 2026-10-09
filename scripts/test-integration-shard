@@ -39,7 +39,7 @@ export CGO_LDFLAGS="${cgo_ldflags}"
 
 run_go() {
   env -i \
-    PATH="${PATH}" \
+    PATH="${GOROOT:-$goroot_val}/bin:${PATH}" \
     HOME="${HOME:-}" \
     USER="${USER:-}" \
     LOGNAME="${LOGNAME:-}" \

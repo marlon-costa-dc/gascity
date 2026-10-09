@@ -76,7 +76,7 @@ done < <(env)
 
 run_in_test_env() {
   local base_env=(
-    PATH="${PATH}" \
+    PATH="${GOROOT:-$goroot_val}/bin:${PATH}" \
     HOME="${HOME:-}" \
     USER="${USER:-}" \
     LOGNAME="${LOGNAME:-}" \

@@ -315,7 +315,7 @@ run_fan_out() {
 
   echo "[$label] start"
   if ${TEST_LOCAL_NICE:-} env -i \
-    PATH="${PATH}" \
+    PATH="${TEST_LOCAL_GOROOT}/bin:${PATH}" \
     HOME="${HOME:-}" \
     USER="${USER:-}" \
     LOGNAME="${LOGNAME:-}" \
