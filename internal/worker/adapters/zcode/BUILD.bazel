@@ -19,6 +19,7 @@ go_test(
         "//internal/pathutil",
         "//internal/sessionlog",
         "//internal/testenv",
+        "//internal/testutil",
     ],
 )
 

@@ -431,6 +431,10 @@ func TestDefaultRunGitBlocksDisallowedTransport(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+	// git localizes its messages; the assertion below distinguishes git's
+	// English transport refusal from a protocol-parse failure, so pin the
+	// message locale for this test's git children.
+	t.Setenv("LC_ALL", "C")
 	// ext:: is not in the allowlist; git must refuse it before running the
 	// command. Without the hardening, git would execute `true` and fail with a
 	// different (protocol-parse) error instead.

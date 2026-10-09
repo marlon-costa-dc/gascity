@@ -139,6 +139,7 @@ go_test(
         "//internal/fsys",
         "//internal/orders",
         "//internal/testenv",
+        "//internal/testutil",
         "//internal/workdir",
     ],
 )
