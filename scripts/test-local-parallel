@@ -119,7 +119,9 @@ gopath_val="$(go env GOPATH)"
 gocache_val="$(go env GOCACHE)"
 gomodcache_val="$(go env GOMODCACHE)"
 gotmpdir_val="$(go env GOTMPDIR)"
-goroot_val="$(go env GOROOT)"
+# The go on PATH owns its root; an ambient GOROOT (a version-manager shim
+# can inject one) would pair this go with another toolchain's tools.
+goroot_val="$(env -u GOROOT go env GOROOT)"
 
 jobspecs=()
 
@@ -262,7 +264,7 @@ export TEST_LOCAL_GOPATH="$gopath_val"
 export TEST_LOCAL_GOCACHE="$gocache_val"
 export TEST_LOCAL_GOMODCACHE="$gomodcache_val"
 export TEST_LOCAL_GOTMPDIR="$gotmpdir_val"
-export TEST_LOCAL_GOROOT="${GOROOT:-$goroot_val}"
+export TEST_LOCAL_GOROOT="${goroot_val}"
 
 # Lower each shard's CPU and I/O priority (best-effort) so the parallel fan-out
 # yields to interactive work and does not livelock constrained hosts during the

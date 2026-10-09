@@ -288,8 +288,9 @@ func ephemeralStatusSnapshotShell(shellVar, status string) string {
 
 // ephemeralReadyBaseSelectorJQ composes the selector clauses shared by every
 // ephemeral ready-tier filter: the caller's own assignee/routing selector,
-// plus the epic exclusion and optional hold-label exclusion every variant
-// applies alike. Dependency gating is layered on top by each caller, since
+// plus the epic and mail-message (beadmeta.IssueTypeMessage) exclusions and
+// the optional hold-label exclusion every variant applies alike; mail is read,
+// never served as work. Dependency gating is layered on top by each caller, since
 // `bd query --json` exposes only a `dependency_count` scalar — never a
 // `dependencies` array — which is precise enough to prove "definitely no
 // dependencies" but not to resolve whether a nonzero count is still open.

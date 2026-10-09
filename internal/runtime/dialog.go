@@ -1851,7 +1851,7 @@ func containsPromptIndicator(content string) bool {
 		}
 		for _, prefix := range []string{"\u276f", "\u203a", ">"} {
 			rest, ok := strings.CutPrefix(trimmed, prefix+" ")
-			if trimmed == prefix || (ok && !IsNumberedMenuRow(rest)) {
+			if trimmed == prefix || (ok && !IsNumberedMenuRow(strings.TrimLeft(rest, " \t"))) {
 				return true
 			}
 		}

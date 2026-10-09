@@ -1114,7 +1114,7 @@ func unclaimWorkAssignedToRetiredSessionBead(
 	if err := clearSessionCurrentClaim(store, sessionBead.ID); err != nil {
 		fmt.Fprintf(stderr, "session beads: clearing current claim on retired session %s: %v\n", sessionBead.ID, err) //nolint:errcheck
 	}
-	identifiers := sessionAssignmentIdentifiers(sessionBead)
+	identifiers := sessionAssignmentIdentifiersForConfig(sessionBead, cfg)
 	seen := make(map[string]struct{})
 	sweepAssignedWorkLegs(cityPath, cfg, store, rigStores, identifiers, stderr, func(storeIndex int, ownerStore beads.Store) {
 		wa := workAssignmentForStore(beads.WorkStore{Store: ownerStore})
@@ -1192,7 +1192,7 @@ func releaseUnexecutedClaimsOnDrainAck(
 	if stderr == nil {
 		stderr = io.Discard
 	}
-	identifiers := sessionAssignmentIdentifiers(sessionBead)
+	identifiers := sessionAssignmentIdentifiersForConfig(sessionBead, cfg)
 	seen := make(map[string]struct{})
 	deadline := time.Now().Add(budget)
 	expired := false
@@ -1261,7 +1261,7 @@ func reassignWorkAssignedToRetiredSessionBead(
 	if err := clearSessionCurrentClaim(store, retiredSession.ID); err != nil {
 		fmt.Fprintf(stderr, "session beads: clearing current claim on retired session %s: %v\n", retiredSession.ID, err) //nolint:errcheck
 	}
-	identifiers := sessionAssignmentIdentifiers(retiredSession)
+	identifiers := sessionAssignmentIdentifiersForConfig(retiredSession, cfg)
 	seen := make(map[string]struct{})
 	sweepAssignedWorkLegs(cityPath, cfg, store, rigStores, identifiers, stderr, func(storeIndex int, ownerStore beads.Store) {
 		wa := workAssignmentForStore(beads.WorkStore{Store: ownerStore})

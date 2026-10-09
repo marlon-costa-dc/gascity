@@ -2831,6 +2831,8 @@ func TestMatchesPromptPrefix(t *testing.T) {
 		{"codex hook review selected option is not ready", "› 2. Trust all and continue", "› ", false},
 		{"codex prompt with input still ready", "› Ask Codex to do anything", "› ", true},
 		{"codex bare prompt still ready", "› ", "› ", true},
+		{"menu row with a spaceless prefix is not ready", "› 1. Review hooks", "›", false},
+		{"menu row with extra spacing is not ready", "›   2. Trust all and continue", "› ", false},
 
 		// Empty prefix never matches
 		{"empty prefix", "❯ ", "", false},

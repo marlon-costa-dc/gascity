@@ -2892,7 +2892,7 @@ func bdListRequiresClientLimit(query, serverQuery ListQuery, clientFilteredAssig
 }
 
 func bdListShouldIncludeTemplates(query ListQuery) bool {
-	return query.TierMode == TierWisps || (query.TierMode == TierBoth && query.Type != "message")
+	return query.TierMode == TierWisps || (query.TierMode == TierBoth && query.Type != beadmeta.IssueTypeMessage)
 }
 
 func bdServerQueryForAssignees(query ListQuery) (ListQuery, bool) {

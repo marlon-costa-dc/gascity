@@ -3790,7 +3790,7 @@ func matchesPromptPrefix(line, readyPromptPrefix string) bool {
 		// A selection menu draws its cursor with the prompt glyph
 		// ("› 1. Review hooks"): that row is an unanswered dialog, not the
 		// ready prompt (gct-lv2pe item 2).
-		if rest, ok := strings.CutPrefix(cand, normalizedPrefix); ok && !runtime.IsNumberedMenuRow(rest) {
+		if rest, ok := strings.CutPrefix(cand, normalizedPrefix); ok && !runtime.IsNumberedMenuRow(strings.TrimLeft(rest, " \t")) {
 			return true
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads/contract"
 	"github.com/gastownhall/gascity/internal/deps"
 	"github.com/gastownhall/gascity/internal/fsys"
@@ -177,7 +178,7 @@ func skipBDReadyProjectionEnrichment(item Bead) bool {
 	return item.ID == "" ||
 		item.Status == "closed" ||
 		item.IsBlocked != nil ||
-		item.Type == "message" ||
+		item.Type == beadmeta.IssueTypeMessage ||
 		beadHasLabel(item, "gc:nudge")
 }
 
