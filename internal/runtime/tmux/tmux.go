@@ -3784,7 +3784,13 @@ func matchesPromptPrefix(line, readyPromptPrefix string) bool {
 	// too so the prompt glyph after the border is detected — otherwise readiness
 	// and idle detection never match and queued prompt delivery is never released.
 	for _, cand := range []string{trimmed, stripLeadingBoxBorder(trimmed)} {
-		if strings.HasPrefix(cand, normalizedPrefix) || (prefix != "" && cand == prefix) {
+		if prefix != "" && cand == prefix {
+			return true
+		}
+		// A selection menu draws its cursor with the prompt glyph
+		// ("› 1. Review hooks"): that row is an unanswered dialog, not the
+		// ready prompt (gct-lv2pe item 2).
+		if rest, ok := strings.CutPrefix(cand, normalizedPrefix); ok && !runtime.IsNumberedMenuRow(rest) {
 			return true
 		}
 	}

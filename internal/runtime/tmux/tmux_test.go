@@ -2824,6 +2824,14 @@ func TestMatchesPromptPrefix(t *testing.T) {
 		{"NBSP prefix matches NBSP line", "❯" + nbsp + "hello", "❯" + nbsp, true},
 		{"NBSP prefix matches regular space line", "❯ hello", "❯" + nbsp, true},
 
+		// A selection-menu cursor drawn with the prompt glyph is an
+		// unanswered dialog, not the ready prompt (gct-lv2pe item 2: codex
+		// "Hooks need review" was declared ready on "› 1. Review hooks").
+		{"codex hook review menu row is not ready", "› 1. Review hooks", "› ", false},
+		{"codex hook review selected option is not ready", "› 2. Trust all and continue", "› ", false},
+		{"codex prompt with input still ready", "› Ask Codex to do anything", "› ", true},
+		{"codex bare prompt still ready", "› ", "› ", true},
+
 		// Empty prefix never matches
 		{"empty prefix", "❯ ", "", false},
 
