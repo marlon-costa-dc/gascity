@@ -470,3 +470,17 @@ func TestUpdateCompareAndSetFlagsArePinned(t *testing.T) {
 func updateValueFlags() map[string]bool {
 	return valueFlagsBySub["update"]
 }
+
+// TestListIncludeCommentsIsASwitch pins the static manifest: bd v1.3.0
+// renders `list --include-comments` without a type, so it is a switch.
+// Classified as a value flag, it made the scanner consume the next token
+// whenever live discovery was unavailable (bd absent), so a misspelled flag
+// following it escaped gc lint.
+func TestListIncludeCommentsIsASwitch(t *testing.T) {
+	if !BoolFlags("list")["--include-comments"] {
+		t.Error("bd list --include-comments must be a switch in the static manifest")
+	}
+	if ValueFlags("list")["--include-comments"] {
+		t.Error("bd list --include-comments must not consume a value in the static manifest")
+	}
+}
