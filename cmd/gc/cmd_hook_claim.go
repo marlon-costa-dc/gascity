@@ -1118,7 +1118,7 @@ func hookClaimExistingAssignment(candidates []beads.Bead, opts hookClaimOptions)
 // race, by construction, since this function runs before
 // claimFirstEligibleHookCandidate ever sees the routed candidates.
 func hookClaimCandidateIsMessage(candidate beads.Bead) bool {
-	return strings.EqualFold(strings.TrimSpace(candidate.Type), "message")
+	return strings.EqualFold(strings.TrimSpace(candidate.Type), beadmeta.IssueTypeMessage)
 }
 
 // writeHookClaimWorkResultForBead stamps, correlates and reports one claimed or

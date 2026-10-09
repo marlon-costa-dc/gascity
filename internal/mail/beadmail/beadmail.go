@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/mail"
 	"github.com/gastownhall/gascity/internal/session"
@@ -32,7 +33,7 @@ const (
 
 	// messageBeadType is the bead Type every mail message carries. It is the
 	// single confined spelling of the message-bead class marker.
-	messageBeadType = "message"
+	messageBeadType = beadmeta.IssueTypeMessage
 
 	cachedSessionBeadRefreshInterval = 30 * time.Second
 )

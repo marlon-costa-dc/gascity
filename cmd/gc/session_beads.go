@@ -883,6 +883,9 @@ func sessionAssignmentIdentifiers(sessionBead beads.Bead) []string {
 // sessionAssigneeMatches and compute_awake_bridge's AwakeNamedSession fields.
 func sessionAssignmentIdentifiersForConfig(sessionBead beads.Bead, cfg *config.City) []string {
 	raw := sessionAssignmentIdentifierRaw(sessionBead)
+	if alias := canonicalSingletonPoolAlias(sessionBead, cfg); alias != "" {
+		raw = append(raw, alias)
+	}
 	if cfg == nil ||
 		strings.TrimSpace(sessionBead.Metadata[namedSessionMetadataKey]) != "true" ||
 		strings.TrimSpace(sessionBead.Metadata[namedSessionIdentityMetadata]) != "" {
@@ -930,6 +933,9 @@ func sessionAssignmentIdentifierRaw(sessionBead beads.Bead) []string {
 // byte-identical to the raw form (TestSessionClassifierInfoEquivalence pins it).
 func sessionAssignmentIdentifiersForConfigInfo(info session.Info, cfg *config.City) []string {
 	raw := sessionAssignmentIdentifierRawInfo(info)
+	if alias := canonicalSingletonPoolAliasInfo(info, cfg); alias != "" {
+		raw = append(raw, alias)
+	}
 	if cfg == nil ||
 		!info.ConfiguredNamedSession ||
 		strings.TrimSpace(info.ConfiguredNamedIdentity) != "" {
@@ -1108,7 +1114,7 @@ func unclaimWorkAssignedToRetiredSessionBead(
 	if err := clearSessionCurrentClaim(store, sessionBead.ID); err != nil {
 		fmt.Fprintf(stderr, "session beads: clearing current claim on retired session %s: %v\n", sessionBead.ID, err) //nolint:errcheck
 	}
-	identifiers := sessionAssignmentIdentifiers(sessionBead)
+	identifiers := sessionAssignmentIdentifiersForConfig(sessionBead, cfg)
 	seen := make(map[string]struct{})
 	sweepAssignedWorkLegs(cityPath, cfg, store, rigStores, identifiers, stderr, func(storeIndex int, ownerStore beads.Store) {
 		wa := workAssignmentForStore(beads.WorkStore{Store: ownerStore})
@@ -1186,7 +1192,7 @@ func releaseUnexecutedClaimsOnDrainAck(
 	if stderr == nil {
 		stderr = io.Discard
 	}
-	identifiers := sessionAssignmentIdentifiers(sessionBead)
+	identifiers := sessionAssignmentIdentifiersForConfig(sessionBead, cfg)
 	seen := make(map[string]struct{})
 	deadline := time.Now().Add(budget)
 	expired := false
@@ -1255,7 +1261,7 @@ func reassignWorkAssignedToRetiredSessionBead(
 	if err := clearSessionCurrentClaim(store, retiredSession.ID); err != nil {
 		fmt.Fprintf(stderr, "session beads: clearing current claim on retired session %s: %v\n", retiredSession.ID, err) //nolint:errcheck
 	}
-	identifiers := sessionAssignmentIdentifiers(retiredSession)
+	identifiers := sessionAssignmentIdentifiersForConfig(retiredSession, cfg)
 	seen := make(map[string]struct{})
 	sweepAssignedWorkLegs(cityPath, cfg, store, rigStores, identifiers, stderr, func(storeIndex int, ownerStore beads.Store) {
 		wa := workAssignmentForStore(beads.WorkStore{Store: ownerStore})
@@ -3743,4 +3749,45 @@ func resolvePoolSlot(agentName, template string) int {
 		return slot
 	}
 	return 0
+}
+
+// canonicalSingletonPoolAlias returns the canonical alias a pool-managed
+// session of a canonical-singleton agent (max_active_sessions == 1, no
+// namepool) holds, or "" when the session is anything else.
+//
+// gc hook --claim stamps such a session's claims with its alias (the agent's
+// qualified name, e.g. "bd.dog") so the slot is resolvable from a fresh shell.
+// The identity set that guards drains and keeps sessions awake must therefore
+// recognize that alias, or the session holding the claim is drained as
+// "orphaned" and its claim released (measured 2026-10-09, gct-lv2pe item 4).
+// The alias is unambiguous only because a canonical singleton has exactly one
+// live session; multi-session pools never get it
+// (TestRegression_SessionWithWorkByAlias_DoesNotWake).
+func canonicalSingletonPoolAlias(sessionBead beads.Bead, cfg *config.City) string {
+	if cfg == nil || !isPoolManagedSessionBead(sessionBead) {
+		return ""
+	}
+	return canonicalSingletonAliasForTemplate(cfg, normalizedSessionTemplate(sessionBead, cfg), sessionBead.Metadata["alias"])
+}
+
+// canonicalSingletonPoolAliasInfo is the session.Info mirror of
+// canonicalSingletonPoolAlias; TestSessionClassifierInfoEquivalence keeps the
+// twins aligned.
+func canonicalSingletonPoolAliasInfo(info session.Info, cfg *config.City) string {
+	if cfg == nil || !isPoolManagedSessionInfo(info) {
+		return ""
+	}
+	return canonicalSingletonAliasForTemplate(cfg, normalizedSessionTemplateInfo(info, cfg), info.Alias)
+}
+
+func canonicalSingletonAliasForTemplate(cfg *config.City, template, alias string) string {
+	agent := findAgentByTemplate(cfg, template)
+	if agent == nil || !agent.UsesCanonicalSingletonPoolIdentity() {
+		return ""
+	}
+	qualified := agent.QualifiedName()
+	if strings.TrimSpace(alias) != qualified {
+		return ""
+	}
+	return qualified
 }

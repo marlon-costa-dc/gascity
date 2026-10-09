@@ -1851,7 +1851,7 @@ func containsPromptIndicator(content string) bool {
 		}
 		for _, prefix := range []string{"\u276f", "\u203a", ">"} {
 			rest, ok := strings.CutPrefix(trimmed, prefix+" ")
-			if trimmed == prefix || (ok && !isNumberedMenuRow(rest)) {
+			if trimmed == prefix || (ok && !IsNumberedMenuRow(strings.TrimLeft(rest, " \t"))) {
 				return true
 			}
 		}
@@ -1876,7 +1876,12 @@ func stripLeadingBoxBorder(s string) string {
 	return s
 }
 
-func isNumberedMenuRow(content string) bool {
+// IsNumberedMenuRow reports whether content (the text after a prompt glyph)
+// is a numbered menu row such as "1. Review hooks". A TUI selection menu
+// renders its cursor with the same glyph as its input prompt ("› 1. Review
+// hooks"), so every prompt/readiness detector must reject these rows or it
+// declares the session ready on top of an unanswered startup dialog.
+func IsNumberedMenuRow(content string) bool {
 	digits := 0
 	for digits < len(content) && content[digits] >= '0' && content[digits] <= '9' {
 		digits++

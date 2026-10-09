@@ -116,6 +116,9 @@ func TestBeadsRoleCheck_Fix_PreservesReadFailureContext(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
+	// git localizes its messages; the assertion below names git's English
+	// diagnostic, so pin the message locale for this test's git children.
+	t.Setenv("LC_ALL", "C")
 	home := setupFakeGitConfig(t)
 	cfg := filepath.Join(home, ".gitconfig")
 	if err := os.WriteFile(cfg, []byte("not valid\n"), 0o600); err != nil {

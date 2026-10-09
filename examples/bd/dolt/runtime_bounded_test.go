@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gastownhall/gascity/internal/testutil"
 )
 
 // runRunBoundedUnderPython3Fallback sources runtime.sh with a PATH
@@ -32,10 +34,9 @@ import (
 func runRunBoundedUnderPython3Fallback(t *testing.T, childScript string, extraEnv ...string) (int, string) {
 	t.Helper()
 
-	python3Path, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("python3 not installed; cannot exercise run_bounded's python3 fallback")
-	}
+	// The real interpreter, not a version-manager shim: with PATH restricted
+	// to the temp dir below, a shim has nothing to dispatch to.
+	python3Path := testutil.RealPython3(t)
 	bin := t.TempDir()
 	if err := os.Symlink(python3Path, filepath.Join(bin, "python3")); err != nil {
 		t.Fatalf("symlink python3: %v", err)

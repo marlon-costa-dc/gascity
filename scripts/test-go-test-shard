@@ -55,7 +55,9 @@ gopath_val="$(go env GOPATH)"
 gocache_val="$(go env GOCACHE)"
 gomodcache_val="$(go env GOMODCACHE)"
 gotmpdir_val="$(go env GOTMPDIR)"
-goroot_val="$(go env GOROOT)"
+# The go on PATH owns its root; an ambient GOROOT (a version-manager shim
+# can inject one) would pair this go with another toolchain's tools.
+goroot_val="$(env -u GOROOT go env GOROOT)"
 
 # Mirror the Makefile's CGO path detection here so tests run via this script
 # see the same system dependency paths as `make`. When invoked from
@@ -76,7 +78,7 @@ done < <(env)
 
 run_in_test_env() {
   local base_env=(
-    PATH="${PATH}" \
+    PATH="${goroot_val}/bin:${PATH}" \
     HOME="${HOME:-}" \
     USER="${USER:-}" \
     LOGNAME="${LOGNAME:-}" \
@@ -86,11 +88,13 @@ run_in_test_env() {
     LANG="${LANG:-C.UTF-8}" \
     TMPDIR="${TMPDIR:-/var/tmp}" \
     XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" \
+    MISE_CONFIG_DIR="${MISE_CONFIG_DIR:-${XDG_CONFIG_HOME:-${HOME:-}/.config}/mise}" \
+    MISE_DATA_DIR="${MISE_DATA_DIR:-${XDG_DATA_HOME:-${HOME:-}/.local/share}/mise}" \
     GOPATH="${gopath_val}" \
     GOCACHE="${gocache_val}" \
     GOMODCACHE="${gomodcache_val}" \
     GOTMPDIR="${gotmpdir_val}" \
-    GOROOT="${GOROOT:-$goroot_val}" \
+    GOROOT="${goroot_val}" \
     GOTOOLCHAIN="${GOTOOLCHAIN-}" \
     GOENV="${GOENV-}" \
     GOFLAGS="${GOFLAGS-}" \

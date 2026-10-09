@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "control_close.go",
         "hold_labels.go",
+        "issue_types.go",
         "keys.go",
         "keyshape.go",
         "kindsets.go",

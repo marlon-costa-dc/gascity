@@ -16,6 +16,7 @@ import (
 
 	"github.com/gastownhall/gascity/internal/pathutil"
 	"github.com/gastownhall/gascity/internal/sessionlog"
+	"github.com/gastownhall/gascity/internal/testutil"
 	zcodeadapter "github.com/gastownhall/gascity/internal/worker/adapters/zcode"
 )
 
@@ -155,6 +156,7 @@ func installedAdapter(t *testing.T) string {
 }
 
 type harness struct {
+	python3   string // the real interpreter behind any version-manager shim
 	t         *testing.T
 	home      string
 	adapter   string
@@ -187,6 +189,19 @@ func newHarness(t *testing.T, stubEnv map[string]string) *harness {
 
 	adapter := installedAdapter(t)
 
+	// The adapter script and the stub both run python3 from PATH under the
+	// harness's pinned HOME. A version-manager python3 shim first on the host
+	// PATH cannot resolve there ("config files ... are not trusted"), so the
+	// harness PATH starts with the real interpreter.
+	pyBin := filepath.Join(root, "python-bin")
+	if err := os.MkdirAll(pyBin, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", pyBin, err)
+	}
+	python3 := testutil.RealPython3(t)
+	if err := os.Symlink(python3, filepath.Join(pyBin, "python3")); err != nil {
+		t.Fatalf("link python3: %v", err)
+	}
+
 	stub := filepath.Join(root, "stub-node")
 	if err := os.WriteFile(stub, []byte(nodeStub), 0o755); err != nil {
 		t.Fatalf("write stub: %v", err)
@@ -209,10 +224,11 @@ func newHarness(t *testing.T, stubEnv map[string]string) *harness {
 		mirrorDir: mirrorDir,
 		workDir:   workDir,
 		ptyDriver: driver,
+		python3:   python3,
 		env: map[string]string{
 			"HOME":                    home,
 			"XDG_STATE_HOME":          filepath.Join(home, ".local", "state"),
-			"PATH":                    os.Getenv("PATH"),
+			"PATH":                    pyBin + string(os.PathListSeparator) + os.Getenv("PATH"),
 			"ZCODE_CJS":               bundle,
 			"ZCODE_API_KEY":           "dummy-not-a-real-key",
 			"ZCODE_MODEL":             "glm-test",
@@ -240,7 +256,7 @@ func (h *harness) envList() []string {
 func (h *harness) command() *exec.Cmd {
 	name, args := h.adapter, []string(nil)
 	if h.tty {
-		name, args = "python3", []string{h.ptyDriver, h.adapter}
+		name, args = h.python3, []string{h.ptyDriver, h.adapter}
 	}
 	cmd := exec.Command(name, args...)
 	cmd.Dir = h.workDir

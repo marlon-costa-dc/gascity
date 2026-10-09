@@ -368,7 +368,7 @@ func TestGoTestShardWithoutTimingPreservesDirectProductContract(t *testing.T) {
 		t.Fatalf("direct product argv:\n%s\nwant:\n%s", got, wantArgs)
 	}
 	wantEnv := map[string]string{
-		"PATH": fixture.binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"PATH": filepath.Join(fixture.tmpDir, "goroot", "bin") + string(os.PathListSeparator) + fixture.binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"HOME": fixture.homeDir, "USER": "", "LOGNAME": "", "SHELL": "/bin/sh",
 		"GIT_CONFIG_NOSYSTEM": "1",
 		"LANG":                "C.UTF-8", "TMPDIR": fixture.tmpDir, "XDG_RUNTIME_DIR": "",
@@ -378,6 +378,7 @@ func TestGoTestShardWithoutTimingPreservesDirectProductContract(t *testing.T) {
 		"GOEXPERIMENT": "", "GOPROXY": "", "GOPRIVATE": "", "GONOPROXY": "", "GONOSUMDB": "",
 		"GOSUMDB": "", "GOINSECURE": "", "GOVCS": "", "GOWORK": "", "GC_FAST_UNIT": "0",
 		"CGO_CPPFLAGS": "", "CGO_LDFLAGS": "", "GC_TEST_SHARD_INDEX": "1", "GC_TEST_SHARD_TOTAL": "2",
+		"MISE_CONFIG_DIR": filepath.Join(fixture.homeDir, ".config", "mise"), "MISE_DATA_DIR": filepath.Join(fixture.homeDir, ".local", "share", "mise"),
 	}
 	got := fixtureEnvironment(t, readFixtureFile(t, fixture.productEnvFile))
 	fixture.assertSeededGitConfig(t, got)

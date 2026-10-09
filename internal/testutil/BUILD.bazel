@@ -6,6 +6,7 @@ go_library(
         "failure_artifacts.go",
         "git.go",
         "path.go",
+        "python.go",
         "timeout.go",
     ],
     importpath = "github.com/gastownhall/gascity/internal/testutil",
