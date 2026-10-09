@@ -410,6 +410,14 @@ def is_regular_file(path: str) -> bool:
 
 
 def main(argv: list[str]) -> int:
+    # The go binary passed as GO is the toolchain identity; every go and
+    # golangci-lint child must derive GOROOT from that binary. An ambient
+    # GOROOT can name another toolchain: a version-manager shim that launched
+    # this interpreter (mise's python3 shim) injects its own global go's root,
+    # and a go1.26 driver paired with go1.27 tools fails with
+    # `compile: version "go1.27.1" does not match go tool version "go1.26.6"`
+    # (gct-lv2pe). Dropping it lets each go resolve its own root.
+    os.environ.pop("GOROOT", None)
     if len(argv) < 3 or argv[1] not in {"lint-affected", "fmt-check-changed"}:
         print(
             "usage: ci-static-select {lint-affected|fmt-check-changed} "
