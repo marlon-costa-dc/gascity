@@ -66,6 +66,7 @@ type AwakeSessionBead struct {
 	ExplicitWake              bool      // explicit durable wake request is pending
 	DependencyOnly            bool      // only wakeable via dependency gate
 	NamedIdentity             string    // non-empty for named session beads
+	CanonicalSingletonAlias   string    // non-empty for the one pool session of a canonical-singleton agent
 	ConfiguredNamedSession    bool      // configured_named_session metadata is true
 	Pinned                    bool      // pin_awake durable wake reason
 	Drained                   bool      // state=="drained" or sleep_reason=="drained"
@@ -780,6 +781,11 @@ func sessionAssigneeMatches(named []AwakeNamedSession, bead AwakeSessionBead, as
 		return false
 	}
 	if assignee == bead.ID || assignee == bead.SessionName {
+		return true
+	}
+	// Mirrors sessionAssignmentIdentifiersForConfig: claims by a canonical
+	// singleton pool session are stamped with its alias.
+	if bead.CanonicalSingletonAlias != "" && assignee == bead.CanonicalSingletonAlias {
 		return true
 	}
 	if bead.NamedIdentity != "" {
