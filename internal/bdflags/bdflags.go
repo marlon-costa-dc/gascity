@@ -44,8 +44,7 @@ var globalBoolFlags = map[string]bool{
 // compound bd subcommands, "parent child" ("mol pour"). The key set here
 // defines every subcommand this package knows about — see Known/Subcommands.
 //
-// Sourced from `bd <sub> --help` (bd 1.3.0-rc.2, 2026-09-10; `list
-// --include-comments` from bd v1.3.0, the CI-pinned BD_VERSION, 2026-10-09).
+// Sourced from `bd <sub> --help` (bd 1.3.0-rc.2, 2026-09-10).
 var valueFlagsBySub = map[string]map[string]bool{
 	"create": {
 		"--acceptance": true, "--append-notes": true, "-a": true, "--assignee": true,
@@ -103,8 +102,7 @@ var valueFlagsBySub = map[string]map[string]bool{
 		"--has-metadata-key": true, "--id": true, "-l": true,
 		"--label": true, "--label-any": true, "--label-pattern": true,
 		"--label-regex": true, "-n": true, "--limit": true, "--max-rows": true,
-		"--include-comments": true,
-		"--metadata-field":   true, "--mol-type": true, "--notes-contains": true,
+		"--metadata-field": true, "--mol-type": true, "--notes-contains": true,
 		"--offset": true, "--parent": true, "-p": true, "--priority": true,
 		"--priority-max": true,
 		"--priority-min": true, "--sort": true, "--spec": true, "-s": true,
@@ -144,7 +142,8 @@ var valueFlagsBySub = map[string]map[string]bool{
 // global set. Same keying convention as valueFlagsBySub.
 //
 // Sourced from `bd <sub> --help` (bd 1.3.0-rc.2, 2026-09-10; `ready --flat`
-// and `list --include-ephemeral` from bd v1.3.0-fd.3, 2026-09-25). A flag whose
+// and `list --include-ephemeral` from bd v1.3.0-fd.3, 2026-09-25; `list
+// --include-comments` from bd v1.3.0, the CI-pinned BD_VERSION, 2026-10-09). A flag whose
 // help renders as `string[="default"]` — cobra's NoOptDefVal — belongs here,
 // not in valueFlagsBySub: it never consumes the next argv token, so
 // `bd list --deps all` leaves "all" positional.
@@ -175,8 +174,8 @@ var boolFlagsBySub = map[string]map[string]bool{
 	"list": {
 		"--all": true, "--brief": true, "--deferred": true, "--deps": true,
 		"--empty-description": true, "--flat": true,
-		"--include-ephemeral": true, "--include-gates": true, "--include-infra": true,
-		"--include-templates": true, "--long": true, "--no-assignee": true, "--no-labels": true, "--no-pager": true,
+		"--include-comments": true, "--include-ephemeral": true, "--include-gates": true,
+		"--include-infra": true, "--include-templates": true, "--long": true, "--no-assignee": true, "--no-labels": true, "--no-pager": true,
 		"--no-parent": true, "--no-pinned": true, "--overdue": true, "--pinned": true,
 		"--pretty": true, "--ready": true, "-r": true, "--reverse": true,
 		"--skip-labels": true, "--tree": true, "-w": true, "--watch": true,
