@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
@@ -322,5 +323,67 @@ func TestPoolIdleRoutedWorkCheckReadsBothTiers(t *testing.T) {
 	}
 	if details := strings.Join(result.Details, "\n"); !strings.Contains(details, "GA-1") {
 		t.Fatalf("details missing wisp-tier routed bead:\n%s", details)
+	}
+}
+
+func TestPoolIdleRoutedWorkCheckBudgetExhaustedReportsDeterministicPartial(t *testing.T) {
+	cityDir := t.TempDir()
+	// Enough suspended-agent-free templates that the scan must cross the
+	// (already expired) budget between scopes: two scopes worth of stores.
+	cfg := &config.City{
+		Agents: []config.Agent{{Name: "builder", Dir: "gascity"}},
+	}
+	store := beads.NewMemStoreFrom(0, []beads.Bead{
+		poolIdleWorkSessionBead("gascity/builder", "active", ""),
+		poolIdleWorkRoutedBead("gascity/builder", ""),
+	}, nil)
+
+	check := newPoolIdleRoutedWorkCheck(cfg, cityDir, func(_ string) (beads.Store, error) {
+		return store, nil
+	})
+	// A clock that jumps a minute per call: the first read seeds the
+	// deadline, the second (the first scope check) is already past it.
+	base := time.Now()
+	calls := 0
+	check.now = func() time.Time {
+		calls++
+		return base.Add(time.Duration(calls) * time.Minute)
+	}
+
+	result := check.Run(&doctor.CheckContext{})
+	if result.Status != doctor.StatusWarning {
+		t.Fatalf("status = %v, want warning (deterministic partial, not abandonment): %#v", result.Status, result)
+	}
+	if result.TimedOut {
+		t.Fatalf("TimedOut = true, want the check to settle its own outcome: %#v", result)
+	}
+	details := strings.Join(result.Details, "\n")
+	if !strings.Contains(details, "check budget exhausted") {
+		t.Fatalf("details missing the budget-exhausted note:\n%s", details)
+	}
+}
+
+func TestPoolIdleRoutedWorkCheckZeroBudgetUsesDefaultAndFinds(t *testing.T) {
+	cityDir := t.TempDir()
+	cfg := &config.City{
+		Agents: []config.Agent{{Name: "builder", Dir: "gascity"}},
+	}
+	store := beads.NewMemStoreFrom(0, []beads.Bead{
+		poolIdleWorkSessionBead("gascity/builder", "active", ""),
+		poolIdleWorkRoutedBead("gascity/builder", ""),
+	}, nil)
+
+	check := newPoolIdleRoutedWorkCheck(cfg, cityDir, func(_ string) (beads.Store, error) {
+		return store, nil
+	})
+	check.budget = 0 // default applies
+
+	result := check.Run(&doctor.CheckContext{})
+	if result.Status != doctor.StatusWarning {
+		t.Fatalf("status = %v, want warning: %#v", result.Status, result)
+	}
+	details := strings.Join(result.Details, "\n")
+	if !strings.Contains(details, "GA-1") {
+		t.Fatalf("details missing the routed bead under the default budget:\n%s", details)
 	}
 }

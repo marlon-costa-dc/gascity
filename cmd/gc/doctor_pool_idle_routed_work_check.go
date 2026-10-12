@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/beadmeta"
 	"github.com/gastownhall/gascity/internal/beads"
@@ -25,13 +26,37 @@ type poolIdleRoutedWorkCheck struct {
 	cfg      *config.City
 	cityPath string
 	newStore func(string) (beads.Store, error)
+	// budget bounds the collect scan. The store List path full-primes the
+	// ledger on first touch (thousands of beads over the multi-store data
+	// plane), so a scan across every rig scope can outrun the doctor's
+	// per-check timeout and be abandoned with an unknown outcome. A budget
+	// UNDER that timeout turns the overrun into a deterministic partial
+	// result: findings so far plus explicit skipped-scope notes. Zero means
+	// the default.
+	budget time.Duration
+	// now is overridable in tests to force the budget-expired path.
+	now func() time.Time
 }
 
+// poolIdleCheckDefaultBudget stays clear of the doctor's 60s per-check
+// timeout so the check always settles its own outcome first.
+const poolIdleCheckDefaultBudget = 45 * time.Second
+
 func newPoolIdleRoutedWorkCheck(cfg *config.City, cityPath string, newStore func(string) (beads.Store, error)) *poolIdleRoutedWorkCheck {
-	return &poolIdleRoutedWorkCheck{cfg: cfg, cityPath: cityPath, newStore: newStore}
+	return &poolIdleRoutedWorkCheck{cfg: cfg, cityPath: cityPath, newStore: newStore, budget: poolIdleCheckDefaultBudget}
 }
 
 func (c *poolIdleRoutedWorkCheck) Name() string { return "pool-idle-routed-work" }
+
+// nowIsBefore reports whether the current (injectable) clock is still inside
+// the scan budget.
+func (c *poolIdleRoutedWorkCheck) nowIsBefore(deadline time.Time) bool {
+	now := c.now
+	if now == nil {
+		now = time.Now
+	}
+	return now().Before(deadline)
+}
 
 // CanFix returns false: deciding whether to nudge, investigate, or leave an
 // idle instance alone belongs to a human or an order, not this check.
@@ -59,7 +84,15 @@ func (c *poolIdleRoutedWorkCheck) Run(_ *doctor.CheckContext) *doctor.CheckResul
 	if c.cfg == nil {
 		return okCheck(c.Name(), "no config available")
 	}
-	findings, skipped := c.collect()
+	now := c.now
+	if now == nil {
+		now = time.Now
+	}
+	budget := c.budget
+	if budget <= 0 {
+		budget = poolIdleCheckDefaultBudget
+	}
+	findings, skipped := c.collect(now().Add(budget))
 	if len(findings) == 0 && len(skipped) == 0 {
 		return okCheck(c.Name(), "no pool has unclaimed routed work sitting beside an idle instance")
 	}
@@ -89,7 +122,12 @@ func (c *poolIdleRoutedWorkCheck) Run(_ *doctor.CheckContext) *doctor.CheckResul
 // path-bearing rig) for pool templates that have both an idle live instance
 // and unclaimed gc.routed_to work. It mirrors v2RoutedToNamespaceCheck's scope
 // iteration so routed-work sanity checks agree on what "in scope" means.
-func (c *poolIdleRoutedWorkCheck) collect() (findings []poolIdleRoutedWorkFinding, skipped []string) {
+//
+// deadline bounds the scan: the check stops between scopes once it passes,
+// reporting what it found plus explicit skipped-scope notes, so an oversized
+// multi-store scan settles as a deterministic partial result instead of being
+// abandoned by the doctor's per-check timeout with an unknown outcome.
+func (c *poolIdleRoutedWorkCheck) collect(deadline time.Time) (findings []poolIdleRoutedWorkFinding, skipped []string) {
 	scopes := []struct{ label, path string }{{"city", c.cityPath}}
 	suspState, _ := loadSuspensionState(fsys.OSFS{}, c.cityPath)
 	for _, rig := range c.cfg.Rigs {
@@ -98,8 +136,15 @@ func (c *poolIdleRoutedWorkCheck) collect() (findings []poolIdleRoutedWorkFindin
 		}
 		scopes = append(scopes, struct{ label, path string }{"rig " + rig.Name, rig.Path})
 	}
+	scanned := 0
 	for _, sc := range scopes {
 		if c.newStore == nil || strings.TrimSpace(sc.path) == "" {
+			continue
+		}
+		if !c.nowIsBefore(deadline) {
+			skipped = append(skipped, fmt.Sprintf(
+				"%s skipped: check budget exhausted after %d template(s) scanned; re-run alone or raise --check-timeout",
+				sc.label, scanned))
 			continue
 		}
 		store, err := c.newStore(sc.path)
@@ -107,7 +152,7 @@ func (c *poolIdleRoutedWorkCheck) collect() (findings []poolIdleRoutedWorkFindin
 			skipped = append(skipped, fmt.Sprintf("%s skipped: opening bead store: %v", sc.label, err))
 			continue
 		}
-		scopeFindings, err := c.collectStoreFindings(store, sc.label)
+		scopeFindings, err := c.collectStoreFindings(store, sc.label, deadline, &scanned)
 		findings = append(findings, scopeFindings...)
 		if err != nil {
 			skipped = append(skipped, fmt.Sprintf("%s skipped: %v", sc.label, err))
@@ -119,12 +164,17 @@ func (c *poolIdleRoutedWorkCheck) collect() (findings []poolIdleRoutedWorkFindin
 // collectStoreFindings checks every generic-ephemeral pool template in cfg
 // against one store: a targeted session-class list for idle live instances,
 // and (only when at least one is idle) a targeted gc.routed_to metadata
-// lookup for unclaimed work — never a full-store scan.
-func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label string) ([]poolIdleRoutedWorkFinding, error) {
+// lookup for unclaimed work — never a full-store scan. scanned accumulates
+// the templates actually processed so the budget-exhausted report can say how
+// far the scan got; the deadline is honored between templates.
+func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label string, deadline time.Time, scanned *int) ([]poolIdleRoutedWorkFinding, error) {
 	sessStore := cliSessionFrontDoor(store, c.cfg, c.cityPath)
 
 	var findings []poolIdleRoutedWorkFinding
 	for i := range c.cfg.Agents {
+		if !c.nowIsBefore(deadline) {
+			return findings, fmt.Errorf("check budget exhausted after %d template(s) in this scope", *scanned)
+		}
 		agent := &c.cfg.Agents[i]
 		if agent.Suspended || !agent.SupportsGenericEphemeralSessions() {
 			continue
@@ -133,6 +183,7 @@ func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label 
 		if template == "" {
 			continue
 		}
+		*scanned++
 
 		sessions, err := sessStore.List("", template)
 		if err != nil {
