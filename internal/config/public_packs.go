@@ -7,7 +7,8 @@ const (
 	PublicGastownPackSource = "https://github.com/gastownhall/gascity-packs/tree/main/gastown"
 
 	// PublicGastownPackVersion pins fresh init output to the registry release
-	// content commit from gastownhall/gascity-packs main.
+	// content commit from gastownhall/gascity-packs (main, or a gastown
+	// release branch such as release/gastown-0.1.11).
 	PublicGastownPackVersion = "sha:66897e7132c9d1160509ee47dd1b935bbd3b9664"
 
 	// PublicGascityPackSource is the concrete durable source for the
@@ -16,7 +17,7 @@ const (
 
 	// PublicGascityPackVersion pins fresh init output to the registry
 	// release content commit from gastownhall/gascity-packs main
-	// (gascity 0.1.6).
+	// (gascity 0.1.7).
 	PublicGascityPackVersion = "sha:5bf643ca55bd20f080994cc31414ee4596015a0c"
 
 	// PublicGascityRolesPackSource is the concrete durable source for the
@@ -65,6 +66,8 @@ var SupersededBundledPackImportVersions = []string{
 // When bumping PublicGastownPackVersion, append the old value here
 // (scripts/update-bundled-gastown-pack does this).
 var SupersededPublicGastownPackVersions = []string{
+	"sha:cb6a612882b8402569c495c90ab75bb257a51bdc",
+	"sha:66c672b5ed00af143158b4eac960523c56b977ee",
 	"sha:33d3a430a67d1782ad364556cb566bdb01d0afe3",
 	"sha:4212acb7046c11f6f633df73307006493185233a",
 	"sha:817f85e155e2b0b0c375835b076103108f8a4724",
