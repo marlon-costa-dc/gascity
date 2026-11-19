@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/citylayout"
 )
@@ -54,6 +55,39 @@ func TestNudgeUnconfirmedCheckWarnsOnDiagnosticFile(t *testing.T) {
 	}
 	if len(r.Details) != 1 || !strings.Contains(r.Details[0], "gc-worker-1") || !strings.Contains(r.Details[0], "nudge-unconfirmed.log") {
 		t.Fatalf("expected details to name session and file, got %v", r.Details)
+	}
+}
+
+// A diagnostic past the age cutoff describes a nudge whose moment is gone:
+// it is counted in the verdict, not warned on; a fresh one still warns.
+func TestNudgeUnconfirmedCheckAgeCutoff(t *testing.T) {
+	cityRoot := t.TempDir()
+	now := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
+	write := func(session string, age time.Duration) {
+		dir := filepath.Join(citylayout.SessionDiagnosticsDir(cityRoot), session)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "nudge-unconfirmed.log")
+		if err := os.WriteFile(path, []byte("unconfirmed"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, now.Add(-age), now.Add(-age)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := &NudgeUnconfirmedCheck{now: func() time.Time { return now }}
+
+	write("gc-old", 47*24*time.Hour)
+	r := c.Run(&CheckContext{CityPath: cityRoot})
+	if r.Status != StatusOK || !strings.Contains(r.Message, "1 older diagnostic(s) not reported") {
+		t.Fatalf("stale-only result = %v %q, want OK counting the stale diagnostic", r.Status, r.Message)
+	}
+
+	write("gc-fresh", time.Hour)
+	r = c.Run(&CheckContext{CityPath: cityRoot})
+	if r.Status != StatusWarning || len(r.Details) != 1 || !strings.Contains(r.Details[0], "gc-fresh") {
+		t.Fatalf("fresh result = %v %q %v, want a warning naming only the fresh session", r.Status, r.Message, r.Details)
 	}
 }
 

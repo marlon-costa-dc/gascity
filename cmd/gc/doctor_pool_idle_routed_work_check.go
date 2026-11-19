@@ -10,8 +10,6 @@ import (
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doctor"
-	"github.com/gastownhall/gascity/internal/fsys"
-	"github.com/gastownhall/gascity/internal/suspensionstate"
 )
 
 // poolIdleRoutedWorkCheck detects a pool template that has gc.routed_to work
@@ -128,14 +126,7 @@ func (c *poolIdleRoutedWorkCheck) Run(_ *doctor.CheckContext) *doctor.CheckResul
 // multi-store scan settles as a deterministic partial result instead of being
 // abandoned by the doctor's per-check timeout with an unknown outcome.
 func (c *poolIdleRoutedWorkCheck) collect(deadline time.Time) (findings []poolIdleRoutedWorkFinding, skipped []string) {
-	scopes := []struct{ label, path string }{{"city", c.cityPath}}
-	suspState, _ := loadSuspensionState(fsys.OSFS{}, c.cityPath)
-	for _, rig := range c.cfg.Rigs {
-		if suspensionstate.EffectiveRigSuspended(suspState, rig.Name, rig.EffectiveSuspendedOnStart()) || strings.TrimSpace(rig.Path) == "" {
-			continue
-		}
-		scopes = append(scopes, struct{ label, path string }{"rig " + rig.Name, rig.Path})
-	}
+	scopes := doctorStoreScopes(c.cfg, c.cityPath, true)
 	scanned := 0
 	for _, sc := range scopes {
 		if c.newStore == nil || strings.TrimSpace(sc.path) == "" {
@@ -162,13 +153,45 @@ func (c *poolIdleRoutedWorkCheck) collect(deadline time.Time) (findings []poolId
 }
 
 // collectStoreFindings checks every generic-ephemeral pool template in cfg
-// against one store: a targeted session-class list for idle live instances,
-// and (only when at least one is idle) a targeted gc.routed_to metadata
-// lookup for unclaimed work — never a full-store scan. scanned accumulates
-// the templates actually processed so the budget-exhausted report can say how
-// far the scan got; the deadline is honored between templates.
+// against one store: one session-class list for the whole scope, grouped into
+// idle live instances per template, and (only for a template with an idle
+// instance) a targeted gc.routed_to metadata lookup for unclaimed work —
+// never a full-store scan. The session list is read once because
+// session.Store.List reads the scope's entire session ledger (closed beads
+// included) whatever template it filters on; reading it per template made
+// the scan cost templates × ledger and abandoned whole scopes at the budget.
+// scanned accumulates the templates actually processed so the
+// budget-exhausted report can say how far the scan got; the deadline is
+// honored between templates.
 func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label string, deadline time.Time, scanned *int) ([]poolIdleRoutedWorkFinding, error) {
-	sessStore := cliSessionFrontDoor(store, c.cfg, c.cityPath)
+	// A city with no generic-ephemeral pool template has nothing to scan, so
+	// it reads nothing (and so cannot fail on the read).
+	hasPoolTemplate := false
+	for i := range c.cfg.Agents {
+		agent := &c.cfg.Agents[i]
+		if !agent.Suspended && agent.SupportsGenericEphemeralSessions() && agent.QualifiedName() != "" {
+			hasPoolTemplate = true
+			break
+		}
+	}
+	if !hasPoolTemplate {
+		return nil, nil
+	}
+	sessions, err := cliSessionFrontDoor(store, c.cfg, c.cityPath).List("", "")
+	if err != nil {
+		return nil, fmt.Errorf("listing sessions: %w", err)
+	}
+	idleByTemplate := make(map[string][]string)
+	for _, info := range sessions {
+		if !poolSessionIsLiveInfo(info) || strings.TrimSpace(info.TriggerBeadID) != "" {
+			continue
+		}
+		name := strings.TrimSpace(info.SessionName)
+		if name == "" {
+			name = info.ID
+		}
+		idleByTemplate[info.Template] = append(idleByTemplate[info.Template], name)
+	}
 
 	var findings []poolIdleRoutedWorkFinding
 	for i := range c.cfg.Agents {
@@ -185,21 +208,7 @@ func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label 
 		}
 		*scanned++
 
-		sessions, err := sessStore.List("", template)
-		if err != nil {
-			return findings, fmt.Errorf("listing sessions for %s: %w", template, err)
-		}
-		var idle []string
-		for _, info := range sessions {
-			if !poolSessionIsLiveInfo(info) || strings.TrimSpace(info.TriggerBeadID) != "" {
-				continue
-			}
-			name := strings.TrimSpace(info.SessionName)
-			if name == "" {
-				name = info.ID
-			}
-			idle = append(idle, name)
-		}
+		idle := idleByTemplate[template]
 		if len(idle) == 0 {
 			continue
 		}

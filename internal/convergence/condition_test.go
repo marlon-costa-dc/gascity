@@ -978,3 +978,23 @@ func TestRunConditionEnvVarsAvailable(t *testing.T) {
 		t.Errorf("expected resolved PATH in output, got: %s", result.Stdout)
 	}
 }
+
+// The gate PATH is built from the given search PATH, not the caller's own: a
+// diagnostic reproducing the controller's gates passes the controller's PATH.
+func TestConditionPATHForResolvesToolsAgainstTheGivenPATH(t *testing.T) {
+	dir := t.TempDir()
+	bd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(bd, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := ConditionPATHFor("relative/dir:" + dir)
+	if first := strings.SplitN(got, ":", 2)[0]; first != dir {
+		t.Fatalf("ConditionPATHFor first entry = %q, want the bd directory %q (got %q)", first, dir, got)
+	}
+	if path, ok := LookPathIn("relative/dir:"+dir, "bd"); !ok || path != bd {
+		t.Fatalf("LookPathIn = %q, %v; want %q (relative entries skipped)", path, ok, bd)
+	}
+	if _, ok := LookPathIn(dir, "missing"); ok {
+		t.Fatal("LookPathIn found a tool that is not on the PATH")
+	}
+}

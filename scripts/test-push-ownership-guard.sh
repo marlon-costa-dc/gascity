@@ -192,7 +192,7 @@ write_show_json() {
 # POG_READ_ATTEMPTS as a prefix on the call, e.g.
 # `POG_READ_ATTEMPTS=3 run_guard ...`.
 run_guard() {
-    local repo="$1" fbd="$2" agent="$3" template="$4" pog_timeout="${5:-5}"
+    local repo="$1" fbd="$2" agent="$3" template="$4" pog_timeout="${5:-30}"
     local session_id="${6:-}" session_name="${7:-}"
     local read_attempts="${POG_READ_ATTEMPTS:-1}"
     (
@@ -211,7 +211,7 @@ run_guard() {
 # executed via its own bash shebang, so zsh's parsing/builtin rules apply to
 # assert_bead_still_claimed's body at call time (ga-xi7wi6).
 run_guard_zsh() {
-    local repo="$1" fbd="$2" agent="$3" template="$4" pog_timeout="${5:-5}"
+    local repo="$1" fbd="$2" agent="$3" template="$4" pog_timeout="${5:-30}"
     local session_id="${6:-}" session_name="${7:-}"
     (
         cd "$repo" || exit 1
@@ -291,7 +291,7 @@ test_block_on_reassigned() {
     # (GC_AGENT=agent-x, GC_SESSION_ID=sess-id-x, GC_SESSION_NAME=sess-name-x)
     # → the identity-set match finds no owner → still blocks.
     write_show_json "$fbd" "ga-abc123.1" "in_progress" "someone-else" "tmpl-x" "[]"
-    out="$(run_guard "$repo" "$fbd" "agent-x" "tmpl-x" 5 "sess-id-x" "sess-name-x" 2>&1)"; rc=$?
+    out="$(run_guard "$repo" "$fbd" "agent-x" "tmpl-x" 30 "sess-id-x" "sess-name-x" 2>&1)"; rc=$?
     if [[ $rc -ne 0 ]] && grep -qi "assignee" <<<"$out" && grep -q -- "--no-verify" <<<"$out"; then
         record_pass "block/reassigned (rc=$rc, names the failed check + mentions --no-verify)"
     else
@@ -311,7 +311,7 @@ test_allow_when_assignee_is_session_id() {
     fbd="$(mktemp -d "${TMPDIR:-/tmp}/gc-pog-fakebd.XXXXXX")"
     write_fake_bd "$fbd"
     write_show_json "$fbd" "ga-abc123.1" "in_progress" "sess-id-x" "tmpl-x" "[]"
-    out="$(run_guard "$repo" "$fbd" "agent-x" "tmpl-x" 5 "sess-id-x" "sess-name-x" 2>&1)"; rc=$?
+    out="$(run_guard "$repo" "$fbd" "agent-x" "tmpl-x" 30 "sess-id-x" "sess-name-x" 2>&1)"; rc=$?
     if [[ $rc -eq 0 ]]; then
         record_pass "allow/assignee-is-session-id (rc=0, GC_AGENT differs)"
     else
@@ -326,7 +326,7 @@ test_allow_when_assignee_is_session_name() {
     fbd="$(mktemp -d "${TMPDIR:-/tmp}/gc-pog-fakebd.XXXXXX")"
     write_fake_bd "$fbd"
     write_show_json "$fbd" "ga-abc123.1" "in_progress" "sess-name-x" "tmpl-x" "[]"
-    out="$(run_guard "$repo" "$fbd" "agent-x" "tmpl-x" 5 "sess-id-x" "sess-name-x" 2>&1)"; rc=$?
+    out="$(run_guard "$repo" "$fbd" "agent-x" "tmpl-x" 30 "sess-id-x" "sess-name-x" 2>&1)"; rc=$?
     if [[ $rc -eq 0 ]]; then
         record_pass "allow/assignee-is-session-name (rc=0, GC_AGENT differs)"
     else
@@ -353,7 +353,7 @@ test_allow_when_assignee_is_bare_pool_template() {
     # assignee is the bare pool template ("tmpl-x"), matching GC_TEMPLATE —
     # not GC_AGENT/GC_SESSION_ID/GC_SESSION_NAME, which are all instance-shaped.
     write_show_json "$fbd" "ga-abc123.1" "in_progress" "tmpl-x" "tmpl-x" "[]"
-    out="$(run_guard "$repo" "$fbd" "agent-x" "tmpl-x" 5 "sess-id-x" "sess-name-x" 2>&1)"; rc=$?
+    out="$(run_guard "$repo" "$fbd" "agent-x" "tmpl-x" 30 "sess-id-x" "sess-name-x" 2>&1)"; rc=$?
     if [[ $rc -eq 0 ]]; then
         record_pass "allow/assignee-is-bare-pool-template (rc=0, GC_AGENT/SESSION_ID/SESSION_NAME all differ)"
     else

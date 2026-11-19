@@ -10,8 +10,6 @@ import (
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doctor"
-	"github.com/gastownhall/gascity/internal/fsys"
-	"github.com/gastownhall/gascity/internal/suspensionstate"
 )
 
 type workOptionMetadataMigrationCheck struct {
@@ -70,16 +68,7 @@ type workOptionMigrationTarget struct {
 }
 
 func (c *workOptionMetadataMigrationCheck) collect() (targets []workOptionMigrationTarget, skipped []string) {
-	scopes := []struct{ label, path string }{{"city", c.cityPath}}
-	if c.cfg != nil {
-		suspState, _ := loadSuspensionState(fsys.OSFS{}, c.cityPath)
-		for _, rig := range c.cfg.Rigs {
-			if suspensionstate.EffectiveRigSuspended(suspState, rig.Name, rig.EffectiveSuspendedOnStart()) || strings.TrimSpace(rig.Path) == "" {
-				continue
-			}
-			scopes = append(scopes, struct{ label, path string }{"rig " + rig.Name, rig.Path})
-		}
-	}
+	scopes := doctorStoreScopes(c.cfg, c.cityPath, true)
 	// The session-cleanup leg below is session class, not work class, and it
 	// WRITES. Under a [beads.classes.sessions] relocation every scope routes to
 	// the one relocated sessions store, so the leg would mint a duplicate target

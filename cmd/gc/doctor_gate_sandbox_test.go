@@ -17,7 +17,7 @@ import (
 func gateSandboxEnvLookup(t *testing.T, cityPath string) map[string]string {
 	t.Helper()
 	lookup := make(map[string]string)
-	for _, v := range gateSandboxEnv(cityPath) {
+	for _, v := range gateSandboxEnv(cityPath, "") {
 		if name, value, ok := strings.Cut(v, "="); ok {
 			lookup[name] = value
 		}
@@ -62,7 +62,7 @@ func TestGateSandboxEnvOverridesAmbientDoltAutoStart(t *testing.T) {
 	t.Setenv("BEADS_DOLT_AUTO_START", "1")
 
 	occurrences := 0
-	for _, entry := range gateSandboxEnv(t.TempDir()) {
+	for _, entry := range gateSandboxEnv(t.TempDir(), "") {
 		if strings.HasPrefix(entry, "BEADS_DOLT_AUTO_START=") {
 			occurrences++
 			if entry != "BEADS_DOLT_AUTO_START=0" {
@@ -300,7 +300,7 @@ func TestDoctorClipGateOutput(t *testing.T) {
 // the controller's read and the gate's, so a blind result must also name the
 // keys the gate env structurally cannot carry.
 func TestGateSandboxBlindDetailsNameTheControllerOnlyKeys(t *testing.T) {
-	env := gateSandboxEnv(t.TempDir())
+	env := gateSandboxEnv(t.TempDir(), "")
 	details := gateSandboxBlindDetails(env)
 
 	joined := strings.Join(details, "\n")
@@ -324,5 +324,23 @@ func TestGateSandboxBlindDetailsNameTheControllerOnlyKeys(t *testing.T) {
 	// attribute, and nine absent key names would be noise in every report.
 	if healthy := strings.Join(gateSandboxDetails(env), "\n"); strings.Contains(healthy, "not threaded into the gate env") {
 		t.Errorf("healthy details %q must not carry the blind-result attribution line", healthy)
+	}
+}
+
+// The probe reproduces the controller's gates: the gate PATH is built from the
+// controller's PATH, not from the PATH of the gc process running doctor.
+func TestGateSandboxEnvBuildsPATHFromTheControllerPATH(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "bd"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var gatePATH string
+	for _, entry := range gateSandboxEnv(t.TempDir(), dir) {
+		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
+			gatePATH = value
+		}
+	}
+	if first := strings.SplitN(gatePATH, ":", 2)[0]; first != dir {
+		t.Fatalf("gate PATH = %q, want it to lead with the controller's bd directory %q", gatePATH, dir)
 	}
 }

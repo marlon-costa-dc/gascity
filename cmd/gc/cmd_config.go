@@ -371,6 +371,15 @@ func singletonSessionMigrationWarnings(cfg *config.City) []string {
 		if namedByTemplate[agentCfg.QualifiedName()] {
 			continue
 		}
+		// The migration advice is for singletons a city declares itself
+		// (inline [[agent]], no PackName). A pack's singleton — core's
+		// control-dispatcher, gastown's dog, any third-party pack's — drains on
+		// empty demand by its author's design, and no pack name is trusted to
+		// decide that. A [[patches.agent]] that sets max_active_sessions=1 on a
+		// pack agent is therefore not warned on either.
+		if agentCfg.PackName != "" {
+			continue
+		}
 		warnings = append(warnings,
 			fmt.Sprintf("agent %q: max_active_sessions=1 creates a canonical singleton that drains when scale_check returns 0; declare [[named_session]] only if you need a session that survives empty-demand windows", agentCfg.QualifiedName()))
 	}

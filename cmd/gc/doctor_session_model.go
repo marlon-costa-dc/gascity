@@ -16,6 +16,10 @@ type sessionModelDoctorCheck struct {
 	cfg      *config.City
 	cityPath string
 	newStore func(string) (beads.Store, error)
+	// citySuspended reports that the operator suspended the city: work
+	// assigned to a configured agent with no session is then the declared
+	// pause, reported by name instead of as a finding.
+	citySuspended bool
 }
 
 func (c *sessionModelDoctorCheck) Name() string { return "session-model" }
@@ -65,7 +69,7 @@ func (c *sessionModelDoctorCheck) Run(_ *doctor.CheckContext) *doctor.CheckResul
 		}
 	}
 
-	var findings []string
+	var findings, paused []string
 	for _, b := range all {
 		if session.IsSessionBeadOrRepairable(b) || b.Status == "closed" {
 			continue
@@ -86,7 +90,12 @@ func (c *sessionModelDoctorCheck) Run(_ *doctor.CheckContext) *doctor.CheckResul
 				case len(matches) > 1:
 					findings = append(findings, fmt.Sprintf("ambiguous-legacy-session-token: %s assignee %q matches %d open sessions", b.ID, assignee, len(matches)))
 				case len(matches) == 0 && config.FindAgent(c.cfg, assignee) != nil:
-					findings = append(findings, fmt.Sprintf("legacy-token-matches-config-only: %s assignee %q matches config but no session", b.ID, assignee))
+					finding := fmt.Sprintf("legacy-token-matches-config-only: %s assignee %q matches config but no session", b.ID, assignee)
+					if c.citySuspended {
+						paused = append(paused, finding)
+					} else {
+						findings = append(findings, finding)
+					}
 				case len(matches) == 0:
 					historical := legacySessionTokenMatches(assignee, openSessionAliasHistory, nil)
 					if len(historical) > 0 {
@@ -115,12 +124,22 @@ func (c *sessionModelDoctorCheck) Run(_ *doctor.CheckContext) *doctor.CheckResul
 		}
 	}
 
-	if len(findings) == 0 {
+	findingCount := len(findings)
+	findings = append(findings, paused...)
+	r.Details = findings
+	pausedNote := ""
+	if len(paused) > 0 {
+		pausedNote = fmt.Sprintf("%s; sessions paused (%d assignment(s) to configured agents without a session)", doctor.CitySuspendedByOperator, len(paused))
+		r.Message = pausedNote
+	}
+	if findingCount == 0 {
 		return r
 	}
 	r.Status = doctor.StatusWarning
-	r.Message = fmt.Sprintf("%d session model finding(s)", len(findings))
-	r.Details = findings
+	r.Message = fmt.Sprintf("%d session model finding(s)", findingCount)
+	if pausedNote != "" {
+		r.Message += "; " + pausedNote
+	}
 	return r
 }
 

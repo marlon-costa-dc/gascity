@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/gastownhall/gascity/internal/citylayout"
 )
@@ -24,11 +25,22 @@ var nudgeUnconfirmedDiagnosticFiles = []string{
 // writes a diagnostic file. This check is the reconciliation that reads that
 // file back so the unconfirmed outcome reaches an operator instead of being
 // silently dropped.
-type NudgeUnconfirmedCheck struct{}
+//
+// The writer overwrites the file on every unconfirmed submit, so its mtime is
+// the newest unconfirmed delivery. One older than nudgeUnconfirmedMaxAge no
+// longer describes a nudge an operator can still act on; it is counted in the
+// verdict instead of warned on.
+type NudgeUnconfirmedCheck struct {
+	now func() time.Time
+}
+
+// nudgeUnconfirmedMaxAge bounds how old an unconfirmed-nudge diagnostic may be
+// and still warn: past a day the nudge's moment is gone.
+const nudgeUnconfirmedMaxAge = 24 * time.Hour
 
 // NewNudgeUnconfirmedCheck creates a check for unconfirmed nudge deliveries.
 func NewNudgeUnconfirmedCheck() *NudgeUnconfirmedCheck {
-	return &NudgeUnconfirmedCheck{}
+	return &NudgeUnconfirmedCheck{now: time.Now}
 }
 
 // Name returns the check identifier.
@@ -56,7 +68,8 @@ func (c *NudgeUnconfirmedCheck) Run(ctx *CheckContext) *CheckResult {
 		return r
 	}
 
-	var details []string
+	cutoff := c.now().Add(-nudgeUnconfirmedMaxAge)
+	var details, stale []string
 	var malformed []string
 	sessions := make(map[string]struct{})
 	for _, entry := range entries {
@@ -71,7 +84,11 @@ func (c *NudgeUnconfirmedCheck) Run(ctx *CheckContext) *CheckResult {
 		}
 		for _, filename := range nudgeUnconfirmedDiagnosticFiles {
 			path := filepath.Join(sessionsDir, name, filename)
-			if _, statErr := os.Stat(path); statErr == nil {
+			if st, statErr := os.Stat(path); statErr == nil {
+				if st.ModTime().Before(cutoff) {
+					stale = append(stale, fmt.Sprintf("session %q: %s (last written %s)", name, filename, st.ModTime().UTC().Format(time.RFC3339)))
+					continue
+				}
 				details = append(details, fmt.Sprintf("session %q: %s", name, filename))
 				sessions[name] = struct{}{}
 			} else if !os.IsNotExist(statErr) {
@@ -86,6 +103,11 @@ func (c *NudgeUnconfirmedCheck) Run(ctx *CheckContext) *CheckResult {
 	if len(details) == 0 && len(malformed) == 0 {
 		r.Status = StatusOK
 		r.Message = "no unconfirmed nudge deliveries"
+		if len(stale) > 0 {
+			sort.Strings(stale)
+			r.Message = fmt.Sprintf("no unconfirmed nudge deliveries in the last %s (%d older diagnostic(s) not reported)", nudgeUnconfirmedMaxAge, len(stale))
+			r.Details = stale
+		}
 		return r
 	}
 
@@ -106,6 +128,9 @@ func (c *NudgeUnconfirmedCheck) Run(ctx *CheckContext) *CheckResult {
 		} else {
 			r.Message += fmt.Sprintf("; %d unexpected non-directory entry(ies) under %s", len(malformed), sessionsDir)
 		}
+	}
+	if len(stale) > 0 {
+		r.Message += fmt.Sprintf("; %d diagnostic(s) older than %s not reported", len(stale), nudgeUnconfirmedMaxAge)
 	}
 	r.Details = details
 	return r

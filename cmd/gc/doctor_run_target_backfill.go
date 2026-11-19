@@ -45,15 +45,7 @@ type backfillTarget struct {
 }
 
 func (c *runTargetRoutedToBackfillCheck) collect() (targets []backfillTarget, skipped []string) {
-	scopes := []struct{ label, path string }{{"city", c.cityPath}}
-	if c.cfg != nil {
-		for _, rig := range c.cfg.Rigs {
-			if rig.Suspended || strings.TrimSpace(rig.Path) == "" {
-				continue
-			}
-			scopes = append(scopes, struct{ label, path string }{"rig " + rig.Name, rig.Path})
-		}
-	}
+	scopes := doctorStoreScopes(c.cfg, c.cityPath, false)
 	for _, sc := range scopes {
 		if c.newStore == nil || strings.TrimSpace(sc.path) == "" {
 			continue

@@ -38,15 +38,20 @@ func spawnSleeper(t *testing.T) int {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 	})
-	// Give the exec a moment so the argv is the sleeper's, not the shell's.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if argv, err := Cmdline(cmd.Process.Pid); err == nil && len(argv) > 0 {
-			break
+	// Start returns once the child is released, which can precede the kernel
+	// publishing the new argv, so wait for the sleeper's own argv.
+	pid := cmd.Process.Pid
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		argv, err := Cmdline(pid)
+		if err == nil && ArgvContainsSequence(argv, "sleep", "60") {
+			return pid
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pid %d never showed the sleeper argv: argv=%q err=%v", pid, argv, err)
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	return cmd.Process.Pid
 }
 
 // TestAliveWithCmdline_RejectsLivePIDWithNonMatchingArgv is the defect, stated

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gastownhall/gascity/internal/beads"
+	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doctor"
 )
 
@@ -19,13 +20,15 @@ const (
 // cities where the watchdog has not yet run or where the backlog is large enough
 // to be operationally visible. It is pure observability and never gates.
 type orderTrackingRetentionCheck struct {
+	cfg      *config.City
 	cityPath string
 	newStore func(string) (beads.Store, error)
 }
 
 // newOrderTrackingRetentionCheck constructs an orderTrackingRetentionCheck.
-func newOrderTrackingRetentionCheck(cityPath string, newStore func(string) (beads.Store, error)) *orderTrackingRetentionCheck {
-	return &orderTrackingRetentionCheck{cityPath: cityPath, newStore: newStore}
+// cfg supplies the effective retention TTL the watchdog prunes with.
+func newOrderTrackingRetentionCheck(cfg *config.City, cityPath string, newStore func(string) (beads.Store, error)) *orderTrackingRetentionCheck {
+	return &orderTrackingRetentionCheck{cfg: cfg, cityPath: cityPath, newStore: newStore}
 }
 
 // Name implements doctor.Check.
@@ -88,7 +91,11 @@ func (c *orderTrackingRetentionCheck) Run(_ *doctor.CheckContext) *doctor.CheckR
 			countStr = "≥" + countStr
 		}
 		res.Status = doctor.StatusWarning
-		res.Message = fmt.Sprintf("%s closed order-tracking beads: retention watchdog will prune automatically (7d TTL default; configure [beads.policies.order_tracking].delete_after_close)", countStr)
+		// Config composition always fills delete_after_close (default 7d), so
+		// the verdict states the effective TTL and where it comes from rather
+		// than telling the operator to configure a value that is already set.
+		res.Message = fmt.Sprintf("%s closed order-tracking beads: retention watchdog will prune automatically (TTL %s from [beads.policies.order_tracking].delete_after_close)",
+			countStr, orderTrackingRetentionPolicyForConfig(c.cfg).deleteAfterClose)
 		return res
 	}
 	res.Status = doctor.StatusOK

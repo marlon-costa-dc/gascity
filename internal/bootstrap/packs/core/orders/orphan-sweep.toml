@@ -5,7 +5,7 @@
 # again. No worktree salvage — cities that staff a work-health patrol role
 # (e.g. the gastown pack's witness) handle that separately.
 [order]
-description = "Reset beads assigned to dead agents back to the work pool"
+description = "Reset in-progress beads whose gc session is dead back to the work pool; keep claims no gc session backs"
 trigger = "cooldown"
 interval = "5m"
 exec = "$PACK_DIR/assets/scripts/orphan-sweep.sh"

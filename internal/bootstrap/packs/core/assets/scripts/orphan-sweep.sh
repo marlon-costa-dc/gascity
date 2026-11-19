@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# orphan-sweep — reset beads assigned to dead agents.
+# orphan-sweep — reset in-progress beads whose gc session is dead.
 #
 # Replaces the deacon patrol town-orphan-sweep step. Cross-references
-# in-progress beads against all known agents. Beads assigned to agents
-# that don't exist in ANY rig get reset to open/unassigned so they are
-# routable again.
+# in-progress beads against the configured agents and the live sessions. A
+# claim is reset to open/unassigned (routable again) only when a gc session
+# bead whose own identity is the assignee proves that session dead. A claim
+# no gc session backs (an operator's bd actor, an external lane label, a
+# removed agent that never had a session bead) is kept, never reset; a claim
+# the sweep cannot verify is kept and fails the run.
+#
+# Reporting: every kept or unverifiable claim is named on stderr with its bead
+# and reason. The controller logs an exec order's output only when it exits
+# non-zero, so unverifiable claims (exit 1) reach the controller log, while
+# kept claims on an otherwise clean run are seen with `gc order run
+# orphan-sweep`.
 #
 # Does NOT do worktree salvage — cities that staff a work-health patrol role
 # (e.g. the gastown pack's witness) handle that separately.
@@ -29,24 +38,29 @@ ESCALATION_TARGET="${GC_ESCALATION_TARGET:-human}"
 # liveness can be determined.
 # `gc bd list` without --rig is HQ-scoped from the city cwd, so per-rig
 # beads are invisible to a bare query — walk every rig explicitly.
-TMP=$(mktemp) || exit 0
+# A failed read stages nothing and fails the order loudly.
+fail_read() {
+    echo "orphan-sweep: $1 failed; nothing reset${FAILED_RIGS:+ (bead list also failed for rig(s):$FAILED_RIGS)}" >&2
+    exit 1
+}
+TMP=$(mktemp) || fail_read "mktemp"
 SESSION_TMP=$(mktemp) || {
     rm -f "$TMP"
-    exit 0
+    fail_read "mktemp"
 }
 trap 'rm -f "$TMP" "$SESSION_TMP"' EXIT
 
-RIG_NAMES=""
-RIG_LIST=$(gc rig list --json 2>/dev/null) || RIG_LIST=""
-if [ -n "$RIG_LIST" ]; then
-    RIG_NAMES=$(echo "$RIG_LIST" | jq -r '.rigs[] | select(.hq == false) | .name' 2>/dev/null) || RIG_NAMES=""
-fi
+RIG_LIST=$(gc rig list --json) || fail_read "gc rig list"
+RIG_NAMES=$(echo "$RIG_LIST" | jq -r '.rigs[] | select(.hq == false) | .name') || fail_read "gc rig list JSON"
+# A rig whose bead list fails is skipped (skipping resets nothing) and the
+# order exits 1 at the end, so one broken store never blocks the other rigs.
+FAILED_RIGS=""
 
 append_session_list() {
     local session_fetch_tmp
     local row_count
     session_fetch_tmp=$(mktemp) || return 1
-    if "$@" >"$session_fetch_tmp" 2>/dev/null; then
+    if "$@" >"$session_fetch_tmp"; then
         # An exit-0 response that parses to zero session rows carries no
         # liveness evidence at all. A city always has at least the calling
         # session live, so zero rows is never a legitimate steady state --
@@ -69,68 +83,43 @@ append_session_list() {
     return 1
 }
 
-append_hq_scope() {
-    local bead_fetch_tmp
-    bead_fetch_tmp=$(mktemp) || return 1
-    append_session_list gc session list --json || {
-        rm -f "$bead_fetch_tmp"
-        return 1
-    }
-    gc bd list --status=in_progress --json --limit=0 2>/dev/null >"$bead_fetch_tmp" || true
-    append_session_list gc session list --json || {
-        rm -f "$bead_fetch_tmp"
-        return 1
-    }
-    cat "$bead_fetch_tmp" >>"$TMP"
-    rm -f "$bead_fetch_tmp"
-}
-
-append_rig_scope() {
-    local rig="$1"
-    local bead_fetch_tmp
-    bead_fetch_tmp=$(mktemp) || return 1
-    append_session_list gc --rig "$rig" session list --json || {
-        rm -f "$bead_fetch_tmp"
-        return 1
-    }
-    gc bd list --rig "$rig" --status=in_progress --json --limit=0 2>/dev/null >"$bead_fetch_tmp" || true
-    append_session_list gc --rig "$rig" session list --json || {
-        rm -f "$bead_fetch_tmp"
-        return 1
-    }
-    cat "$bead_fetch_tmp" >>"$TMP"
-    rm -f "$bead_fetch_tmp"
-}
-
-# Step 1b: Get all known live session identities around each bead-list query.
-# The second liveness pass closes the session-list-before-bd-list race where a
-# newly spawned session can claim work after the first pass but before bd-list.
-# HQ liveness is required; per-rig failures only skip that rig's staged bead
-# rows so one stale or unreachable rig does not disable cleanup elsewhere.
-append_hq_scope || exit 0
-
+# Step 1b: `gc session list --json` is city-wide -- the --rig form returns the
+# same session set -- so one liveness pass before and one after ALL bead-list
+# queries closes the session-list-before-bd-list race (a session spawned
+# between the passes is caught by the second) without re-listing every
+# session twice per rig, which cost two ~1.3s CLI calls per scope. Liveness is
+# required.
+append_session_list gc session list --json || fail_read "gc session list"
+gc bd list --status=in_progress --json --limit=0 >>"$TMP" || fail_read "gc bd list (city)"
 while IFS= read -r rig; do
     [ -z "$rig" ] && continue
-    if ! append_rig_scope "$rig"; then
-        echo "orphan-sweep: skipping rig $rig after session-list failure" >&2
+    if ! RIG_ROWS=$(gc bd list --rig "$rig" --status=in_progress --json --limit=0); then
+        echo "orphan-sweep: gc bd list --rig $rig failed; rig skipped" >&2
+        FAILED_RIGS="$FAILED_RIGS $rig"
+        continue
     fi
+    printf '%s\n' "$RIG_ROWS" >>"$TMP"
 done <<<"$RIG_NAMES"
+append_session_list gc session list --json || fail_read "gc session list"
 
-IN_PROGRESS=$(jq -c -s 'add // []' "$TMP" 2>/dev/null) || IN_PROGRESS="[]"
+IN_PROGRESS=$(jq -c -s 'add // []' "$TMP") || fail_read "in-progress bead JSON"
+# Exit through here once reads are done: a skipped rig fails the order.
+finish() {
+    if [ -n "$FAILED_RIGS" ]; then
+        echo "orphan-sweep: bead list failed for rig(s):$FAILED_RIGS" >&2
+        exit 1
+    fi
+    exit "$1"
+}
 if [ "$IN_PROGRESS" = "[]" ]; then
-    exit 0
+    finish 0
 fi
 
 # Step 2: Get all known agent identities from resolved config.
 # `gc config explain` prints Agent.QualifiedName(), including import binding
-# and rig scope. Fall back to the older config-show parser for older binaries.
-AGENTS=$(gc config explain 2>/dev/null | awk '/^Agent: /{print $2}') || AGENTS=""
-if [ -z "$AGENTS" ]; then
-    AGENTS=$(gc config show 2>/dev/null | awk '/^\[\[agent\]\]/{a=1} a && /^[[:space:]]*name[[:space:]]*=/{print; a=0}' | sed 's/.*=[[:space:]]*"\(.*\)"/\1/') || exit 0
-fi
-if [ -z "$AGENTS" ]; then
-    exit 0
-fi
+# and rig scope.
+AGENTS=$(gc config explain | awk '/^Agent: /{print $2}') || fail_read "gc config explain"
+[ -n "$AGENTS" ] || fail_read "gc config explain (no agents)"
 
 # Step 2b: Parse identities of every session row that `gc session list --json`
 # reports as open so that pool-spawned ephemeral assignees (e.g.
@@ -176,7 +165,7 @@ LIVE_SESSION_IDS=$(jq -r -s '
       ]
     | .[]
     | select(. != null and . != "")
-' "$SESSION_TMP" 2>/dev/null) || exit 0
+' "$SESSION_TMP") || fail_read "session list JSON"
 
 agent_exists() {
     local candidate="$1"
@@ -217,6 +206,13 @@ session_bead_candidates() {
 
     if [[ "$assignee" == *-mc-* ]]; then
         printf 'mc-%s\n' "${assignee##*-mc-}"
+    fi
+
+    # Runtime names derived from a session bead id: a manual unaliased
+    # session "s-<beadID>" and a pool session "<agent>-<beadID>".
+    [[ "$assignee" == s-* ]] && printf '%s\n' "${assignee#s-}"
+    if [[ "$assignee" =~ -([a-z][a-z0-9]*-[a-z0-9]+([.][0-9]+)*)$ ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}"
     fi
 
     printf '%s\n' "$work_json" | jq -r "$first_bead_jq | [
@@ -263,6 +259,12 @@ session_probe_failure_is_unverifiable() {
     local session_id="$1"
     local assignee="$2"
 
+    # A runtime-name-derived id that does not exist means no gc session ever
+    # backed the name; it is evidence, not an unverifiable probe.
+    case "$session_id" in
+        mc-* | *-wisp-*) ;;
+        *) if [ "s-$session_id" = "$assignee" ] || [[ "$assignee" == *-"$session_id" ]]; then return 1; fi ;;
+    esac
     [ "$session_id" != "$assignee" ] && return 0
     [[ "$session_id" == mc-* ]] && return 0
     # A session-name-shaped self-probe (e.g. "beads--deployer-pool") has
@@ -284,6 +286,7 @@ session_bead_shows_live_assignment() {
     local session_json
     local live_match
     local probe_failed=0
+    local gc_session=0
 
     while IFS= read -r session_id; do
         [ -n "$session_id" ] || continue
@@ -292,6 +295,19 @@ session_bead_shows_live_assignment() {
                 probe_failed=1
             fi
             continue
+        fi
+        # Only a session bead whose own identity is the assignee backs the
+        # claim; stale gc.session_id metadata left by a released claim does not.
+        if printf '%s\n' "$session_json" | jq -e --arg a "$assignee" "
+            $first_bead_jq
+            | \$a != \"\" and (.issue_type // \"\") == \"session\"
+              and ((.id // \"\") as \$id
+                | \$id == \$a or (\$id != \"\" and ((\$a | endswith(\"-\" + \$id)) or \$a == (\"s-\" + \$id)))
+                  or (.metadata.session_name // \"\") == \$a
+                  or (.metadata.alias // \"\") == \$a
+                  or (.metadata.agent_name // \"\") == \$a)
+        " >/dev/null 2>&1; then
+            gc_session=1
         fi
         # Any live session bead at a probed candidate preserves the work. The
         # CLI does not expose every Go-side identity field, so the fail-safe
@@ -322,6 +338,11 @@ session_bead_shows_live_assignment() {
     done < <(session_bead_candidates "$assignee" "$work_json")
 
     [ "$probe_failed" -eq 0 ] || return 2
+    # Only a claim that resolves to a gc session bead can be a dead gc
+    # session's work. An assignee no session bead backs (an external Codex or
+    # Claude session claiming through bd, e.g. "codex-crg-integration") is
+    # another actor's claim and is never reset.
+    [ "$gc_session" -eq 1 ] || return 3
     return 1
 }
 
@@ -359,6 +380,17 @@ is_known_agent() {
     # claim. Exact match only: agents that merely start with "human" still
     # resolve through the normal paths below.
     if [ "$name" = "human" ]; then return 0; fi
+    # Only an agent-shaped identity can name a dead agent. Agent and session
+    # names are built from [A-Za-z0-9_-] plus the "/" rig and "." pack
+    # qualifiers (validAgentName; session names add "--"/"__" encodings of the
+    # same characters). An assignee with any other character -- the operator's
+    # bd actor ("Marlon Costa"), "user@host", free text -- is a person's claim,
+    # never agent work, so it is never reset. Probing those cost two `gc bd show`
+    # calls per bead (361 operator claims pushed the sweep past its 600s
+    # timeout) and, had a run finished, would have wiped every operator claim.
+    case "$name" in
+        *[!A-Za-z0-9_./-]*) return 0 ;;
+    esac
     # Direct match against a configured agent template name.
     if agent_exists "$name"; then return 0; fi
     # Pool instance: strip trailing -<digits> and check template name.
@@ -402,6 +434,13 @@ is_known_agent() {
 
 ORPHANED=0
 UNVERIFIABLE=0
+# Claims no gc session backs (another actor's work), kept and named on stderr.
+KEPT_FOREIGN=0
+
+# report_claim names one claim the sweep did not reset, with why.
+report_claim() {
+    echo "orphan-sweep: $1 claim $2 (assignee $3): $4" >&2
+}
 # Count of undeliverable summaries. Load-bearing for the exit code below.
 FAILED=0
 # Process substitution (not a pipe) keeps the loop body in the parent
@@ -414,6 +453,7 @@ while IFS=$'\t' read -r bead_id assignee; do
             recheck_status=$?
             if [ "$recheck_status" != "2" ]; then
                 UNVERIFIABLE=$((UNVERIFIABLE + 1))
+                report_claim unverifiable "$bead_id" "$assignee" "could not re-read the work bead before reset"
             fi
             continue
         fi
@@ -423,6 +463,12 @@ while IFS=$'\t' read -r bead_id assignee; do
             session_status=$?
             if [ "$session_status" = "2" ]; then
                 UNVERIFIABLE=$((UNVERIFIABLE + 1))
+                report_claim unverifiable "$bead_id" "$assignee" "could not read its session bead"
+                continue
+            fi
+            if [ "$session_status" = "3" ]; then
+                KEPT_FOREIGN=$((KEPT_FOREIGN + 1))
+                report_claim kept "$bead_id" "$assignee" "no gc session bead backs it"
                 continue
             fi
         fi
@@ -432,6 +478,7 @@ while IFS=$'\t' read -r bead_id assignee; do
             reset_status=$?
             if [ "$reset_status" != "2" ]; then
                 UNVERIFIABLE=$((UNVERIFIABLE + 1))
+                report_claim unverifiable "$bead_id" "$assignee" "the conditional reset did not apply"
             fi
         fi
     fi
@@ -468,5 +515,10 @@ fi
 # (gastownhall/gascity#4543).
 if [ "$FAILED" -gt 0 ]; then
     echo "orphan-sweep: $FAILED escalation summary(ies) could not be delivered to '$ESCALATION_TARGET' (see above)" >&2
-    exit 1
+    finish 1
 fi
+[ "$KEPT_FOREIGN" -eq 0 ] || echo "orphan-sweep: kept $KEPT_FOREIGN claim(s) no gc session backs"
+
+# An unverifiable claim is a decision the sweep could not make: surface it.
+[ "$UNVERIFIABLE" -eq 0 ] || finish 1
+finish 0

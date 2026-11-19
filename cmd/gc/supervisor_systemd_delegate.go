@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -215,6 +216,26 @@ func delegatedUnitActive(d systemdDelegation) bool {
 	// past the kill the context deadline triggers.
 	cmd.WaitDelay = time.Second
 	return cmd.Run() == nil
+}
+
+// delegatedUnitMainPID reads the MainPID systemd tracks for the delegated
+// unit at its configured scope, bounded like delegatedUnitActive. ok is
+// false when systemctl fails, times out, or prints a non-integer.
+func delegatedUnitMainPID(d systemdDelegation) (int, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), delegatedIsActiveTimeout)
+	defer cancel()
+	args := append(d.systemctlArgs("show"), "--property=MainPID", "--value")
+	cmd := exec.CommandContext(ctx, delegatedSystemctlPath(), args...)
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0, false
+	}
+	return pid, true
 }
 
 // delegatedSystemctlTimeoutError reports that a delegated systemctl

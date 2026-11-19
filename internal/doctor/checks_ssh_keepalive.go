@@ -117,6 +117,11 @@ func findPrePushHook(gitBin, repoPath string) (string, error) {
 			if !filepath.IsAbs(hooksPath) {
 				hooksPath = filepath.Join(repoPath, hooksPath)
 			}
+			// git reads hooks only from core.hooksPath once it is set; a path
+			// that is not a directory (e.g. /dev/null) disables every hook.
+			if st, err := os.Stat(hooksPath); err == nil && !st.IsDir() {
+				return "", nil
+			}
 			candidates = append(candidates, filepath.Join(hooksPath, "pre-push"))
 		}
 	}

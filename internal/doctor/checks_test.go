@@ -824,7 +824,7 @@ func TestAgentSessionsCheck_AllRunning(t *testing.T) {
 	cfg := &config.City{
 		Agents: []config.Agent{{Name: "mayor"}},
 	}
-	c := NewAgentSessionsCheck(cfg, "test", "", sp)
+	c := NewAgentSessionsCheck(cfg, "test", "", sp, false)
 	r := c.Run(&CheckContext{})
 	if r.Status != StatusOK {
 		t.Errorf("status = %d, want OK; msg = %s", r.Status, r.Message)
@@ -838,7 +838,7 @@ func TestAgentSessionsCheck_Missing(t *testing.T) {
 	cfg := &config.City{
 		Agents: []config.Agent{{Name: "mayor"}},
 	}
-	c := NewAgentSessionsCheck(cfg, "test", "", sp)
+	c := NewAgentSessionsCheck(cfg, "test", "", sp, false)
 	r := c.Run(&CheckContext{})
 	if r.Status != StatusWarning {
 		t.Errorf("status = %d, want Warning; msg = %s", r.Status, r.Message)
@@ -852,10 +852,26 @@ func TestAgentSessionsCheck_SkipsSuspended(t *testing.T) {
 	cfg := &config.City{
 		Agents: []config.Agent{{Name: "worker", Suspended: true}},
 	}
-	c := NewAgentSessionsCheck(cfg, "test", "", sp)
+	c := NewAgentSessionsCheck(cfg, "test", "", sp, false)
 	r := c.Run(&CheckContext{})
 	if r.Status != StatusOK {
 		t.Errorf("status = %d, want OK (suspended skipped); msg = %s", r.Status, r.Message)
+	}
+}
+
+// A city the operator suspended has no sessions by declaration: the check
+// names the pause and keeps the missing agents visible instead of warning.
+func TestAgentSessionsCheck_CitySuspendedReportsPause(t *testing.T) {
+	cfg := &config.City{Agents: []config.Agent{{Name: "mayor"}}}
+	r := NewAgentSessionsCheck(cfg, "test", "", runtime.NewFake(), true).Run(&CheckContext{})
+	if r.Status != StatusOK {
+		t.Fatalf("status = %d, want OK; msg = %s", r.Status, r.Message)
+	}
+	if !strings.Contains(r.Message, CitySuspendedByOperator) || !strings.Contains(r.Message, "1 agent(s) without sessions") {
+		t.Fatalf("message = %q, want the declared pause and the missing count", r.Message)
+	}
+	if len(r.Details) != 1 || r.Details[0] != "mayor" {
+		t.Fatalf("details = %v, want the missing agent kept visible", r.Details)
 	}
 }
 
@@ -1046,7 +1062,7 @@ func TestOrphanSessionsCheck_NoOrphans(t *testing.T) {
 	cfg := &config.City{
 		Agents: []config.Agent{{Name: "mayor"}},
 	}
-	c := NewOrphanSessionsCheck(cfg, "test", "", sp)
+	c := NewOrphanSessionsCheck(cfg, "test", "", sp, false)
 	r := c.Run(&CheckContext{})
 	if r.Status != StatusOK {
 		t.Errorf("status = %d, want OK; msg = %s", r.Status, r.Message)
@@ -1065,7 +1081,7 @@ func TestOrphanSessionsCheck_Found(t *testing.T) {
 	cfg := &config.City{
 		Agents: []config.Agent{{Name: "mayor"}},
 	}
-	c := NewOrphanSessionsCheck(cfg, "test", "", sp)
+	c := NewOrphanSessionsCheck(cfg, "test", "", sp, false)
 	r := c.Run(&CheckContext{})
 	if r.Status != StatusWarning {
 		t.Errorf("status = %d, want Warning; msg = %s", r.Status, r.Message)
@@ -1084,7 +1100,7 @@ func TestOrphanSessionsCheck_Fix(t *testing.T) {
 	cfg := &config.City{
 		Agents: []config.Agent{{Name: "mayor"}},
 	}
-	c := NewOrphanSessionsCheck(cfg, "test", "", sp)
+	c := NewOrphanSessionsCheck(cfg, "test", "", sp, false)
 	if err := c.Fix(&CheckContext{}); err != nil {
 		t.Fatalf("Fix() error: %v", err)
 	}
@@ -1117,7 +1133,7 @@ func TestOrphanSessionsCheck_FixSkipsWhenControllerRunning(t *testing.T) {
 	cfg := &config.City{
 		Agents: []config.Agent{{Name: "mayor"}},
 	}
-	c := NewOrphanSessionsCheck(cfg, "test", "", sp)
+	c := NewOrphanSessionsCheck(cfg, "test", "", sp, false)
 	err := c.Fix(&CheckContext{CityPath: cityDir})
 	if err == nil {
 		t.Fatal("Fix() error = nil, want refusal while controller is running")
@@ -1143,13 +1159,40 @@ func TestOrphanSessionsCheck_PartialListWarns(t *testing.T) {
 	}
 
 	cfg := &config.City{}
-	c := NewOrphanSessionsCheck(cfg, "test", "", sp)
+	c := NewOrphanSessionsCheck(cfg, "test", "", sp, false)
 	r := c.Run(&CheckContext{})
 	if r.Status != StatusWarning {
 		t.Fatalf("status = %d, want Warning; msg = %s", r.Status, r.Message)
 	}
 	if !strings.Contains(r.Message, "partially failed") {
 		t.Fatalf("message = %q, want partial failure warning", r.Message)
+	}
+}
+
+// With the city suspended, an unlistable backend and no visible orphan is
+// the declared pause; a visible orphan is a live session the pause does not
+// explain and still warns.
+func TestOrphanSessionsCheck_CitySuspended(t *testing.T) {
+	newProvider := func() *partialListDoctorProvider {
+		return &partialListDoctorProvider{
+			Fake:    runtime.NewFake(),
+			listErr: &runtime.PartialListError{Err: errors.New("tmux server unreachable: no tmux server running"), ServerAbsent: true},
+		}
+	}
+	cfg := &config.City{Agents: []config.Agent{{Name: "mayor"}}}
+
+	r := NewOrphanSessionsCheck(cfg, "test", "", newProvider(), true).Run(&CheckContext{})
+	if r.Status != StatusOK || !strings.Contains(r.Message, CitySuspendedByOperator) || !strings.Contains(r.Message, "no tmux server running") {
+		t.Fatalf("result = %d %q, want OK naming the pause and the listing error", r.Status, r.Message)
+	}
+
+	sp := newProvider()
+	if err := sp.Start(context.Background(), "stale-worker", runtime.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	r = NewOrphanSessionsCheck(cfg, "test", "", sp, true).Run(&CheckContext{})
+	if r.Status != StatusWarning {
+		t.Fatalf("status = %d, want Warning for a visible orphan on a suspended city; msg = %s", r.Status, r.Message)
 	}
 }
 
@@ -1163,7 +1206,7 @@ func TestOrphanSessionsCheck_FixFailsOnPartialList(t *testing.T) {
 	}
 
 	cfg := &config.City{}
-	c := NewOrphanSessionsCheck(cfg, "test", "", sp)
+	c := NewOrphanSessionsCheck(cfg, "test", "", sp, false)
 	if err := c.Fix(&CheckContext{}); err == nil {
 		t.Fatal("Fix() error = nil, want partial list failure")
 	}
@@ -3175,6 +3218,18 @@ func TestDoltNomsSizeCheck_WarnAtThreshold(t *testing.T) {
 	}
 }
 
+// .dolt/git-remote-cache is Dolt's local copy of a git remote, not the noms
+// table store bloat recovery compacts; it must not count as noms.
+func TestDoltNomsSizeCheck_IgnoresGitRemoteCache(t *testing.T) {
+	dir := setupManagedDoltCity(t)
+	writeFakeFile(t, filepath.Join(dir, ".beads", "dolt", "hq", ".dolt", "noms", "file1"), 1024*1024)
+	writeFakeFile(t, filepath.Join(dir, ".beads", "dolt", "hq", ".dolt", "git-remote-cache", "pack"), 3*1024*1024*1024)
+	r := newTestDoltNomsSizeCheck(dir, false).Run(&CheckContext{})
+	if r.Status != StatusOK {
+		t.Fatalf("status = %d, want OK for a 1 MB noms beside a 3 GB git-remote-cache; msg = %s", r.Status, r.Message)
+	}
+}
+
 func TestDoltNomsSizeCheck_ErrorAtThreshold(t *testing.T) {
 	dir := setupManagedDoltCity(t)
 	// 21 GB — above error (20 GB).
@@ -4363,5 +4418,32 @@ func TestDoltVersionCheck_CanFixFalse(t *testing.T) {
 	c := NewDoltVersionCheck()
 	if c.CanFix() {
 		t.Error("CanFix() = true, want false")
+	}
+}
+
+// Only a backend whose server is not running is the suspended city's pause; a
+// different listing fault (one socket refusing access) still warns, wrapped or
+// joined with an absent backend or not.
+func TestOrphanSessionsCheck_CitySuspendedOnlyExcusesAbsentServers(t *testing.T) {
+	cfg := &config.City{Agents: []config.Agent{{Name: "mayor"}}}
+	absent := &runtime.PartialListError{Err: errors.New("tmux server unreachable"), ServerAbsent: true}
+	denied := &runtime.PartialListError{Err: errors.New("permission denied on socket")}
+	cases := []struct {
+		name string
+		err  error
+		want CheckStatus
+	}{
+		{"absent server", fmt.Errorf("default backend: %w", absent), StatusOK},
+		{"other fault", denied, StatusWarning},
+		{"absent joined with fault", &runtime.PartialListError{Err: errors.Join(absent, errors.New("acp: permission denied"))}, StatusWarning},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sp := &partialListDoctorProvider{Fake: runtime.NewFake(), listErr: tc.err}
+			r := NewOrphanSessionsCheck(cfg, "test", "", sp, true).Run(&CheckContext{})
+			if r.Status != tc.want {
+				t.Fatalf("status = %d, want %d; msg = %s", r.Status, tc.want, r.Message)
+			}
+		})
 	}
 }

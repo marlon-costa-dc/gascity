@@ -271,6 +271,10 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 	// city.toml is precisely when session diagnostics need to be visible.
 	register(doctor.NewNudgeUnconfirmedCheck())
 
+	// The session and order checks report a city the operator suspended as
+	// the declared pause rather than as missing sessions and stale orders.
+	citySuspended := cfgErr == nil && cfg != nil && citySuspendedWithState(cfg, loadSuspensionStateBestEffort(cityPath))
+
 	// Config-dependent checks run only when city.toml loaded cleanly. If it
 	// fails, the core config check above reports the parse error.
 	if cfgErr == nil && cfg != nil {
@@ -299,7 +303,9 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 		register(doctor.NewServiceSecretsPermsCheck(cfg, cityPath))
 		register(doctor.NewSkillCollisionCheck(cfg, cityPath))
 		register(doctor.NewSkillDanglingSinkCheck(doctorSkillStaticSinks(cityPath, cfg), materialize.LegacyOwnedRootsFor(cityPath), doctorLiveSessionSinks(cityPath, cfg)))
-		register(doctor.NewOrderFiringCurrentCheck(cfg, cityPath, doctor.WithOrderFiringCurrentLastRunFunc(doctorOrderFiringCurrentLastRunFunc(cityPath, cfg, opts.Stderr))))
+		register(doctor.NewOrderFiringCurrentCheck(cfg, cityPath,
+			doctor.WithOrderFiringCurrentLastRunFunc(doctorOrderFiringCurrentLastRunFunc(cityPath, cfg, opts.Stderr)),
+			doctor.WithOrderFiringCurrentCitySuspended(citySuspended)))
 		register(doctor.NewOrderOutcomeHealthyCheck(cfg, cityPath))
 		register(newCodexHooksDriftCheck(cityPath, codexHookWorkDirs(cityPath, cfg)))
 		register(doctor.NewRigPackCoverageCheck(cfg, cityPath))
@@ -360,9 +366,9 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 		if err != nil {
 			register(doctor.ErrorCheck("session-provider", err.Error()))
 		} else {
-			register(doctor.NewAgentSessionsCheck(cfg, cityName, st, sp))
+			register(doctor.NewAgentSessionsCheck(cfg, cityName, st, sp, citySuspended))
 			register(doctor.NewZombieSessionsCheck(cfg, cityName, st, sp))
-			register(doctor.NewOrphanSessionsCheck(cfg, cityName, st, sp))
+			register(doctor.NewOrphanSessionsCheck(cfg, cityName, st, sp, citySuspended))
 		}
 	}
 
@@ -419,8 +425,8 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 			register(newPoolIdleRoutedWorkCheck(cfg, cityPath, storeFactory))
 			register(newWorkOptionMetadataMigrationCheck(cfg, cityPath, storeFactory))
 			register(newBacklogDepthCheck(cityPath, storeFactory))
-			register(newOrderTrackingRetentionCheck(cityPath, storeFactory))
-			register(&sessionModelDoctorCheck{cfg: cfg, cityPath: cityPath, newStore: storeFactory})
+			register(newOrderTrackingRetentionCheck(cfg, cityPath, storeFactory))
+			register(&sessionModelDoctorCheck{cfg: cfg, cityPath: cityPath, newStore: storeFactory, citySuspended: citySuspended})
 			register(newStartupHealthEpisodesCheck(cfg, cityPath, storeFactory))
 			// Differential probe: the preflight above just proved the store
 			// reachable with the controller's environment, so a read that
@@ -431,7 +437,7 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 			// probe was skipped or failed in a non-outage shape, and in both
 			// of those the assertion would be false.
 			if storePreflightPassed {
-				register(newGateSandboxReadCheck(cityPath))
+				register(newGateSandboxReadCheck(cityPath, opts.SupervisorPID))
 			}
 		}
 	}
@@ -573,6 +579,8 @@ func doDoctor(opts doctorOpts, stdout, stderr io.Writer) int {
 	// an abandoned check writes only to its own private buffer. A future caller
 	// that reuses a Doctor in-process must call Wait before releasing ctx.
 	d := &doctor.Doctor{CheckTimeout: opts.CheckTimeout}
+	// Identical bd reads are shared across this run's checks; see bdReadMemo.
+	defer installDoctorBdReadMemo(d, cityPath)()
 	ctx := &doctor.CheckContext{CityPath: cityPath, Verbose: opts.Verbose}
 	cfg, cfgErr := loadCityConfig(cityPath, stderr)
 	if cfgErr == nil {
@@ -589,7 +597,12 @@ func doDoctor(opts doctorOpts, stdout, stderr io.Writer) int {
 			Unit:       raw.Unit,
 			UnitActive: raw.UnitActive,
 			UnitPID:    raw.UnitPID,
+			Error:      raw.Error,
+			Remedy:     raw.Remedy,
 		}
+	} else if _, _, err := supervisorSystemdDelegation(); err != nil {
+		// No supervisor to compare, but a broken delegation env is often why.
+		supervisorUnitOwnership = doctor.SupervisorUnitOwnership{Status: "delegation_error", Error: err.Error()}
 	}
 	skipRigDoltChecks := gcDoltSkip()
 	skipCityDoltCheck := skipRigDoltChecks || (!scopeUsesManagedBdStoreContract(cityPath, cityPath) && !workspaceNeedsCityDoltCheck(cityPath, cfg))
@@ -618,7 +631,8 @@ func doDoctor(opts doctorOpts, stdout, stderr io.Writer) int {
 	})
 	selected, unmatched := doctor.SelectChecks(registered, splitDoctorCheckNames(opts.Checks))
 	if len(unmatched) > 0 {
-		return reportUnknownDoctorChecks(unmatched, registered, opts.JSON, stdout, stderr)
+		reportUnknownDoctorChecks(unmatched, registered, opts.JSON, stdout, stderr)
+		return 1
 	}
 	for _, check := range selected {
 		d.Register(check)
@@ -667,8 +681,8 @@ type doctorUnknownCheckFailure struct {
 // and tells the caller what it could have asked for. Running the names that did
 // match would be worse than erroring: a caller filtering doctor output by name
 // reads a short result set as a clean one, so a single typo would report health
-// nobody measured.
-func reportUnknownDoctorChecks(unmatched []string, registered []doctor.Check, jsonOut bool, stdout, stderr io.Writer) int {
+// nobody measured. The caller exits 1.
+func reportUnknownDoctorChecks(unmatched []string, registered []doctor.Check, jsonOut bool, stdout, stderr io.Writer) {
 	names := doctor.CheckNames(registered)
 	message := unknownDoctorChecksMessage(unmatched, names)
 	if jsonOut {
@@ -686,14 +700,13 @@ func reportUnknownDoctorChecks(unmatched []string, registered []doctor.Check, js
 		}); err != nil {
 			fmt.Fprintf(stderr, "gc doctor: %v\n", err) //nolint:errcheck // best-effort stderr
 		}
-		return 1
+		return
 	}
 	fmt.Fprintf(stderr, "gc doctor: %s\n", message)                                //nolint:errcheck // best-effort stderr
 	fmt.Fprintf(stderr, "checks registered in this workspace (%d):\n", len(names)) //nolint:errcheck // best-effort stderr
 	for _, name := range names {
 		fmt.Fprintf(stderr, "  %s\n", name) //nolint:errcheck // best-effort stderr
 	}
-	return 1
 }
 
 func unknownDoctorChecksMessage(unmatched, registered []string) string {
@@ -1012,11 +1025,13 @@ func openStoreForCity(cityPath string) func(string) (beads.Store, error) {
 // run, so the dozen-odd store-backed checks share one store per scope instead
 // of each opening its own.
 //
-// A doctor run is a read-only snapshot of a city that is not being mutated
-// underneath it, and no check closes the store it is handed, so reusing the
-// handle is the same object lifetime the checks already assume. What it saves
-// is the open: on a bd-backed scope that is a version probe, a config read and
-// a custom-types read per check, all of them subprocesses.
+// No check closes the store it is handed, so reusing the handle is the same
+// object lifetime the checks already assume. What it saves is the open: on a
+// bd-backed scope that is a version probe, a config read and a custom-types
+// read per check, all of them subprocesses. A shared bd-backed handle also
+// shares its bd runner, which a doctor run memoizes (see bdReadMemo), so a
+// check repeating an earlier check's read may get that earlier answer rather
+// than a live re-read.
 //
 // Failures are memoized too. A store that could not be opened will not open on
 // the next check either, and re-attempting it once per check is how one

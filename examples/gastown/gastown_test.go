@@ -144,16 +144,14 @@ func refineryExistingPRValidationBlock(t *testing.T) string {
 	return extractBetween(t, refineryMergePushDescription(t), `if [ "$MERGE_STRATEGY" = "mr" ] && [ -n "$EXISTING_PR" ]; then`, "\n```\n\n**If MERGE_STRATEGY")
 }
 
+// linkTestCommands links each named host tool into binDir through
+// linkTestPathTool, which resolves past version-manager shims: a shim linked
+// into a PATH=binDir, HOME=tmp sandbox finds the user's mise config as an
+// untrusted project config and fails instead of running the tool.
 func linkTestCommands(t *testing.T, binDir string, names ...string) {
 	t.Helper()
 	for _, name := range names {
-		path, err := exec.LookPath(name)
-		if err != nil {
-			t.Fatalf("finding %s: %v", name, err)
-		}
-		if err := os.Symlink(path, filepath.Join(binDir, name)); err != nil {
-			t.Fatalf("linking %s: %v", name, err)
-		}
+		linkTestPathTool(t, binDir, name)
 	}
 }
 

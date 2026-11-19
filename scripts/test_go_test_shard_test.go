@@ -378,7 +378,7 @@ func TestGoTestShardWithoutTimingPreservesDirectProductContract(t *testing.T) {
 		"GOEXPERIMENT": "", "GOPROXY": "", "GOPRIVATE": "", "GONOPROXY": "", "GONOSUMDB": "",
 		"GOSUMDB": "", "GOINSECURE": "", "GOVCS": "", "GOWORK": "", "GC_FAST_UNIT": "0",
 		"CGO_CPPFLAGS": "", "CGO_LDFLAGS": "", "GC_TEST_SHARD_INDEX": "1", "GC_TEST_SHARD_TOTAL": "2",
-		"MISE_CONFIG_DIR": filepath.Join(fixture.homeDir, ".config", "mise"), "MISE_DATA_DIR": filepath.Join(fixture.homeDir, ".local", "share", "mise"),
+		"MISE_CONFIG_DIR": filepath.Join(fixture.homeDir, ".config", "mise"), "MISE_DATA_DIR": filepath.Join(fixture.homeDir, ".local", "share", "mise"), "MISE_STATE_DIR": filepath.Join(fixture.homeDir, ".local", "state", "mise"),
 	}
 	got := fixtureEnvironment(t, readFixtureFile(t, fixture.productEnvFile))
 	fixture.assertSeededGitConfig(t, got)

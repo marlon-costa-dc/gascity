@@ -38,6 +38,14 @@ func conditionGCHome() string {
 // binaries as the running city instead of whatever older copy happens to live
 // in /usr/local/bin.
 func conditionPATH() string {
+	return ConditionPATHFor(os.Getenv("PATH"))
+}
+
+// ConditionPATHFor is the gate PATH a process whose own PATH is searchPath
+// would build. A diagnostic run from another process (gc doctor from a shell)
+// passes the controller's PATH so it reproduces the sandbox the controller's
+// gates really get, not one built from its own PATH.
+func ConditionPATHFor(searchPath string) string {
 	dirs := make([]string, 0, 8)
 	seen := make(map[string]struct{})
 	addDir := func(dir string) {
@@ -51,7 +59,7 @@ func conditionPATH() string {
 		dirs = append(dirs, dir)
 	}
 	for _, name := range []string{"bd", "gc", "dolt", "jq"} {
-		if path, err := exec.LookPath(name); err == nil {
+		if path, ok := LookPathIn(searchPath, name); ok {
 			addDir(filepath.Dir(path))
 		}
 	}
@@ -59,6 +67,22 @@ func conditionPATH() string {
 		addDir(dir)
 	}
 	return strings.Join(dirs, ":")
+}
+
+// LookPathIn is exec.LookPath against searchPath instead of the process's PATH:
+// the first absolute directory holding an executable regular file named name.
+// Relative entries are skipped, as exec.LookPath refuses them (exec.ErrDot).
+func LookPathIn(searchPath, name string) (string, bool) {
+	for _, dir := range filepath.SplitList(searchPath) {
+		if !filepath.IsAbs(dir) {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+			return path, true
+		}
+	}
+	return "", false
 }
 
 // ConditionEnv builds the environment variables for a gate condition script.

@@ -456,17 +456,27 @@ func (c *BinaryCheck) Fix(_ *CheckContext) error { return nil }
 
 // --- Session checks (skipped when controller is running) ---
 
+// CitySuspendedByOperator opens the verdict of a check whose subject —
+// sessions or scheduled orders — is paused because the operator suspended
+// the city. That is the declared state, so the check reports it by name
+// instead of as a failure; a fault the suspension does not explain keeps
+// its normal status.
+const CitySuspendedByOperator = "city suspended by operator"
+
 // AgentSessionsCheck verifies non-suspended agents have running sessions.
 type AgentSessionsCheck struct {
 	cfg             *config.City
 	cityName        string
 	sessionTemplate string
 	sp              runtime.Provider
+	citySuspended   bool
 }
 
 // NewAgentSessionsCheck creates a check for agent session liveness.
-func NewAgentSessionsCheck(cfg *config.City, cityName, sessionTemplate string, sp runtime.Provider) *AgentSessionsCheck {
-	return &AgentSessionsCheck{cfg: cfg, cityName: cityName, sessionTemplate: sessionTemplate, sp: sp}
+// citySuspended reports that the operator suspended the city, so agents
+// without sessions are the declared pause, not a defect.
+func NewAgentSessionsCheck(cfg *config.City, cityName, sessionTemplate string, sp runtime.Provider, citySuspended bool) *AgentSessionsCheck {
+	return &AgentSessionsCheck{cfg: cfg, cityName: cityName, sessionTemplate: sessionTemplate, sp: sp, citySuspended: citySuspended}
 }
 
 // Name returns the check identifier.
@@ -490,9 +500,14 @@ func (c *AgentSessionsCheck) Run(_ *CheckContext) *CheckResult {
 		r.Message = "all agent sessions running"
 		return r
 	}
+	r.Details = missing
+	if c.citySuspended {
+		r.Status = StatusOK
+		r.Message = fmt.Sprintf("%s; sessions paused (%d agent(s) without sessions)", CitySuspendedByOperator, len(missing))
+		return r
+	}
 	r.Status = StatusWarning
 	r.Message = fmt.Sprintf("%d agent(s) without sessions", len(missing))
-	r.Details = missing
 	r.FixHint = "run gc start to reconcile sessions"
 	return r
 }
@@ -573,11 +588,15 @@ type OrphanSessionsCheck struct {
 	cityName        string
 	sessionTemplate string
 	sp              runtime.Provider
+	citySuspended   bool
 }
 
 // NewOrphanSessionsCheck creates a check for orphaned sessions.
-func NewOrphanSessionsCheck(cfg *config.City, cityName, sessionTemplate string, sp runtime.Provider) *OrphanSessionsCheck {
-	return &OrphanSessionsCheck{cfg: cfg, cityName: cityName, sessionTemplate: sessionTemplate, sp: sp}
+// citySuspended reports that the operator suspended the city, so a session
+// backend that cannot be listed is the declared pause when no orphan is
+// visible; visible orphans still warn.
+func NewOrphanSessionsCheck(cfg *config.City, cityName, sessionTemplate string, sp runtime.Provider, citySuspended bool) *OrphanSessionsCheck {
+	return &OrphanSessionsCheck{cfg: cfg, cityName: cityName, sessionTemplate: sessionTemplate, sp: sp, citySuspended: citySuspended}
 }
 
 // Name returns the check identifier.
@@ -610,6 +629,11 @@ func (c *OrphanSessionsCheck) Run(_ *CheckContext) *CheckResult {
 	}
 
 	if len(orphans) == 0 {
+		if partialList && c.citySuspended && everyBackendServerAbsent(err) {
+			r.Status = StatusOK
+			r.Message = fmt.Sprintf("%s; sessions paused (no orphaned sessions; listing: %v)", CitySuspendedByOperator, err)
+			return r
+		}
 		if partialList {
 			r.Status = StatusWarning
 			r.Message = fmt.Sprintf("listing sessions partially failed: %v", err)
@@ -627,6 +651,38 @@ func (c *OrphanSessionsCheck) Run(_ *CheckContext) *CheckResult {
 	}
 	r.Details = orphans
 	return r
+}
+
+// everyBackendServerAbsent reports whether every backend failure inside err is
+// a runtime server that is not running (PartialListError.ServerAbsent), the
+// failure a suspended city produces by design. Any other failure — a
+// permission error on one socket, a timeout — is a fault the pause does not
+// explain. A merged multi-backend error never carries ServerAbsent itself, so
+// the walk descends into joined and wrapped errors to the per-backend ones.
+func everyBackendServerAbsent(err error) bool {
+	switch e := err.(type) { //nolint:errorlint // the walk inspects each node itself; errors.As would stop at the first match
+	case nil:
+		return false
+	case *runtime.PartialListError:
+		if e.ServerAbsent {
+			return true
+		}
+		return everyBackendServerAbsent(e.Err)
+	case interface{ Unwrap() []error }:
+		errs := e.Unwrap()
+		if len(errs) == 0 {
+			return false
+		}
+		for _, inner := range errs {
+			if !everyBackendServerAbsent(inner) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return everyBackendServerAbsent(e.Unwrap())
+	}
+	return false
 }
 
 // CanFix returns true — orphan sessions can be killed.
@@ -2616,7 +2672,11 @@ func (c *DoltNomsSizeCheck) Run(_ *CheckContext) *CheckResult {
 		measureDir = duDirBytes
 	}
 	for _, target := range targets {
-		total, exists, err := measureDir(target.ScanRoot)
+		// Size noms, the table-file store bloat recovery compacts. ScanRoot is
+		// the whole .dolt directory, which also holds git-remote-cache, Dolt's
+		// local copy of a git+ssh/git+https remote; folding that in reported a
+		// 842M noms as "noms directory ... is 3.36 GB".
+		total, exists, err := measureDir(filepath.Join(target.ScanRoot, "noms"))
 		if err != nil {
 			r.Status = StatusWarning
 			r.Message = fmt.Sprintf("scan dolt data dir: %v", err)

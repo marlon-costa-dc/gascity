@@ -50,6 +50,25 @@ func TestSingletonSessionMigrationWarnings_SkipsNamepoolSingleton(t *testing.T) 
 	}
 }
 
+// A pack's singleton (bundled or third-party, whatever its pack name) drains
+// on empty demand by its author's design; only a singleton the city declares
+// itself is warned on.
+func TestSingletonSessionMigrationWarnings_SkipsPackAgents(t *testing.T) {
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "test-city"},
+		Agents: []config.Agent{
+			{Name: "control-dispatcher", PackName: "core", MaxActiveSessions: intPtr(1)},
+			{Name: "watcher", PackName: "acme-ops", MaxActiveSessions: intPtr(1)},
+			{Name: "solo", MaxActiveSessions: intPtr(1)},
+		},
+	}
+
+	warnings := singletonSessionMigrationWarnings(cfg)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], `agent "solo"`) {
+		t.Fatalf("warnings = %v, want exactly the city-declared solo singleton", warnings)
+	}
+}
+
 func TestValidateLegacyFormulaConfigRoutes_RejectsTemplateAssignee(t *testing.T) {
 	dir := t.TempDir()
 	formulasDir := filepath.Join(dir, "formulas")

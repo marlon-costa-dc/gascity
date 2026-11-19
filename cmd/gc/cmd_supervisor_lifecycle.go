@@ -702,14 +702,35 @@ func supervisorPreForkOwnershipWarning() string {
 //   - "no_unit": no unit is installed; the supervisor is intentionally
 //     unmanaged (e.g. `gc supervisor start` on a workstation that never ran
 //     `gc supervisor install`).
+//   - "delegation_error": GC_SUPERVISOR_SYSTEMD_UNIT/_SCOPE is set but
+//     invalid; Error carries the configuration error.
+//
+// Under systemd delegation (GC_SUPERVISOR_SYSTEMD_UNIT) the operator-managed
+// unit is the owner, wherever its unit file lives, so ownership is resolved
+// against that unit at its configured scope instead of gc's own unit path.
 type supervisorUnitOwnershipStatus struct {
 	Status     string
 	Unit       string
 	UnitActive bool
 	UnitPID    int
+	Error      string
+	Remedy     string
 }
 
 func supervisorDetermineUnitOwnership(livePID int) supervisorUnitOwnershipStatus {
+	delegation, delegated, err := supervisorSystemdDelegation()
+	if err != nil {
+		return supervisorUnitOwnershipStatus{Status: "delegation_error", Error: err.Error()}
+	}
+	if delegated {
+		if !delegatedUnitActive(delegation) {
+			return supervisorUnitOwnershipStatus{Status: "outside_unit", Unit: delegation.Unit, Remedy: delegatedUnitRemedy(delegation)}
+		}
+		pid, ok := delegatedUnitMainPID(delegation)
+		status := supervisorOwnershipFromMainPID(delegation.Unit, pid, ok, livePID)
+		status.Remedy = delegatedUnitRemedy(delegation)
+		return status
+	}
 	if _, err := os.Stat(supervisorSystemdServicePath()); err != nil {
 		return supervisorUnitOwnershipStatus{Status: "no_unit"}
 	}
@@ -718,6 +739,19 @@ func supervisorDetermineUnitOwnership(livePID int) supervisorUnitOwnershipStatus
 		return supervisorUnitOwnershipStatus{Status: "outside_unit", Unit: unit}
 	}
 	pid, ok := supervisorSystemctlMainPID(unit)
+	return supervisorOwnershipFromMainPID(unit, pid, ok, livePID)
+}
+
+// delegatedUnitRemedy is the command that lets an operator-managed unit reclaim
+// the supervisor, at the unit's own scope. gc never installs a delegated unit.
+func delegatedUnitRemedy(d systemdDelegation) string {
+	return fmt.Sprintf("run '%s && %s' to let the delegated unit reclaim the process",
+		d.commandHint("reset-failed"), d.commandHint("start"))
+}
+
+// supervisorOwnershipFromMainPID classifies an active unit by whether the
+// MainPID systemd tracks for it is the live supervisor PID.
+func supervisorOwnershipFromMainPID(unit string, pid int, ok bool, livePID int) supervisorUnitOwnershipStatus {
 	if !ok {
 		pid = 0
 	}

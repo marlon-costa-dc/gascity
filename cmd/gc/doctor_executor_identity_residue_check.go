@@ -11,10 +11,8 @@ import (
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doctor"
-	"github.com/gastownhall/gascity/internal/fsys"
 	"github.com/gastownhall/gascity/internal/graphroute"
 	"github.com/gastownhall/gascity/internal/session"
-	"github.com/gastownhall/gascity/internal/suspensionstate"
 )
 
 // executorIdentityResidueCheck is a gc doctor check that finds and clears
@@ -143,20 +141,14 @@ func (c *executorIdentityResidueCheck) collect() (findings []executorIdentityRes
 			scopes = append(scopes, residueScope{label: "city", store: store})
 		}
 	}
-	if c.cfg != nil {
-		suspState, _ := loadSuspensionState(fsys.OSFS{}, c.cityPath)
-		for _, rig := range c.cfg.Rigs {
-			if suspensionstate.EffectiveRigSuspended(suspState, rig.Name, rig.EffectiveSuspendedOnStart()) || strings.TrimSpace(rig.Path) == "" {
-				continue
-			}
-			label := "rig " + rig.Name
-			store, err := c.newStore(rig.Path)
-			if err != nil {
-				skipped = append(skipped, fmt.Sprintf("%s skipped: opening bead store: %v", label, err))
-				continue
-			}
-			scopes = append(scopes, residueScope{label: label, store: store})
+	// The city store is opened above because it also serves the session index.
+	for _, sc := range doctorStoreScopes(c.cfg, c.cityPath, true)[1:] {
+		store, err := c.newStore(sc.path)
+		if err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s skipped: opening bead store: %v", sc.label, err))
+			continue
 		}
+		scopes = append(scopes, residueScope{label: sc.label, store: store})
 	}
 	if len(scopes) == 0 {
 		return nil, skipped
