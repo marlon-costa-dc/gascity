@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/gastownhall/gascity/internal/builtinpacks"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/formula"
 	"github.com/gastownhall/gascity/internal/fsys"
@@ -369,6 +370,12 @@ func singletonSessionMigrationWarnings(cfg *config.City) []string {
 			continue
 		}
 		if namedByTemplate[agentCfg.QualifiedName()] {
+			continue
+		}
+		// A bundled pack's singleton (core's control-dispatcher, gastown's
+		// dog) drains on empty demand by its authors' design; the migration
+		// advice is for agents a city declares itself.
+		if _, bundled := builtinpacks.Source(agentCfg.PackName); bundled {
 			continue
 		}
 		warnings = append(warnings,
