@@ -50,6 +50,23 @@ func TestSingletonSessionMigrationWarnings_SkipsNamepoolSingleton(t *testing.T) 
 	}
 }
 
+// A bundled pack's singleton (core's control-dispatcher) drains on empty
+// demand by design; only a singleton the city declares itself is warned on.
+func TestSingletonSessionMigrationWarnings_SkipsBundledPackAgents(t *testing.T) {
+	cfg := &config.City{
+		Workspace: config.Workspace{Name: "test-city"},
+		Agents: []config.Agent{
+			{Name: "control-dispatcher", PackName: "core", MaxActiveSessions: intPtr(1)},
+			{Name: "solo", MaxActiveSessions: intPtr(1)},
+		},
+	}
+
+	warnings := singletonSessionMigrationWarnings(cfg)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], `agent "solo"`) {
+		t.Fatalf("warnings = %v, want exactly the city-declared solo singleton", warnings)
+	}
+}
+
 func TestValidateLegacyFormulaConfigRoutes_RejectsTemplateAssignee(t *testing.T) {
 	dir := t.TempDir()
 	formulasDir := filepath.Join(dir, "formulas")

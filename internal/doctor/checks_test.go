@@ -3218,6 +3218,18 @@ func TestDoltNomsSizeCheck_WarnAtThreshold(t *testing.T) {
 	}
 }
 
+// .dolt/git-remote-cache is Dolt's local copy of a git remote, not the noms
+// table store bloat recovery compacts; it must not count as noms.
+func TestDoltNomsSizeCheck_IgnoresGitRemoteCache(t *testing.T) {
+	dir := setupManagedDoltCity(t)
+	writeFakeFile(t, filepath.Join(dir, ".beads", "dolt", "hq", ".dolt", "noms", "file1"), 1024*1024)
+	writeFakeFile(t, filepath.Join(dir, ".beads", "dolt", "hq", ".dolt", "git-remote-cache", "pack"), 3*1024*1024*1024)
+	r := newTestDoltNomsSizeCheck(dir, false).Run(&CheckContext{})
+	if r.Status != StatusOK {
+		t.Fatalf("status = %d, want OK for a 1 MB noms beside a 3 GB git-remote-cache; msg = %s", r.Status, r.Message)
+	}
+}
+
 func TestDoltNomsSizeCheck_ErrorAtThreshold(t *testing.T) {
 	dir := setupManagedDoltCity(t)
 	// 21 GB — above error (20 GB).
