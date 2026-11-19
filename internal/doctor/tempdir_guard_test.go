@@ -112,8 +112,14 @@ func guardedTempDirWith(t *testing.T, remove func(string) error) string {
 // from the .beads fallback this pin exists to exclude, so the directories
 // are carried across by their own explicit env vars, which the shim reads
 // regardless of HOME.
+//
+// bd and dolt also fork a detached send-metrics child after most commands; it
+// outlives the test and re-creates files under this HOME after its removal
+// (beads#5032), so the pin turns both flushers off (gct-7qssa).
 func testOwnedHome(t *testing.T) string {
 	t.Helper()
+	t.Setenv("BD_DISABLE_EVENT_FLUSH", "1")
+	t.Setenv("DOLT_DISABLE_EVENT_FLUSH", "1")
 	home := guardedTempDir(t)
 	if realHome, err := os.UserHomeDir(); err == nil && realHome != "" {
 		miseConfig := filepath.Join(realHome, ".config", "mise")

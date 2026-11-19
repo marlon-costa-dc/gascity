@@ -390,7 +390,7 @@ func TestCustomTypesCheck_TableDrift(t *testing.T) {
 // dolt.shared-server: true set there (as fleet agent HOMEs do), scrubbing
 // BEADS_DOLT_SERVER_PORT and friends changes nothing: bd still discovers the
 // shared server via that config file, not an env var. Pinning a test-owned
-// HOME via t.TempDir() removes the fallback file entirely, which is the only
+// HOME via testOwnedHome removes the fallback file entirely, which is the only
 // complete fix — this test asserts that isolation actually holds, not just
 // that the drift check's Run/Fix behavior happens to look right.
 func TestCustomTypesCheck_TableDriftUsesTestOwnedDoltContext(t *testing.T) {
