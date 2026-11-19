@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Print $PATH with each mise shims directory replaced by the bin directories
+# of the tools it resolves to. Test env sandboxes HOME, where a mise shim
+# rejects the host config as untrusted, and every shim call costs a mise
+# start; tests must run the real tools.
+set -euo pipefail
+out=()
+IFS=: read -r -a dirs <<<"${PATH}"
+for dir in "${dirs[@]}"; do
+  if [[ "${dir}" == */mise/shims ]]; then
+    mapfile -t bins < <(mise bin-paths 2>/dev/null)
+    [[ ${#bins[@]} -gt 0 ]] || { echo "test-host-path: mise bin-paths returned nothing" >&2; exit 1; }
+    out+=("${bins[@]}")
+  else
+    out+=("${dir}")
+  fi
+done
+(IFS=:; printf '%s\n' "${out[*]}")
