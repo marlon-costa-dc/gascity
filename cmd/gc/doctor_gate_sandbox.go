@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,16 +32,45 @@ const doctorGateSandboxReadTimeout = 5 * time.Second
 // and uses a 2s WaitDelay, neither of which a real gate gets. Both are harmless
 // for a read-only probe, but the contract this function reproduces is the
 // environment, not the runner.
-func gateSandboxEnv(cityPath string) []string {
+//
+// controllerPATH, when set, is the PATH of the process whose gates the probe
+// reproduces. The gate PATH is built from the tools found on the builder's own
+// PATH, so a probe run from a shell that resolves bd to a version-manager shim
+// tests a sandbox the controller never builds; the controller's PATH makes it
+// the same one.
+func gateSandboxEnv(cityPath, controllerPATH string) []string {
 	gateEnv := convergence.ConditionEnv{CityPath: cityPath, StorePath: cityPath}.Environ()
 	env := make([]string, 0, len(gateEnv)+1)
 	for _, entry := range gateEnv {
-		if name, _, ok := strings.Cut(entry, "="); ok && name == "BEADS_DOLT_AUTO_START" {
+		name, _, _ := strings.Cut(entry, "=")
+		switch {
+		case name == "BEADS_DOLT_AUTO_START":
 			continue
+		case name == "PATH" && controllerPATH != "":
+			entry = "PATH=" + convergence.ConditionPATHFor(controllerPATH)
 		}
 		env = append(env, entry)
 	}
 	return append(env, "BEADS_DOLT_AUTO_START=0")
+}
+
+// supervisorProcessPATH reads the PATH of the live supervisor, whose
+// controllers run the gates. It is read from /proc, which needs Linux and the
+// same user; any failure is returned so the check says which PATH it used.
+func supervisorProcessPATH(pid int) (string, error) {
+	if pid <= 0 {
+		return "", errors.New("no live supervisor")
+	}
+	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
+	if err != nil {
+		return "", err
+	}
+	for _, entry := range strings.Split(string(raw), "\x00") {
+		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
+			return value, nil
+		}
+	}
+	return "", errors.New("supervisor environment has no PATH")
 }
 
 // gateSandboxReadCheck verifies that a bead read succeeds inside the gate
@@ -60,12 +90,18 @@ func gateSandboxEnv(cityPath string) []string {
 // the sandbox is blind, not that the store is down.
 type gateSandboxReadCheck struct {
 	cityPath string
+	// controllerPATH returns the supervisor's PATH; see gateSandboxEnv.
+	controllerPATH func() (string, error)
 	// probe performs the read. Injectable so tests never fork bd.
 	probe func(cityPath string, env []string) error
 }
 
-func newGateSandboxReadCheck(cityPath string) *gateSandboxReadCheck {
-	return &gateSandboxReadCheck{cityPath: cityPath, probe: defaultGateSandboxRead}
+func newGateSandboxReadCheck(cityPath string, supervisorPID int) *gateSandboxReadCheck {
+	return &gateSandboxReadCheck{
+		cityPath:       cityPath,
+		controllerPATH: func() (string, error) { return supervisorProcessPATH(supervisorPID) },
+		probe:          defaultGateSandboxRead,
+	}
 }
 
 // gateSandboxCommandRunnerWithEnvContext is the bd runner the probe forks
@@ -94,8 +130,15 @@ func defaultGateSandboxRead(cityPath string, env []string) error {
 			exact[name] = value
 		}
 	}
+	// exec resolves a bare name against THIS process's PATH, not the env it
+	// hands the child, while a gate script resolves bd against the gate PATH.
+	// Resolve it the way the gate does, or the probe forks a different bd.
+	bd, ok := convergence.LookPathIn(exact["PATH"], "bd")
+	if !ok {
+		return fmt.Errorf("bd is not on the gate PATH %q", exact["PATH"])
+	}
 	run := gateSandboxCommandRunnerWithEnvContext(ctx, exact)
-	if _, err := run(cityPath, "bd", "list", "--json", "--limit", "1"); err != nil {
+	if _, err := run(cityPath, bd, "list", "--json", "--limit", "1"); err != nil {
 		// The runner already folds bd's stderr/stdout detail into err, so the
 		// message is the whole diagnostic; clip it to one readable line.
 		return errors.New(doctorClipGateOutput(err.Error()))
@@ -133,11 +176,19 @@ func (c *gateSandboxReadCheck) Name() string { return "gate-sandbox-reads" }
 // Run performs a bead read under the gate environment and reports the result.
 func (c *gateSandboxReadCheck) Run(_ *doctor.CheckContext) *doctor.CheckResult {
 	res := &doctor.CheckResult{Name: c.Name(), Severity: doctor.SeverityAdvisory}
-	env := gateSandboxEnv(c.cityPath)
+	pathSource := "gate PATH from: the supervisor's PATH"
+	var controllerPATH string
+	if c.controllerPATH != nil {
+		var err error
+		if controllerPATH, err = c.controllerPATH(); err != nil {
+			pathSource = fmt.Sprintf("gate PATH from: this gc process's PATH (supervisor PATH unreadable: %v)", err)
+		}
+	}
+	env := gateSandboxEnv(c.cityPath, controllerPATH)
 	if err := c.probe(c.cityPath, env); err != nil {
 		res.Status = doctor.StatusError
 		res.Message = fmt.Sprintf("bead read failed inside the gate sandbox (the same read succeeded for the controller): %v", err)
-		res.Details = gateSandboxBlindDetails(env)
+		res.Details = append(gateSandboxBlindDetails(env), pathSource)
 		res.FixHint = "gate commands get HOME=<city> plus an explicit env whitelist, so anything gc/bd resolves from HOME must be threaded in: " +
 			"check that BEADS_CREDENTIALS_FILE and GC_HOME in the details above point at real, readable paths " +
 			"(gc threads the resolved beads credentials file into the gate env; set BEADS_CREDENTIALS_FILE in the controller's environment to override). " +
@@ -147,7 +198,7 @@ func (c *gateSandboxReadCheck) Run(_ *doctor.CheckContext) *doctor.CheckResult {
 	}
 	res.Status = doctor.StatusOK
 	res.Message = "gate sandbox can read the bead store"
-	res.Details = gateSandboxDetails(env)
+	res.Details = append(gateSandboxDetails(env), pathSource)
 	return res
 }
 

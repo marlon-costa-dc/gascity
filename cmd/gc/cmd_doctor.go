@@ -453,7 +453,7 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 			// probe was skipped or failed in a non-outage shape, and in both
 			// of those the assertion would be false.
 			if storePreflightPassed {
-				register(newGateSandboxReadCheck(cityPath))
+				register(newGateSandboxReadCheck(cityPath, opts.SupervisorPID))
 			}
 		}
 	}
