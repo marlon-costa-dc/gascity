@@ -11,8 +11,6 @@ import (
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doctor"
-	"github.com/gastownhall/gascity/internal/fsys"
-	"github.com/gastownhall/gascity/internal/suspensionstate"
 	"github.com/gastownhall/gascity/internal/testpolicy/resourcecensus"
 )
 
@@ -46,15 +44,8 @@ func (c *censusOwnerLivenessCheck) Run(_ *doctor.CheckContext) *doctor.CheckResu
 	var findings []string
 	var skipped []string
 
-	c.scanScope(&findings, &skipped, "city", c.cityPath)
-	if c.cfg != nil {
-		suspState, _ := loadSuspensionState(fsys.OSFS{}, c.cityPath)
-		for _, rig := range c.cfg.Rigs {
-			if suspensionstate.EffectiveRigSuspended(suspState, rig.Name, rig.EffectiveSuspendedOnStart()) || strings.TrimSpace(rig.Path) == "" {
-				continue
-			}
-			c.scanScope(&findings, &skipped, "rig "+rig.Name, rig.Path)
-		}
+	for _, sc := range doctorStoreScopes(c.cfg, c.cityPath, true) {
+		c.scanScope(&findings, &skipped, sc.label, sc.path)
 	}
 
 	if len(findings) == 0 && len(skipped) == 0 {

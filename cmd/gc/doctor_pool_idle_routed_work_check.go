@@ -10,8 +10,6 @@ import (
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doctor"
-	"github.com/gastownhall/gascity/internal/fsys"
-	"github.com/gastownhall/gascity/internal/suspensionstate"
 )
 
 // poolIdleRoutedWorkCheck detects a pool template that has gc.routed_to work
@@ -128,14 +126,7 @@ func (c *poolIdleRoutedWorkCheck) Run(_ *doctor.CheckContext) *doctor.CheckResul
 // multi-store scan settles as a deterministic partial result instead of being
 // abandoned by the doctor's per-check timeout with an unknown outcome.
 func (c *poolIdleRoutedWorkCheck) collect(deadline time.Time) (findings []poolIdleRoutedWorkFinding, skipped []string) {
-	scopes := []struct{ label, path string }{{"city", c.cityPath}}
-	suspState, _ := loadSuspensionState(fsys.OSFS{}, c.cityPath)
-	for _, rig := range c.cfg.Rigs {
-		if suspensionstate.EffectiveRigSuspended(suspState, rig.Name, rig.EffectiveSuspendedOnStart()) || strings.TrimSpace(rig.Path) == "" {
-			continue
-		}
-		scopes = append(scopes, struct{ label, path string }{"rig " + rig.Name, rig.Path})
-	}
+	scopes := doctorStoreScopes(c.cfg, c.cityPath, true)
 	scanned := 0
 	for _, sc := range scopes {
 		if c.newStore == nil || strings.TrimSpace(sc.path) == "" {

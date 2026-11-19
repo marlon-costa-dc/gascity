@@ -11,8 +11,6 @@ import (
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/doctor"
-	"github.com/gastownhall/gascity/internal/fsys"
-	"github.com/gastownhall/gascity/internal/suspensionstate"
 )
 
 type v2RoutedToNamespaceCheck struct {
@@ -121,16 +119,7 @@ func (c *v2RoutedToNamespaceCheck) Fix(_ *doctor.CheckContext) error {
 // reads does not grow with the number of routes; a store path shared by two
 // scopes is listed once and matched for each of them.
 func (c *v2RoutedToNamespaceCheck) collect(aliases map[string][]string) (findings []routedToDriftFinding, skipped []string) {
-	scopes := []struct{ label, path string }{{"city", c.cityPath}}
-	if c.cfg != nil {
-		suspState, _ := loadSuspensionState(fsys.OSFS{}, c.cityPath)
-		for _, rig := range c.cfg.Rigs {
-			if suspensionstate.EffectiveRigSuspended(suspState, rig.Name, rig.EffectiveSuspendedOnStart()) || strings.TrimSpace(rig.Path) == "" {
-				continue
-			}
-			scopes = append(scopes, struct{ label, path string }{"rig " + rig.Name, rig.Path})
-		}
-	}
+	scopes := doctorStoreScopes(c.cfg, c.cityPath, true)
 	type listing struct {
 		store beads.Store
 		items []beads.Bead
