@@ -271,6 +271,10 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 	// city.toml is precisely when session diagnostics need to be visible.
 	register(doctor.NewNudgeUnconfirmedCheck())
 
+	// The session and order checks report a city the operator suspended as
+	// the declared pause rather than as missing sessions and stale orders.
+	citySuspended := cfgErr == nil && cfg != nil && citySuspendedWithState(cfg, loadSuspensionStateBestEffort(cityPath))
+
 	// Config-dependent checks run only when city.toml loaded cleanly. If it
 	// fails, the core config check above reports the parse error.
 	if cfgErr == nil && cfg != nil {
@@ -299,7 +303,9 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 		register(doctor.NewServiceSecretsPermsCheck(cfg, cityPath))
 		register(doctor.NewSkillCollisionCheck(cfg, cityPath))
 		register(doctor.NewSkillDanglingSinkCheck(doctorSkillStaticSinks(cityPath, cfg), materialize.LegacyOwnedRootsFor(cityPath), doctorLiveSessionSinks(cityPath, cfg)))
-		register(doctor.NewOrderFiringCurrentCheck(cfg, cityPath, doctor.WithOrderFiringCurrentLastRunFunc(doctorOrderFiringCurrentLastRunFunc(cityPath, cfg, opts.Stderr))))
+		register(doctor.NewOrderFiringCurrentCheck(cfg, cityPath,
+			doctor.WithOrderFiringCurrentLastRunFunc(doctorOrderFiringCurrentLastRunFunc(cityPath, cfg, opts.Stderr)),
+			doctor.WithOrderFiringCurrentCitySuspended(citySuspended)))
 		register(doctor.NewOrderOutcomeHealthyCheck(cfg, cityPath))
 		register(newCodexHooksDriftCheck(cityPath, codexHookWorkDirs(cityPath, cfg)))
 		register(doctor.NewRigPackCoverageCheck(cfg, cityPath))
@@ -360,9 +366,9 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 		if err != nil {
 			register(doctor.ErrorCheck("session-provider", err.Error()))
 		} else {
-			register(doctor.NewAgentSessionsCheck(cfg, cityName, st, sp))
+			register(doctor.NewAgentSessionsCheck(cfg, cityName, st, sp, citySuspended))
 			register(doctor.NewZombieSessionsCheck(cfg, cityName, st, sp))
-			register(doctor.NewOrphanSessionsCheck(cfg, cityName, st, sp))
+			register(doctor.NewOrphanSessionsCheck(cfg, cityName, st, sp, citySuspended))
 		}
 	}
 
@@ -419,8 +425,8 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 			register(newPoolIdleRoutedWorkCheck(cfg, cityPath, storeFactory))
 			register(newWorkOptionMetadataMigrationCheck(cfg, cityPath, storeFactory))
 			register(newBacklogDepthCheck(cityPath, storeFactory))
-			register(newOrderTrackingRetentionCheck(cityPath, storeFactory))
-			register(&sessionModelDoctorCheck{cfg: cfg, cityPath: cityPath, newStore: storeFactory})
+			register(newOrderTrackingRetentionCheck(cfg, cityPath, storeFactory))
+			register(&sessionModelDoctorCheck{cfg: cfg, cityPath: cityPath, newStore: storeFactory, citySuspended: citySuspended})
 			register(newStartupHealthEpisodesCheck(cfg, cityPath, storeFactory))
 			// Differential probe: the preflight above just proved the store
 			// reachable with the controller's environment, so a read that
@@ -589,6 +595,7 @@ func doDoctor(opts doctorOpts, stdout, stderr io.Writer) int {
 			Unit:       raw.Unit,
 			UnitActive: raw.UnitActive,
 			UnitPID:    raw.UnitPID,
+			Error:      raw.Error,
 		}
 	}
 	skipRigDoltChecks := gcDoltSkip()

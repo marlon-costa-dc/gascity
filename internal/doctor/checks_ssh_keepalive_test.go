@@ -99,6 +99,20 @@ func TestRigSSHKeepaliveCheck_CustomWrapperNotAutoFixed(t *testing.T) {
 	}
 }
 
+// core.hooksPath=/dev/null is how a rig disables git hooks: git then runs
+// none, so a long .githooks/pre-push on disk is inert and there is nothing
+// to inspect — not a "stat /dev/null/pre-push: not a directory" failure.
+func TestRigSSHKeepaliveCheck_NonDirectoryHooksPathMeansNoHooks(t *testing.T) {
+	rigPath := initGitRepoOnBranch(t, "main")
+	writePrePush(t, rigPath, "#!/bin/sh\nexec make test-fast-parallel\n")
+	runGitForRigRootBranchTest(t, rigPath, "config", "core.hooksPath", os.DevNull)
+	c := NewRigSSHKeepaliveCheck(config.Rig{Name: "testrig", Path: rigPath})
+	r := c.Run(&CheckContext{})
+	if r.Status != StatusOK || !strings.Contains(r.Message, "no pre-push hook") {
+		t.Fatalf("result = %d %q, want OK with no pre-push hook", r.Status, r.Message)
+	}
+}
+
 func TestRigSSHKeepaliveCheck_WarmupEligible(t *testing.T) {
 	c := NewRigSSHKeepaliveCheck(config.Rig{Name: "testrig", Path: t.TempDir()})
 	if !c.WarmupEligible() {

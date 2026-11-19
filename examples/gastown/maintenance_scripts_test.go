@@ -553,81 +553,56 @@ exit 1
 `)
 }
 
-// TestOrphanSweepPreservesHumanOperatorAssignee verifies that a bead assigned
-// to the canonical human operator alias "human" is never treated as orphaned.
-// The operator is not a configured agent and has no session, but operator
-// action items are claims by a person, not by a dead agent — resetting them
-// silently wipes the operator's claim.
-func TestOrphanSweepPreservesHumanOperatorAssignee(t *testing.T) {
-	cityDir := t.TempDir()
-	binDir := t.TempDir()
-	gcLog := filepath.Join(t.TempDir(), "gc.log")
-
-	orphanSweepOperatorAssigneeGCStub(t, binDir, "human")
-
-	env := map[string]string{
-		"GC_CITY":      cityDir,
-		"GC_CITY_PATH": cityDir,
-		"GC_CALL_LOG":  gcLog,
-		"PATH":         binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+// TestOrphanSweepPreservesOperatorClaims pins which assignees with no
+// configured agent and no session are a person's claim the sweep must not
+// reset, and proves the guards did not weaken it.
+//   - "human" is the canonical operator alias (exact match: "humanoid", an
+//     agent-shaped name with no agent and no session, is a genuine orphan).
+//   - An assignee with a character outside the agent/session name grammar
+//     (an operator's bd actor such as "Jane Doe", "user@host") is settled
+//     without the per-bead `gc bd show` probes that pushed the sweep past its
+//     timeout on a city with hundreds of operator claims.
+func TestOrphanSweepPreservesOperatorClaims(t *testing.T) {
+	cases := []struct {
+		assignee  string
+		wantReset bool
+	}{
+		{assignee: "human"},
+		{assignee: "Jane Doe"},
+		{assignee: "main@dc-finan"},
+		{assignee: "humanoid", wantReset: true},
 	}
+	for _, tc := range cases {
+		t.Run(tc.assignee, func(t *testing.T) {
+			cityDir := t.TempDir()
+			binDir := t.TempDir()
+			gcLog := filepath.Join(t.TempDir(), "gc.log")
+			orphanSweepOperatorAssigneeGCStub(t, binDir, tc.assignee)
 
-	script := coreScriptPath("orphan-sweep.sh")
-	cmd := exec.Command(script)
-	cmd.Env = mergeTestEnv(env)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s failed: %v\n%s", filepath.Base(script), err, out)
-	}
-	if strings.Contains(string(out), "orphan-sweep: reset") {
-		t.Fatalf("human-operator assignee was swept:\n%s", out)
-	}
-
-	logData, err := os.ReadFile(gcLog)
-	if err != nil {
-		t.Fatalf("ReadFile(gc log): %v", err)
-	}
-	if log := string(logData); strings.Contains(log, "bd release-if-current ga-op ") {
-		t.Fatalf("human-operator bead was reset:\n%s", log)
-	}
-}
-
-// TestOrphanSweepResetsHumanLikeDeadAssignee is the negative control for
-// TestOrphanSweepPreservesHumanOperatorAssignee: an assignee that merely
-// starts with "human" but matches no agent and no session is a genuine
-// orphan and must still be reset. This proves the operator guard is an
-// exact match and did not weaken the sweep.
-func TestOrphanSweepResetsHumanLikeDeadAssignee(t *testing.T) {
-	cityDir := t.TempDir()
-	binDir := t.TempDir()
-	gcLog := filepath.Join(t.TempDir(), "gc.log")
-
-	orphanSweepOperatorAssigneeGCStub(t, binDir, "humanoid")
-
-	env := map[string]string{
-		"GC_CITY":      cityDir,
-		"GC_CITY_PATH": cityDir,
-		"GC_CALL_LOG":  gcLog,
-		"PATH":         binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
-	}
-
-	script := coreScriptPath("orphan-sweep.sh")
-	cmd := exec.Command(script)
-	cmd.Env = mergeTestEnv(env)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s failed: %v\n%s", filepath.Base(script), err, out)
-	}
-	if !strings.Contains(string(out), "orphan-sweep: reset 1 orphaned beads") {
-		t.Fatalf("human-like dead assignee was not swept:\n%s", out)
-	}
-
-	logData, err := os.ReadFile(gcLog)
-	if err != nil {
-		t.Fatalf("ReadFile(gc log): %v", err)
-	}
-	if log := string(logData); !strings.Contains(log, "bd release-if-current ga-op humanoid") {
-		t.Fatalf("orphan bead was not reset:\n%s", log)
+			cmd := exec.Command(coreScriptPath("orphan-sweep.sh"))
+			cmd.Env = mergeTestEnv(map[string]string{
+				"GC_CITY":      cityDir,
+				"GC_CITY_PATH": cityDir,
+				"GC_CALL_LOG":  gcLog,
+				"PATH":         binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+			})
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("orphan-sweep.sh failed: %v\n%s", err, out)
+			}
+			logData, err := os.ReadFile(gcLog)
+			if err != nil {
+				t.Fatalf("ReadFile(gc log): %v", err)
+			}
+			log := string(logData)
+			reset := strings.Contains(log, "bd release-if-current ga-op "+tc.assignee)
+			if reset != tc.wantReset {
+				t.Fatalf("reset = %v, want %v\noutput:\n%s\ngc calls:\n%s", reset, tc.wantReset, out, log)
+			}
+			if !tc.wantReset && strings.Contains(log, "bd show ga-op") {
+				t.Fatalf("preserved claim was probed with bd show:\n%s", log)
+			}
+		})
 	}
 }
 
@@ -7931,6 +7906,22 @@ func linkTestPathTool(t *testing.T, binDir, name string) {
 	realPath, err := exec.LookPath(name)
 	if err != nil {
 		t.Fatalf("LookPath(%s): %v", name, err)
+	}
+	// Prefer a PATH entry that resolves to the tool itself. A version-manager
+	// shim (mise, asdf) resolves to a multiplexer that dispatches on argv[0]
+	// through its own environment; linked into a cleanroom PATH it no longer
+	// finds the tool and prints nothing, so a script under test reads empty
+	// output instead of the stubbed data.
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		candidate := filepath.Join(dir, name)
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err != nil || filepath.Base(resolved) != name {
+			continue
+		}
+		if info, err := os.Stat(resolved); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+			realPath = resolved
+			break
+		}
 	}
 	linkPath := filepath.Join(binDir, name)
 	if err := os.Symlink(realPath, linkPath); err != nil {

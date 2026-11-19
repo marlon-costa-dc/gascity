@@ -9,7 +9,8 @@ import "fmt"
 // data-in, data-out and internal/doctor never needs to shell out to
 // systemctl or import cmd/gc.
 type SupervisorUnitOwnership struct {
-	// Status is one of "owned", "outside_unit", "no_unit".
+	// Status is one of "owned", "outside_unit", "no_unit",
+	// "delegation_error".
 	Status string
 	// Unit is the systemd user unit name (e.g. "gc-supervisor.service").
 	// Empty when Status is "no_unit".
@@ -18,6 +19,9 @@ type SupervisorUnitOwnership struct {
 	UnitActive bool
 	// UnitPID is the MainPID systemd tracks for Unit (0 if unknown).
 	UnitPID int
+	// Error is the systemd delegation configuration error when Status is
+	// "delegation_error".
+	Error string
 }
 
 // SupervisorUnitOwnershipCheck verifies that a live supervisor process is
@@ -67,6 +71,10 @@ func (c *SupervisorUnitOwnershipCheck) Run(_ *CheckContext) *CheckResult {
 	case "no_unit":
 		r.Status = StatusOK
 		r.Message = "no systemd unit installed for the supervisor"
+	case "delegation_error":
+		r.Status = StatusError
+		r.Message = "supervisor systemd delegation is misconfigured: " + c.ownership.Error
+		r.FixHint = "correct or unset GC_SUPERVISOR_SYSTEMD_UNIT / GC_SUPERVISOR_SYSTEMD_SCOPE"
 	case "owned":
 		r.Status = StatusOK
 		r.Message = fmt.Sprintf("supervisor (PID %d) is owned by systemd unit %s", c.supervisorPID, c.ownership.Unit)

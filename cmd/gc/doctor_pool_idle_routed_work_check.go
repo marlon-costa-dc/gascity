@@ -162,13 +162,32 @@ func (c *poolIdleRoutedWorkCheck) collect(deadline time.Time) (findings []poolId
 }
 
 // collectStoreFindings checks every generic-ephemeral pool template in cfg
-// against one store: a targeted session-class list for idle live instances,
-// and (only when at least one is idle) a targeted gc.routed_to metadata
-// lookup for unclaimed work — never a full-store scan. scanned accumulates
-// the templates actually processed so the budget-exhausted report can say how
-// far the scan got; the deadline is honored between templates.
+// against one store: one session-class list for the whole scope, grouped into
+// idle live instances per template, and (only for a template with an idle
+// instance) a targeted gc.routed_to metadata lookup for unclaimed work —
+// never a full-store scan. The session list is read once because
+// session.Store.List reads the scope's entire session ledger (closed beads
+// included) whatever template it filters on; reading it per template made
+// the scan cost templates × ledger and abandoned whole scopes at the budget.
+// scanned accumulates the templates actually processed so the
+// budget-exhausted report can say how far the scan got; the deadline is
+// honored between templates.
 func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label string, deadline time.Time, scanned *int) ([]poolIdleRoutedWorkFinding, error) {
-	sessStore := cliSessionFrontDoor(store, c.cfg, c.cityPath)
+	sessions, err := cliSessionFrontDoor(store, c.cfg, c.cityPath).List("", "")
+	if err != nil {
+		return nil, fmt.Errorf("listing sessions: %w", err)
+	}
+	idleByTemplate := make(map[string][]string)
+	for _, info := range sessions {
+		if !poolSessionIsLiveInfo(info) || strings.TrimSpace(info.TriggerBeadID) != "" {
+			continue
+		}
+		name := strings.TrimSpace(info.SessionName)
+		if name == "" {
+			name = info.ID
+		}
+		idleByTemplate[info.Template] = append(idleByTemplate[info.Template], name)
+	}
 
 	var findings []poolIdleRoutedWorkFinding
 	for i := range c.cfg.Agents {
@@ -185,21 +204,7 @@ func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label 
 		}
 		*scanned++
 
-		sessions, err := sessStore.List("", template)
-		if err != nil {
-			return findings, fmt.Errorf("listing sessions for %s: %w", template, err)
-		}
-		var idle []string
-		for _, info := range sessions {
-			if !poolSessionIsLiveInfo(info) || strings.TrimSpace(info.TriggerBeadID) != "" {
-				continue
-			}
-			name := strings.TrimSpace(info.SessionName)
-			if name == "" {
-				name = info.ID
-			}
-			idle = append(idle, name)
-		}
+		idle := idleByTemplate[template]
 		if len(idle) == 0 {
 			continue
 		}

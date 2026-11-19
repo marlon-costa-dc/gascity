@@ -24,7 +24,7 @@ func makeClosedOrderTrackingBeads(n int) []beads.Bead {
 
 func TestOrderTrackingRetentionCheck_OKWhenBelowThreshold(t *testing.T) {
 	store := beads.NewMemStoreFrom(600, makeClosedOrderTrackingBeads(499), nil)
-	check := newOrderTrackingRetentionCheck("/city", func(string) (beads.Store, error) { return store, nil })
+	check := newOrderTrackingRetentionCheck(nil, "/city", func(string) (beads.Store, error) { return store, nil })
 
 	res := check.Run(&doctor.CheckContext{})
 	if res.Status != doctor.StatusOK {
@@ -34,7 +34,7 @@ func TestOrderTrackingRetentionCheck_OKWhenBelowThreshold(t *testing.T) {
 
 func TestOrderTrackingRetentionCheck_WarningAtThreshold(t *testing.T) {
 	store := beads.NewMemStoreFrom(600, makeClosedOrderTrackingBeads(500), nil)
-	check := newOrderTrackingRetentionCheck("/city", func(string) (beads.Store, error) { return store, nil })
+	check := newOrderTrackingRetentionCheck(nil, "/city", func(string) (beads.Store, error) { return store, nil })
 
 	res := check.Run(&doctor.CheckContext{})
 	if res.Status != doctor.StatusWarning {
@@ -47,7 +47,7 @@ func TestOrderTrackingRetentionCheck_WarningAtThreshold(t *testing.T) {
 
 func TestOrderTrackingRetentionCheck_WarningAboveThreshold(t *testing.T) {
 	store := beads.NewMemStoreFrom(700, makeClosedOrderTrackingBeads(600), nil)
-	check := newOrderTrackingRetentionCheck("/city", func(string) (beads.Store, error) { return store, nil })
+	check := newOrderTrackingRetentionCheck(nil, "/city", func(string) (beads.Store, error) { return store, nil })
 
 	res := check.Run(&doctor.CheckContext{})
 	if res.Status != doctor.StatusWarning {
@@ -55,10 +55,26 @@ func TestOrderTrackingRetentionCheck_WarningAboveThreshold(t *testing.T) {
 	}
 }
 
+// The verdict states the effective TTL from config and never tells the
+// operator to configure delete_after_close, which composition always sets.
+func TestOrderTrackingRetentionCheck_ReportsConfiguredTTLWithoutConfigureHint(t *testing.T) {
+	store := beads.NewMemStoreFrom(600, makeClosedOrderTrackingBeads(500), nil)
+	cfg := &config.City{Beads: config.BeadsConfig{Policies: map[string]config.BeadPolicyConfig{
+		"order_tracking": {DeleteAfterClose: "72h"},
+	}}}
+	res := newOrderTrackingRetentionCheck(cfg, "/city", func(string) (beads.Store, error) { return store, nil }).Run(&doctor.CheckContext{})
+	if res.Status != doctor.StatusWarning {
+		t.Fatalf("Status = %v, want Warning: %s", res.Status, res.Message)
+	}
+	if !strings.Contains(res.Message, "TTL 72h0m0s") || strings.Contains(res.Message, "configure") {
+		t.Fatalf("Message = %q, want the configured TTL and no configure hint", res.Message)
+	}
+}
+
 func TestOrderTrackingRetentionCheck_CapFormatAtListLimit(t *testing.T) {
 	// 501 closed beads (the list cap): count displays as "≥501", not exact.
 	store := beads.NewMemStoreFrom(700, makeClosedOrderTrackingBeads(501), nil)
-	check := newOrderTrackingRetentionCheck("/city", func(string) (beads.Store, error) { return store, nil })
+	check := newOrderTrackingRetentionCheck(nil, "/city", func(string) (beads.Store, error) { return store, nil })
 
 	res := check.Run(&doctor.CheckContext{})
 	if res.Status != doctor.StatusWarning {
@@ -70,7 +86,7 @@ func TestOrderTrackingRetentionCheck_CapFormatAtListLimit(t *testing.T) {
 }
 
 func TestOrderTrackingRetentionCheck_OKWhenNoStore(t *testing.T) {
-	check := newOrderTrackingRetentionCheck("", nil)
+	check := newOrderTrackingRetentionCheck(nil, "", nil)
 	res := check.Run(&doctor.CheckContext{})
 	if res.Status != doctor.StatusOK {
 		t.Fatalf("Status = %v, want OK (no store configured means no beads): %s", res.Status, res.Message)
@@ -78,7 +94,7 @@ func TestOrderTrackingRetentionCheck_OKWhenNoStore(t *testing.T) {
 }
 
 func TestOrderTrackingRetentionCheck_WarningOnStoreOpenError(t *testing.T) {
-	check := newOrderTrackingRetentionCheck("/city", func(string) (beads.Store, error) {
+	check := newOrderTrackingRetentionCheck(nil, "/city", func(string) (beads.Store, error) {
 		return nil, fmt.Errorf("store unreachable")
 	})
 	res := check.Run(&doctor.CheckContext{})
@@ -91,7 +107,7 @@ func TestOrderTrackingRetentionCheck_WarningOnStoreOpenError(t *testing.T) {
 }
 
 func TestOrderTrackingRetentionCheck_CheckMetadata(t *testing.T) {
-	check := newOrderTrackingRetentionCheck("/city", func(string) (beads.Store, error) {
+	check := newOrderTrackingRetentionCheck(nil, "/city", func(string) (beads.Store, error) {
 		return beads.NewMemStore(), nil
 	})
 	if check.Name() != "order-tracking-retention" {

@@ -359,6 +359,16 @@ is_known_agent() {
     # claim. Exact match only: agents that merely start with "human" still
     # resolve through the normal paths below.
     if [ "$name" = "human" ]; then return 0; fi
+    # Only an agent-shaped identity can name a dead agent. Agent and session
+    # names are built from [A-Za-z0-9_-] plus the "/" rig and "." pack
+    # qualifiers (session names add the "--"/"__" encodings of the same
+    # characters). An assignee with any other character -- an operator's bd
+    # actor ("Jane Doe"), "user@host", free text -- is a person's claim, never
+    # agent work, so it is never reset. Probing such claims also cost two
+    # `gc bd show` calls per bead, which pushed the sweep past its timeout.
+    case "$name" in
+        *[!A-Za-z0-9_./-]*) return 0 ;;
+    esac
     # Direct match against a configured agent template name.
     if agent_exists "$name"; then return 0; fi
     # Pool instance: strip trailing -<digits> and check template name.

@@ -66,6 +66,15 @@ func WithOrderFiringCurrentLastRunFunc(fn OrderFiringCurrentLastRunFunc) OrderFi
 	}
 }
 
+// WithOrderFiringCurrentCitySuspended tells the check the operator suspended
+// the city. The order dispatcher fires nothing while the city is suspended,
+// so a stale last firing is the declared pause, not a defect.
+func WithOrderFiringCurrentCitySuspended(suspended bool) OrderFiringCurrentOption {
+	return func(c *OrderFiringCurrentCheck) {
+		c.citySuspended = suspended
+	}
+}
+
 // OrderFiringCurrentCheck reports scheduled orders whose last firing is stale.
 type OrderFiringCurrentCheck struct {
 	cfg            *config.City
@@ -74,6 +83,7 @@ type OrderFiringCurrentCheck struct {
 	lastRun        OrderFiringCurrentLastRunFunc
 	historyTimeout time.Duration
 	readEvents     orderFiringEventReadFunc
+	citySuspended  bool
 }
 
 // NewOrderFiringCurrentCheck creates a check for cron and cooldown order freshness.
@@ -159,6 +169,17 @@ func (c *OrderFiringCurrentCheck) run(ctx *CheckContext) *CheckResult {
 	if err != nil {
 		result.Status = StatusError
 		result.Message = fmt.Sprintf("scan orders: %v", err)
+		return result
+	}
+	if c.citySuspended {
+		scheduled := 0
+		for _, order := range allOrders {
+			if order.Trigger == "cron" || order.Trigger == "cooldown" {
+				scheduled++
+			}
+		}
+		result.Status = StatusOK
+		result.Message = fmt.Sprintf("%s; orders paused (%d scheduled order(s) not dispatched)", CitySuspendedByOperator, scheduled)
 		return result
 	}
 

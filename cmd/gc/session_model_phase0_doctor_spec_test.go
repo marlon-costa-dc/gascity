@@ -239,6 +239,41 @@ start_command = "true"
 	}
 }
 
+// On a city the operator suspended, work assigned to a configured agent with
+// no session is the declared pause: doctor names it and keeps the assignment
+// visible instead of reporting a session-model finding.
+func TestPhase0DoctorReportsLegacyTokenMatchesConfigOnlyAsPausedWhenCitySuspended(t *testing.T) {
+	cityPath, store := newPhase0DoctorCityWithConfig(t, `[workspace]
+name = "test-city"
+suspended_on_start = true
+
+[beads]
+provider = "file"
+
+[[agent]]
+name = "worker"
+start_command = "true"
+`)
+	if _, err := store.Create(beads.Bead{Type: "task", Status: "open", Title: "paused owner", Assignee: "worker"}); err != nil {
+		t.Fatalf("create work bead: %v", err)
+	}
+
+	t.Setenv("GC_CITY", cityPath)
+	var stdout, stderr bytes.Buffer
+	_ = doDoctor(doctorOpts{Verbose: true, Checks: []string{"session-model", "agent-sessions"}}, &stdout, &stderr)
+
+	out := stdout.String() + stderr.String()
+	for _, want := range []string{
+		"✓ session-model — city suspended by operator; sessions paused (1 assignment(s) to configured agents without a session)",
+		"legacy-token-matches-config-only",
+		"✓ agent-sessions — city suspended by operator; sessions paused (1 agent(s) without sessions)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestPhase0DoctorReportsHistoricalAliasOwner(t *testing.T) {
 	cityPath, store := newPhase0DoctorCity(t)
 

@@ -111,3 +111,19 @@ func TestSupervisorUnitOwnershipCheckRun(t *testing.T) {
 		})
 	}
 }
+
+// A misconfigured systemd delegation env is an error naming the cause, not a
+// silent "no unit installed".
+func TestSupervisorUnitOwnershipCheckRunDelegationError(t *testing.T) {
+	check := NewSupervisorUnitOwnershipCheck(true, 4242, SupervisorUnitOwnership{
+		Status: "delegation_error",
+		Error:  `invalid GC_SUPERVISOR_SYSTEMD_SCOPE="usr"`,
+	})
+	result := check.Run(&CheckContext{})
+	if result.Status != StatusError {
+		t.Fatalf("Status = %v, want StatusError (result: %+v)", result.Status, result)
+	}
+	if !strings.Contains(result.Message, `GC_SUPERVISOR_SYSTEMD_SCOPE="usr"`) {
+		t.Errorf("Message = %q, want the delegation error", result.Message)
+	}
+}

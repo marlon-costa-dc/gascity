@@ -65,6 +65,29 @@ func TestOrderFiringCurrent_Stale_StaysBlocking(t *testing.T) {
 	}
 }
 
+// The dispatcher fires nothing on a suspended city, so the stale cooldown
+// above is the declared pause there: the check names it instead of failing.
+func TestOrderFiringCurrent_CitySuspendedReportsPause(t *testing.T) {
+	now := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
+	cityPath, cfg := orderFiringTestCity(t)
+	writeOrderFiringTestOrder(t, cityPath, "cleanup-cooldown", "cooldown", "1h")
+	writeOrderFiringTestEvents(t, cityPath,
+		events.Event{Type: events.ControllerStarted, Ts: now.Add(-24 * time.Hour)},
+		events.Event{Type: events.OrderFired, Subject: "cleanup-cooldown", Ts: now.Add(-6 * time.Hour)},
+	)
+
+	check := NewOrderFiringCurrentCheck(cfg, cityPath, WithOrderFiringCurrentCitySuspended(true))
+	check.clock = func() time.Time { return now }
+	result := check.Run(&CheckContext{CityPath: cityPath})
+	if result.Status != StatusOK {
+		t.Fatalf("status = %v, want OK; msg = %s", result.Status, result.Message)
+	}
+	want := CitySuspendedByOperator + "; orders paused (1 scheduled order(s) not dispatched)"
+	if result.Message != want {
+		t.Fatalf("message = %q, want %q", result.Message, want)
+	}
+}
+
 func TestOrderFiringCurrent_MixedAdvisoryAndBlocking_AggregatesBlocking(t *testing.T) {
 	// One advisory (never-fired cron) + one blocking (cooldown stale) →
 	// aggregate severity must be Blocking so the presence of any real

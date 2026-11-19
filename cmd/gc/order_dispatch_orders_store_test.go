@@ -595,7 +595,7 @@ func TestDoctorOrderTrackingRetentionCountsTheOrdersBinding(t *testing.T) {
 	entry := cliStorageRoutesEntryFor(filepath.Clean(cityPath))
 	entry.once.Do(func() { entry.routes = messagingSplitRoutes(binding) })
 
-	check := newOrderTrackingRetentionCheck(cityPath, func(string) (beads.Store, error) {
+	check := newOrderTrackingRetentionCheck(nil, cityPath, func(string) (beads.Store, error) {
 		return beads.NewMemStore(), nil
 	})
 	res := check.Run(&doctor.CheckContext{})
