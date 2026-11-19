@@ -39,7 +39,8 @@ scan "$REPO_ROOT" "$current"
 
 if [[ "$MODE" == diff ]]; then
     base_dir=$(mktemp -d)
-    if ! git archive --format=tar "$BASE_REF" | tar -x -C "$base_dir"; then
+    # Extract only the Go sources scan() reads; the full tree costs minutes.
+    if ! git archive --format=tar "$BASE_REF" -- ':(glob)cmd/gc/**/*.go' ':(glob)internal/**/*.go' ':(glob)pkg/**/*.go' ':(exclude,glob)**/*_test.go' | tar -x -C "$base_dir"; then
         echo "complexity: unable to archive base ref $BASE_REF" >&2
         exit 2
     fi
