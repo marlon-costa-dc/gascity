@@ -19,6 +19,7 @@ import (
 	"github.com/gastownhall/gascity/internal/orders"
 	"github.com/gastownhall/gascity/internal/pathutil"
 	"github.com/gastownhall/gascity/internal/rollout"
+	"github.com/gastownhall/gascity/internal/runtime"
 	"github.com/gastownhall/gascity/internal/suspensionstate"
 	"github.com/spf13/cobra"
 )
@@ -362,14 +363,29 @@ func buildDoctorChecks(cityPath string, cfg *config.City, cfgErr error, opts bui
 	if cfgErr == nil && cfg != nil {
 		cityName := loadedCityName(cfg, cityPath)
 		st := cfg.Workspace.SessionTemplate
-		sp, err := newSessionProvider()
-		if err != nil {
-			register(doctor.ErrorCheck("session-provider", err.Error()))
-		} else {
-			register(doctor.NewAgentSessionsCheck(cfg, cityName, st, sp, citySuspended))
-			register(doctor.NewZombieSessionsCheck(cfg, cityName, st, sp))
-			register(doctor.NewOrphanSessionsCheck(cfg, cityName, st, sp, citySuspended))
+		// Building the session provider opens the city store and reads its
+		// session snapshot (3-4s on a busy city), so the session checks are
+		// built on first use and share one provider: --check for anything else
+		// never pays for it.
+		provider := sync.OnceValues(newSessionProvider)
+		sessionCheck := func(name string, build func(runtime.Provider) doctor.Check) doctor.Check {
+			return doctor.Deferred(name, func() doctor.Check {
+				sp, err := provider()
+				if err != nil {
+					return doctor.ErrorCheck(name, "session provider: "+err.Error())
+				}
+				return build(sp)
+			})
 		}
+		register(sessionCheck("agent-sessions", func(sp runtime.Provider) doctor.Check {
+			return doctor.NewAgentSessionsCheck(cfg, cityName, st, sp, citySuspended)
+		}))
+		register(sessionCheck("zombie-sessions", func(sp runtime.Provider) doctor.Check {
+			return doctor.NewZombieSessionsCheck(cfg, cityName, st, sp)
+		}))
+		register(sessionCheck("orphan-sessions", func(sp runtime.Provider) doctor.Check {
+			return doctor.NewOrphanSessionsCheck(cfg, cityName, st, sp, citySuspended)
+		}))
 	}
 
 	storeFactory := perRunStoreFactory(openStoreForCity(cityPath))
