@@ -50,13 +50,15 @@ func TestSingletonSessionMigrationWarnings_SkipsNamepoolSingleton(t *testing.T) 
 	}
 }
 
-// A bundled pack's singleton (core's control-dispatcher) drains on empty
-// demand by design; only a singleton the city declares itself is warned on.
-func TestSingletonSessionMigrationWarnings_SkipsBundledPackAgents(t *testing.T) {
+// A pack's singleton (bundled or third-party, whatever its pack name) drains
+// on empty demand by its author's design; only a singleton the city declares
+// itself is warned on.
+func TestSingletonSessionMigrationWarnings_SkipsPackAgents(t *testing.T) {
 	cfg := &config.City{
 		Workspace: config.Workspace{Name: "test-city"},
 		Agents: []config.Agent{
 			{Name: "control-dispatcher", PackName: "core", MaxActiveSessions: intPtr(1)},
+			{Name: "watcher", PackName: "acme-ops", MaxActiveSessions: intPtr(1)},
 			{Name: "solo", MaxActiveSessions: intPtr(1)},
 		},
 	}

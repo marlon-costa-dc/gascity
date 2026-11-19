@@ -714,6 +714,7 @@ type supervisorUnitOwnershipStatus struct {
 	UnitActive bool
 	UnitPID    int
 	Error      string
+	Remedy     string
 }
 
 func supervisorDetermineUnitOwnership(livePID int) supervisorUnitOwnershipStatus {
@@ -723,10 +724,12 @@ func supervisorDetermineUnitOwnership(livePID int) supervisorUnitOwnershipStatus
 	}
 	if delegated {
 		if !delegatedUnitActive(delegation) {
-			return supervisorUnitOwnershipStatus{Status: "outside_unit", Unit: delegation.Unit}
+			return supervisorUnitOwnershipStatus{Status: "outside_unit", Unit: delegation.Unit, Remedy: delegatedUnitRemedy(delegation)}
 		}
 		pid, ok := delegatedUnitMainPID(delegation)
-		return supervisorOwnershipFromMainPID(delegation.Unit, pid, ok, livePID)
+		status := supervisorOwnershipFromMainPID(delegation.Unit, pid, ok, livePID)
+		status.Remedy = delegatedUnitRemedy(delegation)
+		return status
 	}
 	if _, err := os.Stat(supervisorSystemdServicePath()); err != nil {
 		return supervisorUnitOwnershipStatus{Status: "no_unit"}
@@ -737,6 +740,13 @@ func supervisorDetermineUnitOwnership(livePID int) supervisorUnitOwnershipStatus
 	}
 	pid, ok := supervisorSystemctlMainPID(unit)
 	return supervisorOwnershipFromMainPID(unit, pid, ok, livePID)
+}
+
+// delegatedUnitRemedy is the command that lets an operator-managed unit reclaim
+// the supervisor, at the unit's own scope. gc never installs a delegated unit.
+func delegatedUnitRemedy(d systemdDelegation) string {
+	return fmt.Sprintf("run '%s && %s' to let the delegated unit reclaim the process",
+		d.commandHint("reset-failed"), d.commandHint("start"))
 }
 
 // supervisorOwnershipFromMainPID classifies an active unit by whether the

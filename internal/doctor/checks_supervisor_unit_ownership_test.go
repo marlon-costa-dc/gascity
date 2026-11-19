@@ -127,3 +127,26 @@ func TestSupervisorUnitOwnershipCheckRunDelegationError(t *testing.T) {
 		t.Errorf("Message = %q, want the delegation error", result.Message)
 	}
 }
+
+// A broken delegation env is reported even when no supervisor runs: it is often
+// why none does.
+func TestSupervisorUnitOwnershipCheckRunDelegationErrorWithoutSupervisor(t *testing.T) {
+	r := NewSupervisorUnitOwnershipCheck(false, 0, SupervisorUnitOwnership{Status: "delegation_error", Error: "bad scope"}).Run(&CheckContext{})
+	if r.Status != StatusError || !strings.Contains(r.Message, "bad scope") {
+		t.Fatalf("result = %d %q, want the delegation error with no supervisor running", r.Status, r.Message)
+	}
+}
+
+// An active unit whose MainPID could not be read leaves ownership unknown, not
+// disproven; a delegated unit's remedy is the caller's, never --user/install.
+func TestSupervisorUnitOwnershipCheckRunUnknownMainPIDAndDelegatedRemedy(t *testing.T) {
+	r := NewSupervisorUnitOwnershipCheck(true, 4242, SupervisorUnitOwnership{Status: "outside_unit", Unit: "gc.service", UnitActive: true}).Run(&CheckContext{})
+	if r.Status != StatusWarning || !strings.Contains(r.Message, "unverified") {
+		t.Fatalf("unknown MainPID result = %d %q, want an unverified warning", r.Status, r.Message)
+	}
+	remedy := "run 'systemctl reset-failed gc.service && systemctl start gc.service' to let the delegated unit reclaim the process"
+	r = NewSupervisorUnitOwnershipCheck(true, 4242, SupervisorUnitOwnership{Status: "outside_unit", Unit: "gc.service", UnitActive: true, UnitPID: 9, Remedy: remedy}).Run(&CheckContext{})
+	if r.Status != StatusError || r.FixHint != remedy {
+		t.Fatalf("delegated result = %d hint %q, want error with the delegated remedy", r.Status, r.FixHint)
+	}
+}

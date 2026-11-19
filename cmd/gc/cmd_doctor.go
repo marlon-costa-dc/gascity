@@ -598,7 +598,11 @@ func doDoctor(opts doctorOpts, stdout, stderr io.Writer) int {
 			UnitActive: raw.UnitActive,
 			UnitPID:    raw.UnitPID,
 			Error:      raw.Error,
+			Remedy:     raw.Remedy,
 		}
+	} else if _, _, err := supervisorSystemdDelegation(); err != nil {
+		// No supervisor to compare, but a broken delegation env is often why.
+		supervisorUnitOwnership = doctor.SupervisorUnitOwnership{Status: "delegation_error", Error: err.Error()}
 	}
 	skipRigDoltChecks := gcDoltSkip()
 	skipCityDoltCheck := skipRigDoltChecks || (!scopeUsesManagedBdStoreContract(cityPath, cityPath) && !workspaceNeedsCityDoltCheck(cityPath, cfg))

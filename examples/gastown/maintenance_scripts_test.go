@@ -630,6 +630,12 @@ func TestOrphanSweepPreservesOperatorClaims(t *testing.T) {
 			if kept != tc.wantProbe {
 				t.Fatalf("kept report = %v, want %v\noutput:\n%s", kept, tc.wantProbe, out)
 			}
+			// A kept claim is named with its bead and assignee, so the operator
+			// can find it; the count alone is not actionable.
+			named := strings.Contains(string(out), "orphan-sweep: kept claim ga-op (assignee "+tc.assignee+"): no gc session bead backs it")
+			if named != tc.wantProbe {
+				t.Fatalf("kept claim named = %v, want %v\noutput:\n%s", named, tc.wantProbe, out)
+			}
 		})
 	}
 }
@@ -1315,6 +1321,11 @@ exit 1
 	}
 	if !strings.Contains(string(out), "orphan-sweep: reset 0 orphaned beads, skipped 1 unverifiable") {
 		t.Fatalf("unexpected orphan-sweep output:\n%s", out)
+	}
+	// The failing run names the claim it could not verify and why, so the
+	// controller log (which records a failing exec order's output) is actionable.
+	if want := "orphan-sweep: unverifiable claim ga-session-probe-error (assignee project__worker-gc-mc-wisp-live123): could not read its session bead"; !strings.Contains(string(out), want) {
+		t.Fatalf("missing %q\n%s", want, out)
 	}
 
 	logData, err := os.ReadFile(gcLog)

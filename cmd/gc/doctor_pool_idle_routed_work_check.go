@@ -164,6 +164,19 @@ func (c *poolIdleRoutedWorkCheck) collect(deadline time.Time) (findings []poolId
 // budget-exhausted report can say how far the scan got; the deadline is
 // honored between templates.
 func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label string, deadline time.Time, scanned *int) ([]poolIdleRoutedWorkFinding, error) {
+	// A city with no generic-ephemeral pool template has nothing to scan, so
+	// it reads nothing (and so cannot fail on the read).
+	hasPoolTemplate := false
+	for i := range c.cfg.Agents {
+		agent := &c.cfg.Agents[i]
+		if !agent.Suspended && agent.SupportsGenericEphemeralSessions() && agent.QualifiedName() != "" {
+			hasPoolTemplate = true
+			break
+		}
+	}
+	if !hasPoolTemplate {
+		return nil, nil
+	}
 	sessions, err := cliSessionFrontDoor(store, c.cfg, c.cityPath).List("", "")
 	if err != nil {
 		return nil, fmt.Errorf("listing sessions: %w", err)

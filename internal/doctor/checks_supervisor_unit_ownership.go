@@ -22,6 +22,11 @@ type SupervisorUnitOwnership struct {
 	// Error is the systemd delegation configuration error when Status is
 	// "delegation_error".
 	Error string
+	// Remedy is the command that lets the unit reclaim the process, rendered
+	// by the caller that knows how the unit is managed (a delegated unit takes
+	// its own scope and is never reinstalled by gc). Empty keeps the default
+	// hint for gc's own user unit.
+	Remedy string
 }
 
 // SupervisorUnitOwnershipCheck verifies that a live supervisor process is
@@ -62,6 +67,14 @@ func (c *SupervisorUnitOwnershipCheck) Fix(_ *CheckContext) error { return nil }
 // Run compares the live supervisor PID against gc's own systemd user unit.
 func (c *SupervisorUnitOwnershipCheck) Run(_ *CheckContext) *CheckResult {
 	r := &CheckResult{Name: c.Name()}
+	// A misconfigured delegation is reported whether or not a supervisor runs:
+	// it is often the reason none does.
+	if c.ownership.Status == "delegation_error" {
+		r.Status = StatusError
+		r.Message = "supervisor systemd delegation is misconfigured: " + c.ownership.Error
+		r.FixHint = "correct or unset GC_SUPERVISOR_SYSTEMD_UNIT / GC_SUPERVISOR_SYSTEMD_SCOPE"
+		return r
+	}
 	if !c.supervisorRunning {
 		r.Status = StatusOK
 		r.Message = "supervisor is not running"
@@ -71,23 +84,29 @@ func (c *SupervisorUnitOwnershipCheck) Run(_ *CheckContext) *CheckResult {
 	case "no_unit":
 		r.Status = StatusOK
 		r.Message = "no systemd unit installed for the supervisor"
-	case "delegation_error":
-		r.Status = StatusError
-		r.Message = "supervisor systemd delegation is misconfigured: " + c.ownership.Error
-		r.FixHint = "correct or unset GC_SUPERVISOR_SYSTEMD_UNIT / GC_SUPERVISOR_SYSTEMD_SCOPE"
 	case "owned":
 		r.Status = StatusOK
 		r.Message = fmt.Sprintf("supervisor (PID %d) is owned by systemd unit %s", c.supervisorPID, c.ownership.Unit)
 	default:
+		if c.ownership.UnitActive && c.ownership.UnitPID == 0 {
+			// The unit is up but its MainPID could not be read: ownership is
+			// unknown, not disproven.
+			r.Status = StatusWarning
+			r.Message = fmt.Sprintf("supervisor (PID %d): systemd unit %s is active but its MainPID could not be read; ownership unverified", c.supervisorPID, c.ownership.Unit)
+			return r
+		}
 		r.Status = StatusError
 		r.Message = fmt.Sprintf(
 			"supervisor is running (PID %d) outside its systemd unit %s (unit PID %d, unit active=%v) — systemd's Restart=always is not protecting it",
 			c.supervisorPID, c.ownership.Unit, c.ownership.UnitPID, c.ownership.UnitActive,
 		)
-		r.FixHint = fmt.Sprintf(
-			"run 'systemctl --user reset-failed %s && systemctl --user start %s' to let the unit reclaim the process, or 'gc supervisor install' to reinstall it",
-			c.ownership.Unit, c.ownership.Unit,
-		)
+		r.FixHint = c.ownership.Remedy
+		if r.FixHint == "" {
+			r.FixHint = fmt.Sprintf(
+				"run 'systemctl --user reset-failed %s && systemctl --user start %s' to let the unit reclaim the process, or 'gc supervisor install' to reinstall it",
+				c.ownership.Unit, c.ownership.Unit,
+			)
+		}
 	}
 	return r
 }

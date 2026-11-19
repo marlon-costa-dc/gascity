@@ -4420,3 +4420,30 @@ func TestDoltVersionCheck_CanFixFalse(t *testing.T) {
 		t.Error("CanFix() = true, want false")
 	}
 }
+
+// Only a backend whose server is not running is the suspended city's pause; a
+// different listing fault (one socket refusing access) still warns, wrapped or
+// joined with an absent backend or not.
+func TestOrphanSessionsCheck_CitySuspendedOnlyExcusesAbsentServers(t *testing.T) {
+	cfg := &config.City{Agents: []config.Agent{{Name: "mayor"}}}
+	absent := &runtime.PartialListError{Err: errors.New("tmux server unreachable"), ServerAbsent: true}
+	denied := &runtime.PartialListError{Err: errors.New("permission denied on socket")}
+	cases := []struct {
+		name string
+		err  error
+		want CheckStatus
+	}{
+		{"absent server", fmt.Errorf("default backend: %w", absent), StatusOK},
+		{"other fault", denied, StatusWarning},
+		{"absent joined with fault", &runtime.PartialListError{Err: errors.Join(absent, errors.New("acp: permission denied"))}, StatusWarning},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sp := &partialListDoctorProvider{Fake: runtime.NewFake(), listErr: tc.err}
+			r := NewOrphanSessionsCheck(cfg, "test", "", sp, true).Run(&CheckContext{})
+			if r.Status != tc.want {
+				t.Fatalf("status = %d, want %d; msg = %s", r.Status, tc.want, r.Message)
+			}
+		})
+	}
+}

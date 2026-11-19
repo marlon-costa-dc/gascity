@@ -629,7 +629,7 @@ func (c *OrphanSessionsCheck) Run(_ *CheckContext) *CheckResult {
 	}
 
 	if len(orphans) == 0 {
-		if partialList && c.citySuspended {
+		if partialList && c.citySuspended && everyBackendServerAbsent(err) {
 			r.Status = StatusOK
 			r.Message = fmt.Sprintf("%s; sessions paused (no orphaned sessions; listing: %v)", CitySuspendedByOperator, err)
 			return r
@@ -651,6 +651,38 @@ func (c *OrphanSessionsCheck) Run(_ *CheckContext) *CheckResult {
 	}
 	r.Details = orphans
 	return r
+}
+
+// everyBackendServerAbsent reports whether every backend failure inside err is
+// a runtime server that is not running (PartialListError.ServerAbsent), the
+// failure a suspended city produces by design. Any other failure — a
+// permission error on one socket, a timeout — is a fault the pause does not
+// explain. A merged multi-backend error never carries ServerAbsent itself, so
+// the walk descends into joined and wrapped errors to the per-backend ones.
+func everyBackendServerAbsent(err error) bool {
+	switch e := err.(type) { //nolint:errorlint // the walk inspects each node itself; errors.As would stop at the first match
+	case nil:
+		return false
+	case *runtime.PartialListError:
+		if e.ServerAbsent {
+			return true
+		}
+		return everyBackendServerAbsent(e.Err)
+	case interface{ Unwrap() []error }:
+		errs := e.Unwrap()
+		if len(errs) == 0 {
+			return false
+		}
+		for _, inner := range errs {
+			if !everyBackendServerAbsent(inner) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return everyBackendServerAbsent(e.Unwrap())
+	}
+	return false
 }
 
 // CanFix returns true — orphan sessions can be killed.

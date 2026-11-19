@@ -429,3 +429,21 @@ func TestPoolIdleRoutedWorkCheckReadsSessionLedgerOncePerScope(t *testing.T) {
 		t.Fatalf("session ledger reads = %d, want 1 for 3 templates in one scope", store.sessionLists)
 	}
 }
+
+// A city with no generic-ephemeral pool template reads no session ledger, so a
+// failing store cannot turn an empty check into a skipped scope.
+func TestPoolIdleRoutedWorkCheckReadsNothingWithoutPoolTemplates(t *testing.T) {
+	// max_active_sessions = 0 disables generic ephemeral sessions; a suspended
+	// agent is skipped too. Neither is a pool template.
+	cfg := &config.City{Agents: []config.Agent{
+		{Name: "capped", MaxActiveSessions: intPtr(0)},
+		{Name: "paused", Suspended: true},
+	}}
+	store := &poolIdleSessionListCountingStore{Store: beads.NewMemStore()}
+	result := newPoolIdleRoutedWorkCheck(cfg, t.TempDir(), func(string) (beads.Store, error) {
+		return store, nil
+	}).Run(&doctor.CheckContext{})
+	if result.Status != doctor.StatusOK || store.sessionLists != 0 {
+		t.Fatalf("result = %#v, session ledger reads = %d; want OK with no reads", result, store.sessionLists)
+	}
+}

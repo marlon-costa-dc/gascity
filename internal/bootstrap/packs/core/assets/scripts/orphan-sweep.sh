@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# orphan-sweep — reset beads assigned to dead agents.
+# orphan-sweep — reset in-progress beads whose gc session is dead.
 #
 # Replaces the deacon patrol town-orphan-sweep step. Cross-references
-# in-progress beads against all known agents. Beads assigned to agents
-# that don't exist in ANY rig get reset to open/unassigned so they are
-# routable again.
+# in-progress beads against the configured agents and the live sessions. A
+# claim is reset to open/unassigned (routable again) only when a gc session
+# bead whose own identity is the assignee proves that session dead. A claim
+# no gc session backs (an operator's bd actor, an external lane label, a
+# removed agent that never had a session bead) is kept, never reset; a claim
+# the sweep cannot verify is kept and fails the run.
+#
+# Reporting: every kept or unverifiable claim is named on stderr with its bead
+# and reason. The controller logs an exec order's output only when it exits
+# non-zero, so unverifiable claims (exit 1) reach the controller log, while
+# kept claims on an otherwise clean run are seen with `gc order run
+# orphan-sweep`.
 #
 # Does NOT do worktree salvage — cities that staff a work-health patrol role
 # (e.g. the gastown pack's witness) handle that separately.
@@ -425,8 +434,13 @@ is_known_agent() {
 
 ORPHANED=0
 UNVERIFIABLE=0
-# Claims no gc session backs (another actor's work), kept and reported.
+# Claims no gc session backs (another actor's work), kept and named on stderr.
 KEPT_FOREIGN=0
+
+# report_claim names one claim the sweep did not reset, with why.
+report_claim() {
+    echo "orphan-sweep: $1 claim $2 (assignee $3): $4" >&2
+}
 # Count of undeliverable summaries. Load-bearing for the exit code below.
 FAILED=0
 # Process substitution (not a pipe) keeps the loop body in the parent
@@ -439,6 +453,7 @@ while IFS=$'\t' read -r bead_id assignee; do
             recheck_status=$?
             if [ "$recheck_status" != "2" ]; then
                 UNVERIFIABLE=$((UNVERIFIABLE + 1))
+                report_claim unverifiable "$bead_id" "$assignee" "could not re-read the work bead before reset"
             fi
             continue
         fi
@@ -448,10 +463,12 @@ while IFS=$'\t' read -r bead_id assignee; do
             session_status=$?
             if [ "$session_status" = "2" ]; then
                 UNVERIFIABLE=$((UNVERIFIABLE + 1))
+                report_claim unverifiable "$bead_id" "$assignee" "could not read its session bead"
                 continue
             fi
             if [ "$session_status" = "3" ]; then
                 KEPT_FOREIGN=$((KEPT_FOREIGN + 1))
+                report_claim kept "$bead_id" "$assignee" "no gc session bead backs it"
                 continue
             fi
         fi
@@ -461,6 +478,7 @@ while IFS=$'\t' read -r bead_id assignee; do
             reset_status=$?
             if [ "$reset_status" != "2" ]; then
                 UNVERIFIABLE=$((UNVERIFIABLE + 1))
+                report_claim unverifiable "$bead_id" "$assignee" "the conditional reset did not apply"
             fi
         fi
     fi

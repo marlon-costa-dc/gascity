@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gastownhall/gascity/internal/builtinpacks"
 	"github.com/gastownhall/gascity/internal/config"
 	"github.com/gastownhall/gascity/internal/formula"
 	"github.com/gastownhall/gascity/internal/fsys"
@@ -372,10 +371,13 @@ func singletonSessionMigrationWarnings(cfg *config.City) []string {
 		if namedByTemplate[agentCfg.QualifiedName()] {
 			continue
 		}
-		// A bundled pack's singleton (core's control-dispatcher, gastown's
-		// dog) drains on empty demand by its authors' design; the migration
-		// advice is for agents a city declares itself.
-		if _, bundled := builtinpacks.Source(agentCfg.PackName); bundled {
+		// The migration advice is for singletons a city declares itself
+		// (inline [[agent]], no PackName). A pack's singleton — core's
+		// control-dispatcher, gastown's dog, any third-party pack's — drains on
+		// empty demand by its author's design, and no pack name is trusted to
+		// decide that. A [[patches.agent]] that sets max_active_sessions=1 on a
+		// pack agent is therefore not warned on either.
+		if agentCfg.PackName != "" {
 			continue
 		}
 		warnings = append(warnings,
