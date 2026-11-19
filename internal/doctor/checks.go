@@ -2640,7 +2640,11 @@ func (c *DoltNomsSizeCheck) Run(_ *CheckContext) *CheckResult {
 		measureDir = duDirBytes
 	}
 	for _, target := range targets {
-		total, exists, err := measureDir(target.ScanRoot)
+		// Size noms, the table-file store bloat recovery compacts. ScanRoot is
+		// the whole .dolt directory, which also holds git-remote-cache, Dolt's
+		// local copy of a git+ssh/git+https remote; folding that in reported a
+		// 842M noms as "noms directory ... is 3.36 GB".
+		total, exists, err := measureDir(filepath.Join(target.ScanRoot, "noms"))
 		if err != nil {
 			r.Status = StatusWarning
 			r.Message = fmt.Sprintf("scan dolt data dir: %v", err)
