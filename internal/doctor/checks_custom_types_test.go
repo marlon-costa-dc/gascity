@@ -390,7 +390,7 @@ func TestCustomTypesCheck_TableDrift(t *testing.T) {
 // dolt.shared-server: true set there (as fleet agent HOMEs do), scrubbing
 // BEADS_DOLT_SERVER_PORT and friends changes nothing: bd still discovers the
 // shared server via that config file, not an env var. Pinning a test-owned
-// HOME via t.TempDir() removes the fallback file entirely, which is the only
+// HOME via testOwnedHome removes the fallback file entirely, which is the only
 // complete fix — this test asserts that isolation actually holds, not just
 // that the drift check's Run/Fix behavior happens to look right.
 func TestCustomTypesCheck_TableDriftUsesTestOwnedDoltContext(t *testing.T) {
@@ -503,49 +503,53 @@ func TestCustomTypesCheck_ServerBackedStoreIgnoresAmbientEndpoint(t *testing.T) 
 		// Production reads this same command the same way; see
 		// customTypesFromBd in checks_custom_types.go.
 		out, err := cmd.Output()
+		// Output keeps stderr off the parsed value but on *exec.ExitError;
+		// the error carries it so every failure report shows bd's diagnostics.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			err = errors.Join(err, errors.New("stderr:\n"+string(exitErr.Stderr)))
+		}
 		return string(out), err
 	}
 	mustRunBD := func(dir string, env []string, args ...string) string {
 		t.Helper()
 		out, err := runBD(dir, env, args...)
 		if err != nil {
-			// Output keeps stderr off the parsed value but does not discard
-			// it: it lands on *exec.ExitError, so the diagnostics stay
-			// available exactly where they are useful.
-			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) {
-				t.Fatalf("bd %s: %v\nstdout:\n%s\nstderr:\n%s",
-					strings.Join(args, " "), err, out, exitErr.Stderr)
-			}
-			t.Fatalf("bd %s: %v\n%s", strings.Join(args, " "), err, out)
+			t.Fatalf("bd %s: %v\nstdout:\n%s", strings.Join(args, " "), err, out)
 		}
 		return out
+	}
+	// stopBDServerAtCleanup is registered before each bd init, so a server a
+	// failed init started is still stopped, and a store never initialized is
+	// never stopped.
+	stopBDServerAtCleanup := func(dir string) {
+		t.Cleanup(func() {
+			if out, err := runBD(dir, nil, "dolt", "stop"); err != nil {
+				t.Errorf("bd dolt stop in %s: %v\nstdout:\n%s", dir, err, out)
+			}
+		})
 	}
 
 	targetDir := guardedTempDir(t)
 	decoyDir := guardedTempDir(t)
-	var targetPort, decoyPort string
-	t.Cleanup(func() {
-		for _, store := range []struct {
-			dir  string
-			port string
-		}{
-			{targetDir, targetPort},
-			{decoyDir, decoyPort},
-		} {
-			env := os.Environ()
-			if store.port != "" {
-				env = customTypesTestEnv(env, "127.0.0.1", store.port)
-			}
-			_, _ = runBD(store.dir, env, "dolt", "stop")
-		}
-	})
-
+	targetConfig := filepath.Join(targetDir, ".beads", "config.yaml")
+	stopBDServerAtCleanup(targetDir)
 	targetInit := mustRunBD(targetDir, nil,
 		"init", "--server", "--non-interactive",
 		"-p", "target", "--skip-hooks", "--skip-agents")
-	targetPort = customTypesTestServerPort(t, targetInit)
-	if _, err := contract.EnsureCanonicalConfig(fsys.OSFS{}, filepath.Join(targetDir, ".beads", "config.yaml"), contract.ConfigState{
+	bdTargetConfig, err := os.ReadFile(targetConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// bd refuses to stop the server of a store recorded as city-owned, so the
+	// target gets back the config bd wrote before its stop runs (gct-7qssa).
+	t.Cleanup(func() {
+		if err := os.WriteFile(targetConfig, bdTargetConfig, 0o600); err != nil {
+			t.Errorf("restoring the bd-owned target config: %v", err)
+		}
+	})
+	targetPort := customTypesTestServerPort(t, targetInit)
+	if _, err := contract.EnsureCanonicalConfig(fsys.OSFS{}, targetConfig, contract.ConfigState{
 		IssuePrefix:    "target",
 		EndpointOrigin: contract.EndpointOriginCityCanonical,
 		EndpointStatus: contract.EndpointStatusVerified,
@@ -557,10 +561,11 @@ func TestCustomTypesCheck_ServerBackedStoreIgnoresAmbientEndpoint(t *testing.T) 
 	targetEnv := customTypesTestEnv(os.Environ(), "127.0.0.1", targetPort)
 	mustRunBD(targetDir, targetEnv, "config", "set", "types.custom", "user-defined")
 
+	stopBDServerAtCleanup(decoyDir)
 	decoyInit := mustRunBD(decoyDir, nil,
 		"init", "--server", "--non-interactive",
 		"-p", "decoy", "--skip-hooks", "--skip-agents")
-	decoyPort = customTypesTestServerPort(t, decoyInit)
+	decoyPort := customTypesTestServerPort(t, decoyInit)
 	decoyEnv := customTypesTestEnv(os.Environ(), "127.0.0.1", decoyPort)
 	mustRunBD(decoyDir, decoyEnv, "config", "set", "types.custom", "decoy-only")
 
