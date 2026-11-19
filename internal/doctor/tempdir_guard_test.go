@@ -171,19 +171,19 @@ func TestRetryRemoveAllStopsAtItsAttemptBudget(t *testing.T) {
 // back. Deleting that registration — exactly the pre-ga-531fk shape — drives
 // calls to 0 and turns this red, which no dir-is-gone assertion can do,
 // since t.TempDir() removes an idle dir on its own. The injected remove
-// deliberately never removes anything: TempDir's own cleanup still clears
-// the dir. That the guardedTempDir wrapper every real caller uses reaches
-// this seam with a real removal is pinned separately by
-// TestGuardedTempDirRemovalRunsBeforeTempDirsOwnCleanup.
+// fails twice and then removes the dir for real: the dir comes from
+// os.MkdirTemp, so nothing else would clear it (gct-7qssa). That the
+// guardedTempDir wrapper every real caller uses reaches this seam with a real
+// removal is pinned separately by TestGuardedTempDirRemovesItsDirWhenTheTestEnds.
 func TestGuardedTempDirRegistersTheRetryingRemoval(t *testing.T) {
 	calls := 0
 	t.Run("guarded", func(t *testing.T) {
-		guardedTempDirWith(t, func(string) error {
+		guardedTempDirWith(t, func(dir string) error {
 			calls++
 			if calls < 3 {
 				return errors.New("directory not empty")
 			}
-			return nil
+			return os.RemoveAll(dir)
 		})
 	})
 	if calls != 3 {
@@ -196,8 +196,7 @@ func TestGuardedTempDirRegistersTheRetryingRemoval(t *testing.T) {
 // test finishes. The retry half is covered by the retryRemoveAll tests above,
 // since a single RemoveAll of an idle dir succeeds on the first attempt; the
 // wiring between the two halves is covered by
-// TestGuardedTempDirRegistersTheRetryingRemoval for the seam and by
-// TestGuardedTempDirRemovalRunsBeforeTempDirsOwnCleanup for the wrapper.
+// TestGuardedTempDirRegistersTheRetryingRemoval for the seam.
 func TestGuardedTempDirRemovesItsDirWhenTheTestEnds(t *testing.T) {
 	var dir string
 	t.Run("guarded", func(t *testing.T) {

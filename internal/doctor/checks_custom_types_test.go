@@ -524,28 +524,32 @@ func TestCustomTypesCheck_ServerBackedStoreIgnoresAmbientEndpoint(t *testing.T) 
 
 	targetDir := guardedTempDir(t)
 	decoyDir := guardedTempDir(t)
-	var targetPort, decoyPort string
+	targetConfig := filepath.Join(targetDir, ".beads", "config.yaml")
+	var bdTargetConfig []byte
 	t.Cleanup(func() {
-		for _, store := range []struct {
-			dir  string
-			port string
-		}{
-			{targetDir, targetPort},
-			{decoyDir, decoyPort},
-		} {
-			env := os.Environ()
-			if store.port != "" {
-				env = customTypesTestEnv(env, "127.0.0.1", store.port)
+		// bd refuses to stop the server of a store recorded as city-owned, so
+		// the target gets back the config bd wrote before it stops (gct-7qssa).
+		if bdTargetConfig != nil {
+			if err := os.WriteFile(targetConfig, bdTargetConfig, 0o600); err != nil {
+				t.Errorf("restoring the bd-owned target config: %v", err)
 			}
-			_, _ = runBD(store.dir, env, "dolt", "stop")
+		}
+		for _, dir := range []string{targetDir, decoyDir} {
+			if out, err := runBD(dir, nil, "dolt", "stop"); err != nil {
+				t.Errorf("bd dolt stop in %s: %v\n%s", dir, err, out)
+			}
 		}
 	})
 
 	targetInit := mustRunBD(targetDir, nil,
 		"init", "--server", "--non-interactive",
 		"-p", "target", "--skip-hooks", "--skip-agents")
-	targetPort = customTypesTestServerPort(t, targetInit)
-	if _, err := contract.EnsureCanonicalConfig(fsys.OSFS{}, filepath.Join(targetDir, ".beads", "config.yaml"), contract.ConfigState{
+	bdTargetConfig, err := os.ReadFile(targetConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetPort := customTypesTestServerPort(t, targetInit)
+	if _, err := contract.EnsureCanonicalConfig(fsys.OSFS{}, targetConfig, contract.ConfigState{
 		IssuePrefix:    "target",
 		EndpointOrigin: contract.EndpointOriginCityCanonical,
 		EndpointStatus: contract.EndpointStatusVerified,
@@ -560,7 +564,7 @@ func TestCustomTypesCheck_ServerBackedStoreIgnoresAmbientEndpoint(t *testing.T) 
 	decoyInit := mustRunBD(decoyDir, nil,
 		"init", "--server", "--non-interactive",
 		"-p", "decoy", "--skip-hooks", "--skip-agents")
-	decoyPort = customTypesTestServerPort(t, decoyInit)
+	decoyPort := customTypesTestServerPort(t, decoyInit)
 	decoyEnv := customTypesTestEnv(os.Environ(), "127.0.0.1", decoyPort)
 	mustRunBD(decoyDir, decoyEnv, "config", "set", "types.custom", "decoy-only")
 
