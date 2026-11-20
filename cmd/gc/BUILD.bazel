@@ -204,6 +204,7 @@ go_library(
         "doctor_session_model.go",
         "doctor_startup_health.go",
         "doctor_store_preflight.go",
+        "doctor_store_scopes.go",
         "doctor_v2_checks.go",
         "doctor_warmup_eligible.go",
         "doctor_work_option_metadata.go",
