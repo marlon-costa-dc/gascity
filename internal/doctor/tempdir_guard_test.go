@@ -15,17 +15,16 @@ const (
 
 // retryRemoveAllForTest retries remove briefly to absorb a lingering
 // embedded-dolt background writer that can hold files open a few dozen ms
-// past the owning bd subprocess's apparent exit — which otherwise races
-// t.TempDir()'s single-shot RemoveAll cleanup with an intermittent
-// "directory not empty" error. It logs rather than fails on a final give-up,
-// so TempDir's own best-effort cleanup still gets the last word while a
-// future red run can still tell an insufficient guard from a missing one.
+// past the owning bd subprocess's apparent exit — which otherwise fails a
+// single-shot RemoveAll with an intermittent "directory not empty" error. A
+// final give-up fails the test: the dir comes from os.MkdirTemp, so nothing
+// else removes it, and a leaked dir must not pass green (gct-7qssa).
 // cmd/gc dodges the same lingering-writer hazard by placement instead — see
 // doltIdentityHomeDir (ga-7dgcg6).
 func retryRemoveAllForTest(t *testing.T, dir string, remove func(string) error) {
 	t.Helper()
 	if err := retryRemoveAll(dir, remove, removeRetryAttempts, removeRetryDelay); err != nil {
-		t.Logf("guarded removal of %s exhausted %d attempts: %v", dir, removeRetryAttempts, err)
+		t.Errorf("guarded removal of %s exhausted %d attempts: %v", dir, removeRetryAttempts, err)
 	}
 }
 
@@ -84,12 +83,9 @@ func guardedTempDir(t *testing.T) string {
 	return guardedTempDirWith(t, os.RemoveAll)
 }
 
-// guardedTempDirWith is guardedTempDir with the removal call injected. The
-// registration is the whole point of the helper and yet is invisible to a
-// dir-is-gone assertion, because an idle dir removed by the retrying removal
-// leaves nothing to observe; injecting the removal is what lets a test
-// observe that the cleanup was registered at all. Ordinary callers want
-// guardedTempDir.
+// guardedTempDirWith is guardedTempDir with the removal call injected, which
+// lets a test observe that the registered cleanup is the retrying removal.
+// Ordinary callers want guardedTempDir.
 func guardedTempDirWith(t *testing.T, remove func(string) error) string {
 	t.Helper()
 	dir, err := os.MkdirTemp(bdWalkUpSafeTempRoot(), "gc-doctor-guarded-")
@@ -116,8 +112,14 @@ func guardedTempDirWith(t *testing.T, remove func(string) error) string {
 // from the .beads fallback this pin exists to exclude, so the directories
 // are carried across by their own explicit env vars, which the shim reads
 // regardless of HOME.
+//
+// bd and dolt also fork a detached send-metrics child after most commands; it
+// outlives the test and re-creates files under this HOME after its removal
+// (beads#5032), so the pin turns both flushers off (gct-7qssa).
 func testOwnedHome(t *testing.T) string {
 	t.Helper()
+	t.Setenv("BD_DISABLE_EVENT_FLUSH", "1")
+	t.Setenv("DOLT_DISABLE_EVENT_FLUSH", "1")
 	home := guardedTempDir(t)
 	if realHome, err := os.UserHomeDir(); err == nil && realHome != "" {
 		miseConfig := filepath.Join(realHome, ".config", "mise")
@@ -165,25 +167,22 @@ func TestRetryRemoveAllStopsAtItsAttemptBudget(t *testing.T) {
 	}
 }
 
-// TestGuardedTempDirRegistersTheRetryingRemoval pins the wiring between the
-// two halves the tests below and above cover separately: that
-// guardedTempDirWith registers the retrying removal on the dir it hands
-// back. Deleting that registration — exactly the pre-ga-531fk shape — drives
-// calls to 0 and turns this red, which no dir-is-gone assertion can do,
-// since t.TempDir() removes an idle dir on its own. The injected remove
-// deliberately never removes anything: TempDir's own cleanup still clears
-// the dir. That the guardedTempDir wrapper every real caller uses reaches
-// this seam with a real removal is pinned separately by
-// TestGuardedTempDirRemovalRunsBeforeTempDirsOwnCleanup.
+// TestGuardedTempDirRegistersTheRetryingRemoval pins that the removal
+// guardedTempDirWith registers on the dir it hands back is the retrying one:
+// a dropped registration (the pre-ga-531fk shape) drives calls to 0 and a
+// single-shot removal to 1. The injected remove fails twice and then removes
+// the dir for real, since nothing else clears an os.MkdirTemp dir
+// (gct-7qssa). That the dir is gone once the test ends is pinned by
+// TestGuardedTempDirRemovesItsDirWhenTheTestEnds.
 func TestGuardedTempDirRegistersTheRetryingRemoval(t *testing.T) {
 	calls := 0
 	t.Run("guarded", func(t *testing.T) {
-		guardedTempDirWith(t, func(string) error {
+		guardedTempDirWith(t, func(dir string) error {
 			calls++
 			if calls < 3 {
 				return errors.New("directory not empty")
 			}
-			return nil
+			return os.RemoveAll(dir)
 		})
 	})
 	if calls != 3 {
@@ -196,8 +195,7 @@ func TestGuardedTempDirRegistersTheRetryingRemoval(t *testing.T) {
 // test finishes. The retry half is covered by the retryRemoveAll tests above,
 // since a single RemoveAll of an idle dir succeeds on the first attempt; the
 // wiring between the two halves is covered by
-// TestGuardedTempDirRegistersTheRetryingRemoval for the seam and by
-// TestGuardedTempDirRemovalRunsBeforeTempDirsOwnCleanup for the wrapper.
+// TestGuardedTempDirRegistersTheRetryingRemoval for the seam.
 func TestGuardedTempDirRemovesItsDirWhenTheTestEnds(t *testing.T) {
 	var dir string
 	t.Run("guarded", func(t *testing.T) {
