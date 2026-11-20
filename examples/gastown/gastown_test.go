@@ -86,8 +86,12 @@ func containsAny(body string, wants ...string) bool {
 func currentWispBurnScript(t *testing.T, name string, lines []string, burn int) []string {
 	t.Helper()
 	for j := burn - 1; j >= 0; j-- {
-		if strings.TrimSpace(lines[j]) == `CURRENT_WISP=${GC_BEAD_ID:-}` {
+		trimmed := strings.TrimSpace(lines[j])
+		if trimmed == `CURRENT_WISP=${GC_BEAD_ID:-}` {
 			return lines[j:burn]
+		}
+		if strings.HasPrefix(trimmed, "```") {
+			t.Fatalf("%s burns CURRENT_WISP near line %d without resolving it in the same code block", name, burn+1)
 		}
 	}
 	t.Fatalf("%s burns CURRENT_WISP near line %d without resolving it first", name, burn+1)
@@ -101,10 +105,12 @@ func currentWispBurnScript(t *testing.T, name string, lines []string, burn int) 
 func assertCurrentWispBurnsGuarded(t *testing.T, name, body string) {
 	t.Helper()
 	lines := strings.Split(body, "\n")
+	burns := 0
 	for i, line := range lines {
 		if strings.TrimSpace(line) != `gc bd mol burn "$CURRENT_WISP" --force` {
 			continue
 		}
+		burns++
 		script := currentWispBurnScript(t, name, lines, i)
 		pour := -1
 		for j, l := range script {
@@ -134,6 +140,9 @@ func assertCurrentWispBurnsGuarded(t *testing.T, name, body string) {
 		if !guarded {
 			t.Fatalf("%s burns CURRENT_WISP near line %d without exiting on an empty CURRENT_WISP before the successor pour", name, i+1)
 		}
+	}
+	if burns == 0 {
+		t.Fatalf("%s has no `gc bd mol burn \"$CURRENT_WISP\" --force` line to check", name)
 	}
 }
 
@@ -198,10 +207,12 @@ func linkTestCommands(t *testing.T, binDir string, names ...string) {
 func assertCurrentWispBurnsRequireSuccessor(t *testing.T, name, body string) {
 	t.Helper()
 	lines := strings.Split(body, "\n")
+	burns := 0
 	for i, line := range lines {
 		if strings.TrimSpace(line) != `gc bd mol burn "$CURRENT_WISP" --force` {
 			continue
 		}
+		burns++
 		block := strings.Join(currentWispBurnScript(t, name, lines, i), "\n")
 		assertContainsInOrder(t, block,
 			`jq -r '.new_epic_id // empty'`,
@@ -209,6 +220,9 @@ func assertCurrentWispBurnsRequireSuccessor(t *testing.T, name, body string) {
 			`if ! gc bd update "$NEXT" --assignee="$GC_AGENT"; then`,
 			`gc bd mol burn "$NEXT" --force`,
 		)
+	}
+	if burns == 0 {
+		t.Fatalf("%s has no `gc bd mol burn \"$CURRENT_WISP\" --force` line to check", name)
 	}
 }
 
