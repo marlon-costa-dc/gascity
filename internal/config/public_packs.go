@@ -7,8 +7,8 @@ const (
 	PublicGastownPackSource = "https://github.com/gastownhall/gascity-packs/tree/main/gastown"
 
 	// PublicGastownPackVersion pins fresh init output to the registry release
-	// content commit (gastown 0.1.13, on gascity-packs
-	// release/gastown-0.1.11).
+	// content commit from gastownhall/gascity-packs (main, or a gastown
+	// release branch such as release/gastown-0.1.11).
 	PublicGastownPackVersion = "sha:66897e7132c9d1160509ee47dd1b935bbd3b9664"
 
 	// PublicGascityPackSource is the concrete durable source for the
