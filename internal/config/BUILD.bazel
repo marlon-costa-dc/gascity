@@ -143,6 +143,7 @@ go_test(
         "progress_stall_test.go",
         "provenance_test.go",
         "provider_test.go",
+        "public_packs_bd_routing_test.go",
         "public_packs_test.go",
         "repo_cache_lock_nonblocking_test.go",
         "repo_cache_lock_test.go",
@@ -210,6 +211,8 @@ go_test(
         "//internal/shellquote",
         "//internal/testenv",
         "@com_github_burntsushi_toml//:toml",
+        "@org_golang_x_mod//modfile",
+        "@org_golang_x_mod//module",
     ],
 )
 

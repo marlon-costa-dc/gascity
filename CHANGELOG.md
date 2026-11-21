@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading Notes
+
+- **Run `gc doctor --fix` in each existing city that imports the public
+  gastown or gascity pack at a gc-written canonical pin.** gc now pins
+  gastown 0.1.13 and gascity 0.1.7 (see Changed). `gc doctor --fix`
+  rewrites a pin listed in `SupersededPublicGastownPackVersions` or
+  `SupersededPublicGascityPackVersions` (now including gastown 0.1.12
+  `cb6a612` and 0.1.11 `66c672b`) to the release this build embeds, offline.
+  Deliberate pins at other commits, and cities that import the packs from
+  their own source, are untouched.
+
 ### Added
 
 - **`gc storage preflight` reports everything the infra-class cutover would
@@ -37,6 +48,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   size is not something the verdict established — not that the copy is empty.
 
 ### Changed
+
+- **`gc init` pins the gastown pack to registry release 0.1.13 and the
+  gascity pack to 0.1.7.** Fresh cities, `examples/gastown`, and the pinned
+  import examples in the docs now use gastown
+  `sha:66897e7132c9d1160509ee47dd1b935bbd3b9664` (previously 0.1.10,
+  `sha:33d3a430a67d`) and gascity `sha:5bf643ca55bd20f080994cc31414ee4596015a0c`
+  (previously 0.1.6, `sha:3b3b89f2011e`). The gastown review check scripts
+  run `gc bd show` and `gc ready` instead of raw `bd`, and the refinery and
+  deacon patrols resolve their current wisp from `GC_BEAD_ID`, then from a
+  title- and ephemeral-filtered molecule lookup.
 
 - **`gc pack registry publish` now refuses an unscoped pack name unless you
   pass `--allow-unscoped-name`.** Registry pack names are scoped as
