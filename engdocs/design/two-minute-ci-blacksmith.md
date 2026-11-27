@@ -125,7 +125,8 @@ lane. This is the starting classification:
 | `MCP mail conformance` | `ci.yml` | Optional until upstream API drift is under local control |
 | `Docker session` | `ci.yml` | Required when Docker-session paths change |
 | `K8s session` | `ci.yml` | Optional unless K8s CI is configured |
-| Tier B/C acceptance | `nightly.yml`, `rc-gate.yml` | RC-only and nightly, not two-minute PR path |
+| Tier B acceptance | `nightly.yml`, `rc-gate.yml` | RC-only and nightly, not two-minute PR path |
+| Tier C acceptance (Ollama inference) | `rc-gate.yml`, `ollama-acceptance-c.yml` | RC-only or manual dispatch; needs the `OLLAMA_API_KEY` secret, so no schedule runs it |
 | Tutorial goldens | `rc-gate.yml` | RC-only |
 | GoReleaser snapshot | `rc-gate.yml` | RC-only |
 | macOS parity | `mac-regression.yml`, `rc-gate.yml` | Separate macOS gate with separate SLO |

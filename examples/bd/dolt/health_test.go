@@ -62,6 +62,11 @@ func filteredEnv(keys ...string) []string {
 			if strings.HasPrefix(key, "GC_") || strings.HasPrefix(key, "DOLT_") {
 				continue
 			}
+			// A host BASH_ENV/ENV or exported function is sourced by every
+			// rendered `bash -s` script and can shadow the PATH stubs.
+			if key == "BASH_ENV" || key == "ENV" || strings.HasPrefix(key, "BASH_FUNC_") {
+				continue
+			}
 		}
 		env = append(env, entry)
 	}

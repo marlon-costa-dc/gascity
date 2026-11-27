@@ -88,8 +88,11 @@ const (
 	// PR jobs' resolve-pin / build-bd-from-BD_CURRENT_REF / verify steps
 	// verbatim, and one `go test -tags acceptance_a -timeout 45m -run
 	// 'TestBeadsProxiedDefault$'` step. No new trigger, no new permission, no
-	// provider selector.
-	expectedNightlyExecutionHash = "71ba351dc01c14d41da3371544d5926dd471069a9066b6a81ff8803f65fe6cf8"
+	// provider selector. Then (gct-utan0) two jobs deleted, as upstream did: the
+	// SQLite coordination-store job (the provider hard-errors since #3151) and
+	// the scheduled Tier C Ollama job (rc-gate.yml keeps it reachable). No job,
+	// trigger or permission added.
+	expectedNightlyExecutionHash = "cdf3caa4e28c1f1ec977fbe81da634f5d737220e41c53aa7ca5139d41ceea606"
 	expectedSetupActionHash      = "1b803fa0984a1d605c52ee217f64580bf74ba47531b4f74bdbead00b55406dd2"
 )
 
