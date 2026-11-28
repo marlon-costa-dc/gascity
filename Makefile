@@ -1166,6 +1166,11 @@ install-buildx:
 	install -m 0755 "$$tmp" $(HOME)/.docker/cli-plugins/docker-buildx
 	@echo "Installed docker-buildx v$(BUILDX_VERSION)"
 
+.PHONY: test-beadmail
+## test-beadmail: verify bead-backed mail routing, delivery, and retention
+test-beadmail:
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-beadmail -- -count=1 -timeout 5m ./internal/mail/beadmail
+
 ## test-mail-wisp-insert: run the beads version-skew regression tests for gc mail send (wisp_events INSERT path)
 ## Tripwire for the 2026-06-11 P0: covers both NativeDoltStore and BdStore → Dolt paths.
 test-mail-wisp-insert:

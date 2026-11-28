@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -713,18 +714,22 @@ func TestRBEWorkerEnvCanaryWorkflow(t *testing.T) {
 // worker-env preflight before any remote bazel run. The lane job asks
 // before setup-bazel (no rbe-fork certificate for a run that would only
 // queue), counts as remote in exactly the modes setup-bazel attaches a
-// remote executor, and skips Bazel when the change moves the pin. Neither it
+// remote executor, and skips remote Bazel when the change moves the pin. Neither it
 // nor the coverage job (remote only, which asks too) measures its own host:
 // the worker-host job does (TestBazelWorkerHostFetchAlwaysRuns).
 func TestBazelMultiLaneWorkerEnvPreflight(t *testing.T) {
 	const (
-		skip      = "steps.worker-env.outputs.pin-moved != 'true'"
-		preflight = rbeWorkerEnvDrift + ` preflight "$RUNNER_TEMP/worker-env-base.bazel" "$RUNNER_TEMP/worker-env-changed"`
+		remoteSkip = "steps.worker-env.outputs.pin-moved != 'true'"
+		preflight  = rbeWorkerEnvDrift + ` preflight "$RUNNER_TEMP/worker-env-base.bazel" "$RUNNER_TEMP/worker-env-changed"`
 	)
 	bazelRun := regexp.MustCompile(`(?m)^\s*bazel ("\$\{args\[@\]\}"|coverage )`)
 	wf := parseWorkflow(t, bazelMultiLaneWorkflow)
 	for _, id := range []string{"lane", "coverage"} {
 		t.Run(id, func(t *testing.T) {
+			skip := remoteSkip
+			if id == "lane" {
+				skip = "needs.rbe.outputs.mode == 'local' || needs.rbe.outputs.mode == 'cache' || " + remoteSkip
+			}
 			job := wf.Jobs[id]
 			if job.Permissions["issues"] != "read" {
 				t.Errorf("%s job permissions %v, want issues: read (drift issues)", id, job.Permissions)
@@ -746,7 +751,7 @@ func TestBazelMultiLaneWorkerEnvPreflight(t *testing.T) {
 				}
 			}
 			if setup.If != skip {
-				t.Errorf("%s setup-bazel if %q, want %q (no certificate or cache restore for a moved pin)", id, setup.If, skip)
+				t.Errorf("%s setup-bazel if %q, want %q (only remote execution skips a moved pin)", id, setup.If, skip)
 			}
 			bazelSteps := 0
 			for i, s := range job.Steps {
@@ -758,7 +763,7 @@ func TestBazelMultiLaneWorkerEnvPreflight(t *testing.T) {
 					t.Errorf("%s step %q runs bazel before the worker-env preflight", id, s.Name)
 				}
 				if s.If != skip {
-					t.Errorf("%s step %q if %q: a moved pin must skip it (%s)", id, s.Name, s.If, skip)
+					t.Errorf("%s step %q if %q: only a moved remote pin must skip it (%s)", id, s.Name, s.If, skip)
 				}
 			}
 			if bazelSteps == 0 {
@@ -768,6 +773,26 @@ func TestBazelMultiLaneWorkerEnvPreflight(t *testing.T) {
 	}
 
 	lane := wf.Jobs["lane"]
+	testAt, testStep := findStep(lane, func(s ghStep) bool { return s.ID == "test" })
+	guardAt, guard := findStep(lane, func(s ghStep) bool { return s.ID == "test-execution" })
+	if testStep == nil || guard == nil || guardAt < testAt {
+		t.Fatal("lane job: no test-execution guard after the test step")
+	}
+	if guard.If != "always() && (needs.rbe.outputs.mode == 'local' || needs.rbe.outputs.mode == 'cache')" ||
+		guard.Env["TEST_OUTCOME"] != "${{ steps.test.outcome }}" || guard.ContinueOnError != "" {
+		t.Fatalf("lane test-execution guard must check the actual outcome in every local/cache run: %+v", guard)
+	}
+	for _, mode := range multiLaneModes {
+		if got := evalGHIf(t, guard.If, map[string]string{"needs.rbe.outputs.mode": mode}); got != (mode == "local" || mode == "cache") {
+			t.Errorf("mode %s: test-execution guard runs %v", mode, got)
+		}
+	}
+	for _, outcome := range []string{"success", "failure", "skipped", "cancelled", ""} { //nolint:misspell // GitHub Actions outcome value
+		out, err := runWorkflowStepScript(t, t.TempDir(), guard.Run, map[string]string{"TEST_OUTCOME": outcome})
+		if (err == nil) != (outcome == "success") {
+			t.Errorf("test-execution guard outcome %q: error %v\n%s", outcome, err, out)
+		}
+	}
 	_, pre := findStep(lane, func(s ghStep) bool { return s.ID == "worker-env" })
 	if pre == nil {
 		t.Fatal("lane job: no worker-env preflight step")
@@ -926,6 +951,8 @@ func TestBazelLaneWorkerEnvStepStaleBase(t *testing.T) {
 		{name: "a PR that re-pins", onto: s0, head: h2, baseSHA: s0, mode: "remote", moved: "true", measure: "true", wantOut: "::warning title=rbe worker-env pin moved::"},
 		{name: "base-sha is not a commit", onto: s0, head: h, baseSHA: strings.Repeat("ab", 20), mode: "remote", fail: true},
 		{name: "file absent at base-sha is empty", onto: sNoFile, head: hAddFile, baseSHA: sNoFile, mode: "remote", moved: "true", measure: "true", wantOut: "::warning title=rbe worker-env pin moved::"},
+		{name: "fork local adds its first pin", onto: sNoFile, head: hAddFile, baseSHA: sNoFile, mode: "local", moved: "true", measure: "true", wantOut: "::warning title=rbe worker-env pin moved::"},
+		{name: "cache adds its first pin", onto: sNoFile, head: hAddFile, baseSHA: sNoFile, mode: "cache", moved: "true", measure: "true", wantOut: "::warning title=rbe worker-env pin moved::"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := checkout(tc.onto, tc.head)
@@ -965,6 +992,57 @@ func TestBazelLaneWorkerEnvStepStaleBase(t *testing.T) {
 			for k, v := range map[string]string{"pin-moved": tc.moved, "measure": tc.measure} {
 				if got, _ := readStepOutput(t, e.output, k); got != v {
 					t.Errorf("output %s = %q, want %q\n%s", k, got, v, out)
+				}
+			}
+			if tc.moved != "true" || (tc.mode != "local" && tc.mode != "cache") {
+				return
+			}
+			// A newly introduced worker pin still measures the host, but
+			// must not turn a fork's four local test lanes into empty passes.
+			wf := readMultiLaneWorkflow(t)
+			var testStep *multiLaneStep
+			ctx := map[string]string{
+				"needs.rbe.outputs.mode":             tc.mode,
+				"steps.worker-env.outputs.pin-moved": tc.moved,
+			}
+			for i, s := range wf.Jobs["lane"].Steps {
+				if s.ID != "bazel" && s.ID != "test" {
+					continue
+				}
+				if !evalGHIf(t, s.If, ctx) {
+					t.Fatalf("mode %s with a new pin skips %s, so no tests run", tc.mode, s.ID)
+				}
+				if s.ID == "test" {
+					testStep = &wf.Jobs["lane"].Steps[i]
+				}
+			}
+			if testStep == nil {
+				t.Fatal("lane job has no test step")
+			}
+			raw, err := multiLaneLanes(t, multiLaneRBEStep(t, wf, "lanes").Run, "pull_request", tc.mode, "false")
+			if err != nil {
+				t.Fatalf("lane selection: %v\n%s", err, raw)
+			}
+			var entries []struct{ Lane, Cmd string }
+			if err := json.Unmarshal([]byte(raw), &entries); err != nil || len(entries) == 0 {
+				t.Fatalf("lane selection %q: %v", raw, err)
+			}
+			writeExecutable(t, filepath.Join(e.dir, "bin", "bazel"), "#!/bin/sh\nprintf '%s\\n' \"$@\" >\"$BAZEL_LOG\"\nexit \"$BAZEL_RC\"\n")
+			for _, entry := range entries {
+				for _, code := range []int{0, 7} {
+					log := filepath.Join(stepEnv["RUNNER_TEMP"], "bazel-"+entry.Lane+"-"+strconv.Itoa(code)+".log")
+					out, err := runWorkflowStepScript(t, dir, testStep.Run, map[string]string{
+						"PATH": stepEnv["PATH"], "RUNNER_TEMP": stepEnv["RUNNER_TEMP"], "GITHUB_STEP_SUMMARY": stepEnv["GITHUB_STEP_SUMMARY"],
+						"CMD": entry.Cmd, "MODE": tc.mode, "LANE": entry.Lane, "EVIDENCE_ONLY": "false",
+						"BAZEL_LOG": log, "BAZEL_RC": strconv.Itoa(code),
+					})
+					if (err == nil) != (code == 0) {
+						t.Errorf("%s lane %s exit %d: error %v\n%s", tc.mode, entry.Lane, code, err, out)
+					}
+					got, err := os.ReadFile(log)
+					if err != nil || !strings.HasPrefix(string(got), strings.Join(strings.Fields(entry.Cmd), "\n")+"\n") {
+						t.Errorf("%s lane %s did not execute its selected test command %q: %q, error %v", tc.mode, entry.Lane, entry.Cmd, got, err)
+					}
 				}
 			}
 		})

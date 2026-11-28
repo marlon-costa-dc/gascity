@@ -68,8 +68,9 @@
 #     mode local: lanes execute on the runner with no rbe-cache lookups and
 #     no probes. The id, not the name, so an org rename never flips
 #     upstream into fork mode. Every job that runs in mode local runs on
-#     ubuntu-latest there (a fork has no Blacksmith: its jobs would queue
-#     for a day and never start), Blacksmith only in gastownhall;
+#     ubuntu-24.04 there, matching the pinned LLVM/ICU runtime (a fork has
+#     no Blacksmith: its jobs would queue for a day and never start),
+#     Blacksmith only in gastownhall;
 #     Fork PRs into gascity are unaffected (their runs have github.repository
 #     gastownhall/gascity), as is a contributor's own --config=fork-cache;
 #   - a fork run mints at most 4 rbe-fork certificates, one per lane:
@@ -149,8 +150,8 @@ jobs:
   rbe:
     name: execution mode
     # Blacksmith in gastownhall only; a fork repository's own CI has none
-    # (mode local, ubuntu-latest: the header).
-    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    # (mode local, ubuntu-24.04: the header).
+    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -471,8 +472,8 @@ jobs:
     # measurements per lane (ga-vnycm2.8, seeded runner cache) took 34-58 s
     # on 2 vCPU, 23-34 s on 4 and 15-19 s on 8. Unit and acceptance are the
     # critical lanes (ga-vnycm2.12). A fork repository's own CI (mode local)
-    # has no Blacksmith: ubuntu-latest.
-    runs-on: ${{ github.repository_owner_id != '255961667' && 'ubuntu-latest' || (matrix.lane == 'unit' || matrix.lane == 'acceptance') && 'blacksmith-8vcpu-ubuntu-2404' || 'blacksmith-4vcpu-ubuntu-2404' }}
+    # has no Blacksmith: ubuntu-24.04.
+    runs-on: ${{ github.repository_owner_id != '255961667' && 'ubuntu-24.04' || (matrix.lane == 'unit' || matrix.lane == 'acceptance') && 'blacksmith-8vcpu-ubuntu-2404' || 'blacksmith-4vcpu-ubuntu-2404' }}
     timeout-minutes: 90
     permissions:
       contents: read
@@ -503,7 +504,9 @@ jobs:
       # rbe-fork certificate). A pull request run whose base predates a
       # re-pin (BASE_SHA: "Re-run failed jobs" keeps the first attempt's
       # base) is told from a change that moves the pin: a remote lane on it
-      # fails with its cure instead of skipping bazel green.
+      # fails with its cure instead of skipping bazel green. Local/cache
+      # execution has no worker-pool pin constraint and still runs tests
+      # when the pin moves; worker-host measures the change in every mode.
       - name: worker-env preflight
         id: worker-env
         env:
@@ -544,7 +547,7 @@ jobs:
       # have chosen with the mint closed.
       - name: Set up Bazel
         id: bazel
-        if: steps.worker-env.outputs.pin-moved != 'true'
+        if: needs.rbe.outputs.mode == 'local' || needs.rbe.outputs.mode == 'cache' || steps.worker-env.outputs.pin-moved != 'true'
         continue-on-error: ${{ startsWith(needs.rbe.outputs.mode, 'fork-') }}
         uses: ./.github/actions/setup-bazel
         env:
@@ -699,7 +702,7 @@ jobs:
       # values the ci-analytics extractor reads and redacts, never the farm.
       - name: bazel ${{ matrix.cmd }}
         id: test
-        if: steps.worker-env.outputs.pin-moved != 'true'
+        if: needs.rbe.outputs.mode == 'local' || needs.rbe.outputs.mode == 'cache' || steps.worker-env.outputs.pin-moved != 'true'
         env:
           CMD: ${{ matrix.cmd }}
           MODE: ${{ needs.rbe.outputs.mode }}
@@ -721,6 +724,17 @@ jobs:
             exit 0
           fi
           exit "$rc"
+
+      - name: Require local test execution
+        id: test-execution
+        if: always() && (needs.rbe.outputs.mode == 'local' || needs.rbe.outputs.mode == 'cache')
+        env:
+          TEST_OUTCOME: ${{ steps.test.outcome }}
+        run: |
+          if [ "$TEST_OUTCOME" != success ]; then
+            echo "::error title=bazel tests did not complete::local execution finished with test step outcome: $TEST_OUTCOME"
+            exit 1
+          fi
 
       # The split-strict lane's own verdicts, kept apart from its test
       # failures: every shard's test.log ends with a RATCHET and a TESTS line
@@ -1091,7 +1105,7 @@ jobs:
     name: bazel / split-strict alert
     needs: [rbe, lane]
     if: ${{ !cancelled() && github.event_name == 'schedule' && needs.rbe.result == 'success' }}
-    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       actions: read # this run's jobs, for the split-strict lane's conclusion
@@ -1237,7 +1251,7 @@ jobs:
     name: bazel / test cache report
     needs: [rbe, lane]
     if: always() && needs.rbe.result == 'success' && needs.rbe.outputs.lanes != '[]'
-    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -1465,7 +1479,7 @@ jobs:
   sync-check:
     name: BUILD files in sync
     needs: rbe
-    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -1540,7 +1554,7 @@ jobs:
   worker-host:
     name: rbe worker host
     needs: rbe
-    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 25
     permissions:
       contents: read
@@ -1678,7 +1692,7 @@ jobs:
     name: bazel test (side-by-side)
     needs: [rbe, lane, sync-check, worker-host]
     if: always()
-    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository_owner_id == '255961667' && 'blacksmith-2vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 5
     steps:
       - name: Evaluate

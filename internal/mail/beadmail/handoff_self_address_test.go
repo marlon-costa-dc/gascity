@@ -50,9 +50,9 @@ func newPooledFleet(t *testing.T) (beads.Store, beads.Bead) {
 // consumer that compares the two fields.
 func TestSendHandoffSelfAddressedPersistsOneAddress(t *testing.T) {
 	store, builder := newPooledFleet(t)
-	p := New(store)
+	p := newTestProvider(store)
 
-	msg, err := p.SendHandoff(mail.HandoffIntent{
+	msg, _, err := p.SendHandoff(mail.HandoffIntent{
 		From:        builder.ID,
 		To:          builder.ID,
 		Subject:     "context cycle",
@@ -82,9 +82,9 @@ func TestSendHandoffSelfAddressedPersistsOneAddress(t *testing.T) {
 // fix above, proving that change affects only how the row reads.
 func TestSelfHandoffFromPooledSessionStaysInItsOwnInbox(t *testing.T) {
 	store, builder := newPooledFleet(t)
-	p := New(store)
+	p := newTestProvider(store)
 
-	msg, err := p.SendHandoff(mail.HandoffIntent{
+	msg, _, err := p.SendHandoff(mail.HandoffIntent{
 		From:        builder.ID,
 		To:          builder.ID,
 		Subject:     "context cycle",
