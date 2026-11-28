@@ -12,6 +12,7 @@ import (
 type doctorStoreScope struct {
 	label string
 	path  string
+	rig   string
 }
 
 // doctorStoreScopes returns the city followed by every path-bearing rig a
@@ -39,7 +40,7 @@ func doctorStoreScopes(cfg *config.City, cityPath string, skipPaused bool) []doc
 		if !skipPaused && rig.Suspended {
 			continue
 		}
-		scopes = append(scopes, doctorStoreScope{label: "rig " + rig.Name, path: rig.Path})
+		scopes = append(scopes, doctorStoreScope{label: "rig " + rig.Name, path: rig.Path, rig: rig.Name})
 	}
 	return scopes
 }

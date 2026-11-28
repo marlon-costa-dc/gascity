@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -78,7 +80,7 @@ func (f poolIdleRoutedWorkFinding) describe() string {
 		f.scope, f.template, len(f.beadIDs), strings.Join(f.beadIDs, ", "), len(f.idleInstances), strings.Join(f.idleInstances, ", "))
 }
 
-func (c *poolIdleRoutedWorkCheck) Run(_ *doctor.CheckContext) *doctor.CheckResult {
+func (c *poolIdleRoutedWorkCheck) Run(ctx *doctor.CheckContext) *doctor.CheckResult {
 	if c.cfg == nil {
 		return okCheck(c.Name(), "no config available")
 	}
@@ -90,7 +92,7 @@ func (c *poolIdleRoutedWorkCheck) Run(_ *doctor.CheckContext) *doctor.CheckResul
 	if budget <= 0 {
 		budget = poolIdleCheckDefaultBudget
 	}
-	findings, skipped := c.collect(now().Add(budget))
+	findings, skipped := c.collect(ctx, now().Add(budget))
 	if len(findings) == 0 && len(skipped) == 0 {
 		return okCheck(c.Name(), "no pool has unclaimed routed work sitting beside an idle instance")
 	}
@@ -116,73 +118,143 @@ func (c *poolIdleRoutedWorkCheck) Run(_ *doctor.CheckContext) *doctor.CheckResul
 		details)
 }
 
+// poolIdleRoutedWorkScope is one bead store the check reads: the city, or one
+// non-suspended, path-bearing rig (rig is empty for the city).
+type poolIdleRoutedWorkScope struct {
+	label string
+	rig   string
+	store beads.Store
+}
+
 // collect scans every in-scope bead store (the city plus every non-suspended,
 // path-bearing rig) for pool templates that have both an idle live instance
 // and unclaimed gc.routed_to work. It mirrors v2RoutedToNamespaceCheck's scope
 // iteration so routed-work sanity checks agree on what "in scope" means.
 //
-// deadline bounds the scan: the check stops between scopes once it passes,
-// reporting what it found plus explicit skipped-scope notes, so an oversized
-// multi-store scan settles as a deterministic partial result instead of being
-// abandoned by the doctor's per-check timeout with an unknown outcome.
-func (c *poolIdleRoutedWorkCheck) collect(deadline time.Time) (findings []poolIdleRoutedWorkFinding, skipped []string) {
-	scopes := doctorStoreScopes(c.cfg, c.cityPath, true)
+// Cost is bounded by stores, not stores x templates: sessions are enumerated
+// once per store and grouped by template in memory, and a routed-work lookup
+// is issued only for a template with an idle instance, only in a store that
+// can hold work routed to it — the city store (HQ beads may be routed to any
+// pool), the template's own rig store, and, for a city-scoped template, every
+// rig store. It stops issuing store calls once
+// the scan budget expires or the doctor runner abandons the check.
+func (c *poolIdleRoutedWorkCheck) collect(ctx *doctor.CheckContext, deadline time.Time) (findings []poolIdleRoutedWorkFinding, skipped []string) {
+	if c.newStore == nil {
+		return nil, nil
+	}
+	pools := c.poolTemplateRigs()
+	if len(pools) == 0 {
+		return nil, nil
+	}
+	scopes, skipped := c.openScopes(ctx, deadline)
 	scanned := 0
+	idle := map[string]map[string]bool{}
+	readable := scopes[:0]
 	for _, sc := range scopes {
-		if c.newStore == nil || strings.TrimSpace(sc.path) == "" {
-			continue
+		if ctx.Canceled() {
+			return findings, append(skipped, sc.label+" skipped: check abandoned at its timeout")
 		}
 		if !c.nowIsBefore(deadline) {
-			skipped = append(skipped, fmt.Sprintf(
-				"%s skipped: check budget exhausted after %d template(s) scanned; re-run alone or raise --check-timeout",
-				sc.label, scanned))
-			continue
+			return findings, append(skipped, sc.label+" skipped: check budget exhausted before session enumeration")
 		}
-		store, err := c.newStore(sc.path)
-		if err != nil {
-			skipped = append(skipped, fmt.Sprintf("%s skipped: opening bead store: %v", sc.label, err))
-			continue
-		}
-		scopeFindings, err := c.collectStoreFindings(store, sc.label, deadline, &scanned)
-		findings = append(findings, scopeFindings...)
-		if err != nil {
+		if err := c.collectIdleInstances(sc.store, pools, idle); err != nil {
 			skipped = append(skipped, fmt.Sprintf("%s skipped: %v", sc.label, err))
+			continue
+		}
+		readable = append(readable, sc)
+	}
+
+	templates := make([]string, 0, len(idle))
+	for template := range idle {
+		templates = append(templates, template)
+	}
+	sort.Strings(templates)
+	for _, sc := range readable {
+		for _, template := range templates {
+			// A rig store holds work routed to its own rig's pools and, because sling
+			// lets a rig bead route to a city-scope target, to city-scoped pools too.
+			if sc.rig != "" && pools[template] != "" && pools[template] != sc.rig {
+				continue
+			}
+			if ctx.Canceled() {
+				return findings, append(skipped, sc.label+" skipped: check abandoned at its timeout")
+			}
+			if !c.nowIsBefore(deadline) {
+				return findings, append(skipped, fmt.Sprintf("%s skipped: check budget exhausted after %d template(s) scanned; re-run alone or raise --check-timeout", sc.label, scanned))
+			}
+			scanned++
+			beadIDs, err := unclaimedRoutedWork(sc.store, template)
+			if err != nil {
+				skipped = append(skipped, fmt.Sprintf("%s skipped: listing routed work for %s: %v", sc.label, template, err))
+				break
+			}
+			if len(beadIDs) == 0 {
+				continue
+			}
+			findings = append(findings, poolIdleRoutedWorkFinding{
+				scope:         sc.label,
+				template:      template,
+				beadIDs:       beadIDs,
+				idleInstances: slices.Sorted(maps.Keys(idle[template])),
+			})
 		}
 	}
 	return findings, skipped
 }
 
-// collectStoreFindings checks every generic-ephemeral pool template in cfg
-// against one store: one session-class list for the whole scope, grouped into
-// idle live instances per template, and (only for a template with an idle
-// instance) a targeted gc.routed_to metadata lookup for unclaimed work —
-// never a full-store scan. The session list is read once because
-// session.Store.List reads the scope's entire session ledger (closed beads
-// included) whatever template it filters on; reading it per template made
-// the scan cost templates × ledger and abandoned whole scopes at the budget.
-// scanned accumulates the templates actually processed so the
-// budget-exhausted report can say how far the scan got; the deadline is
-// honored between templates.
-func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label string, deadline time.Time, scanned *int) ([]poolIdleRoutedWorkFinding, error) {
-	// A city with no generic-ephemeral pool template has nothing to scan, so
-	// it reads nothing (and so cannot fail on the read).
-	hasPoolTemplate := false
+// openScopes opens the city store and every non-suspended, path-bearing rig
+// store, reporting a store that fails to open as a skipped scope.
+func (c *poolIdleRoutedWorkCheck) openScopes(ctx *doctor.CheckContext, deadline time.Time) (scopes []poolIdleRoutedWorkScope, skipped []string) {
+	paths := doctorStoreScopes(c.cfg, c.cityPath, true)
+	for _, sp := range paths {
+		if strings.TrimSpace(sp.path) == "" {
+			continue
+		}
+		if ctx.Canceled() {
+			skipped = append(skipped, sp.label+" skipped: check abandoned at its timeout")
+			continue
+		}
+		if !c.nowIsBefore(deadline) {
+			skipped = append(skipped, sp.label+" skipped: check budget exhausted before opening bead store")
+			continue
+		}
+		store, err := c.newStore(sp.path)
+		if err != nil {
+			skipped = append(skipped, fmt.Sprintf("%s skipped: opening bead store: %v", sp.label, err))
+			continue
+		}
+		scopes = append(scopes, poolIdleRoutedWorkScope{label: sp.label, rig: sp.rig, store: store})
+	}
+	return scopes, skipped
+}
+
+// poolTemplateRigs maps every non-suspended generic-ephemeral pool template to
+// the rig it belongs to ("" for a city-scoped template).
+func (c *poolIdleRoutedWorkCheck) poolTemplateRigs() map[string]string {
+	pools := map[string]string{}
 	for i := range c.cfg.Agents {
 		agent := &c.cfg.Agents[i]
-		if !agent.Suspended && agent.SupportsGenericEphemeralSessions() && agent.QualifiedName() != "" {
-			hasPoolTemplate = true
-			break
+		if agent.Suspended || !agent.SupportsGenericEphemeralSessions() {
+			continue
+		}
+		if template := agent.QualifiedName(); template != "" {
+			pools[template] = configuredRigName(c.cityPath, agent, c.cfg.Rigs)
 		}
 	}
-	if !hasPoolTemplate {
-		return nil, nil
-	}
+	return pools
+}
+
+// collectIdleInstances enumerates one store's sessions in a single list and
+// records, per pool template, every live instance that holds no trigger bead.
+func (c *poolIdleRoutedWorkCheck) collectIdleInstances(store beads.Store, pools map[string]string, idle map[string]map[string]bool) error {
 	sessions, err := cliSessionFrontDoor(store, c.cfg, c.cityPath).List("", "")
 	if err != nil {
-		return nil, fmt.Errorf("listing sessions: %w", err)
+		return fmt.Errorf("listing sessions: %w", err)
 	}
-	idleByTemplate := make(map[string][]string)
 	for _, info := range sessions {
+		if _, ok := pools[info.Template]; !ok {
+			continue
+		}
 		if !poolSessionIsLiveInfo(info) || strings.TrimSpace(info.TriggerBeadID) != "" {
 			continue
 		}
@@ -190,60 +262,38 @@ func (c *poolIdleRoutedWorkCheck) collectStoreFindings(store beads.Store, label 
 		if name == "" {
 			name = info.ID
 		}
-		idleByTemplate[info.Template] = append(idleByTemplate[info.Template], name)
+		if idle[info.Template] == nil {
+			idle[info.Template] = map[string]bool{}
+		}
+		idle[info.Template][name] = true
 	}
+	return nil
+}
 
-	var findings []poolIdleRoutedWorkFinding
-	for i := range c.cfg.Agents {
-		if !c.nowIsBefore(deadline) {
-			return findings, fmt.Errorf("check budget exhausted after %d template(s) in this scope", *scanned)
-		}
-		agent := &c.cfg.Agents[i]
-		if agent.Suspended || !agent.SupportsGenericEphemeralSessions() {
-			continue
-		}
-		template := agent.QualifiedName()
-		if template == "" {
-			continue
-		}
-		*scanned++
-
-		idle := idleByTemplate[template]
-		if len(idle) == 0 {
-			continue
-		}
-
-		// Live so bd's raw --status=open filter drops blocked/deferred rows
-		// before mapBdStatus collapses them into "open" and the check reports
-		// work the instance is correct to leave alone (same tradeoff as
-		// listOpenForControllerDemandLive). FederatedReadTier because a
-		// relocated class leg answers at exactly the tier asked.
-		items, err := beads.HandlesFor(store).Live.List(beads.ListQuery{
-			Status:   "open",
-			TierMode: beads.FederatedReadTier,
-			Metadata: map[string]string{beadmeta.RoutedToMetadataKey: template},
-		})
-		if err != nil {
-			return findings, fmt.Errorf("listing routed work for %s: %w", template, err)
-		}
-		var beadIDs []string
-		for _, b := range items {
-			if strings.TrimSpace(b.Assignee) != "" || b.Status != "open" {
-				continue
-			}
-			beadIDs = append(beadIDs, b.ID)
-		}
-		if len(beadIDs) == 0 {
-			continue
-		}
-		sort.Strings(beadIDs)
-		sort.Strings(idle)
-		findings = append(findings, poolIdleRoutedWorkFinding{
-			scope:         label,
-			template:      template,
-			beadIDs:       beadIDs,
-			idleInstances: idle,
-		})
+// unclaimedRoutedWork returns the sorted IDs of open, unassigned beads in store
+// routed to template — a targeted gc.routed_to metadata lookup, never a
+// full-store scan.
+func unclaimedRoutedWork(store beads.Store, template string) ([]string, error) {
+	// Live so bd's raw --status=open filter drops blocked/deferred rows
+	// before mapBdStatus collapses them into "open" and the check reports
+	// work the instance is correct to leave alone (same tradeoff as
+	// listOpenForControllerDemandLive). FederatedReadTier because a
+	// relocated class leg answers at exactly the tier asked.
+	items, err := beads.HandlesFor(store).Live.List(beads.ListQuery{
+		Status:   "open",
+		TierMode: beads.FederatedReadTier,
+		Metadata: map[string]string{beadmeta.RoutedToMetadataKey: template},
+	})
+	if err != nil {
+		return nil, err
 	}
-	return findings, nil
+	var beadIDs []string
+	for _, b := range items {
+		if strings.TrimSpace(b.Assignee) != "" || b.Status != "open" {
+			continue
+		}
+		beadIDs = append(beadIDs, b.ID)
+	}
+	sort.Strings(beadIDs)
+	return beadIDs, nil
 }

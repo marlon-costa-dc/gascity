@@ -40,12 +40,15 @@ export CGO_CPPFLAGS="${cgo_cppflags}"
 export CGO_LDFLAGS="${cgo_ldflags}"
 
 run_go() {
+  # The pane shell is pinned to /bin/sh, not forwarded from the caller: a test
+  # tmux or herdr pane running zsh under a fresh HOME opens the new-user wizard,
+  # which swallows the typed text (ga-yghhjf; mirrors Makefile TEST_ENV).
   env -i \
     PATH="${goroot_val}/bin:${PATH}" \
     HOME="${HOME:-}" \
     USER="${USER:-}" \
     LOGNAME="${LOGNAME:-}" \
-    SHELL="${SHELL:-/bin/sh}" \
+    SHELL=/bin/sh \
     GIT_CONFIG_NOSYSTEM=1 \
     GIT_CONFIG_GLOBAL="$gc_test_gitconfig" \
     LANG="${LANG:-C.UTF-8}" \
@@ -88,6 +91,7 @@ formula_tests=(
   TestPersonalWorkFormulaCompileAndRun
   TestAdoptPRFormulaRetriesTransientReviewerStep
   TestAdoptPRFormulaSoftFailsGeminiAfterTransientRetries
+  TestReviewLoopApprovesInIterationTwoWithBodyRetry
   TestRetryManagedPooledWorkerRecoversClaimedAttemptAfterCrash
 )
 
@@ -99,10 +103,19 @@ review_formulas_basic_tests=(
 review_formulas_retry_tests=(
   TestAdoptPRFormulaRetriesTransientReviewerStep
   TestAdoptPRFormulaSoftFailsGeminiAfterTransientRetries
+  TestReviewLoopApprovesInIterationTwoWithBodyRetry
 )
 
 review_formulas_recovery_tests=(
   TestRetryManagedPooledWorkerRecoversClaimedAttemptAfterCrash
+)
+
+bdstore_tests=(
+  TestBdStoreConformance
+  TestBdStoreDeleteBatchOrphansExternalDependents
+  TestBdStoreMailWispInsert
+  TestPinnedBdStoreCommandRunnerReportsSilentFallback
+  TestPinnedBdStoreCommandRunnerUsesExactEnvironmentAndKeepsStdoutJSON
 )
 
 # Keep this list to top-level test names. Matching a parent test runs all of
@@ -114,7 +127,8 @@ rest_smoke_tests=(
   TestGastown_ControllerStartStop
   TestGastown_PipelineHumanToWorker
   TestGraphWorkflowSuccessPath
-  TestIntegrationEnvForPinsRealHome
+  TestIntegrationEnvForIsolatesHome
+  TestIsolatedEnvRootsKeepGCOffTheRealHome
   TestStandaloneBDEnvForDirIsolatesHome
 )
 
@@ -122,13 +136,47 @@ rest_smoke_tests=(
 # integration tag. Keep this manifest exact; scripts tests compare it with the
 # canonical linux/amd64 shard's tagged source declarations.
 cmd_gc_integration_tests=(
+  TestBlockedRepairOnRealBdIsHarmlessOnACleanStore
+  TestBlockedRepairOnRealBdRestoresOverBlockedWork
   TestCapstoneIntegrationRealMinter
+  TestCityRestoreRoundTripsAManagedDoltSplitWithItsWisps
+  TestCmdGCIntegrationNudgeStatusPreservesAvailableStore
   TestControllerDiscoversAddedCronOrderWithoutRestart
+  TestGcBdBurnAndWispGCJudgesReadRealBd
+  TestGcBdBurnJudgeCoversAProxiedServerCascade
+  TestGcBdCreateGraphJudgeFactsRealBd
+  TestGcBdMolWispRootOnlyMintsOneWorkBead
+  TestGcBdSplitJudgesMetadataAsTheStoresReadItBack
+  TestInfraScopedManagedDoltPIDIdentityUnderRealSystemd
+  TestInitJudgeSplitBDMatchesGcBdVerdictOnRealBinaries
+  TestInitializingARealEmbeddedRigLetsItCreateGcTypedBeads
   TestManagedBdRigProviderStoreRecoversAfterHardKillPortRebind
   TestManagedBeadsNativeCLICompatibility
+  TestPhase2RealTransportBoundsStayAHangDetector
+  TestPhase2RealTransportResultStillFailsWhenGenuinelyBroken
+  TestPhase2RealTransportResultToleratesASlowButCorrectStart
   TestPhase2WorkerCoreRealTransportProof
+  TestProbeDetachedWork_RealTmuxMatchesSessionExactly
+  TestProbeDetachedWork_RealTmuxOtherTMUXTMPDIRIsError
+  TestPurgeStrandedBatchedEdgeReadMatchesThePerRowReadOnRealBd
+  TestPurgeStrandedMessagesOnARealBdWorkStore
+  TestPurgeStrandedResumesAfterTheEdgesWereRemovedOnARealBdWorkStore
+  TestRestorePurgeLeavesOutAParentThatIsGoneOrADifferentBeadOnARealBdWorkStore
+  TestRestorePurgePutsAParentBackOnARealBdWorkStore
   TestRigAddIncludeResolvesScopedRegistryPackName
+  TestStartRecyclePinsThePeeksObjectOnRealTmux
+  TestStartRecycleQuarantinesARateLimitCorpseOnRealTmux
+  TestStartRecycleSparesAZombiesOperatorPaneOnRealTmux
+  TestStopRefusesARuntimeReplacedAtTheCallOnRealTmux
   TestStorageGateServesACityFromItsBeadsWorkspace
+  TestStorageMigrateAdoptsAManagedDoltLeftRunningOnTheStoppedCity
+  TestStorageMigrateDoesNotCountItsOwnPooledSessions
+  TestStorageMigrateMovesAStoppedManagedDoltCityInsideTheMaintenanceWindow
+  TestStorageMigrateRefusesAForeignSessionOnTheManagedDoltItStarted
+  TestStorageSnapshotHostedBdWorkStore
+  TestStorageSplitGuidedOnAStoppedManagedDoltCity
+  TestTheCityFloorHoldsOnARealBdStore
+  TestTheDefaultFloorOpenerReachesARealBdCity
 )
 
 join_regex() {
@@ -335,7 +383,7 @@ run_rest_full_shard_modulo() {
   local excluded excluded_name test_name
 
   excluded=""
-  for excluded_name in "${formula_tests[@]}" "${rest_smoke_tests[@]}" TestBdStoreConformance TestBdStoreMailWispInsert; do
+  for excluded_name in "${formula_tests[@]}" "${rest_smoke_tests[@]}" "${bdstore_tests[@]}"; do
     excluded+="${excluded_name}"$'\n'
   done
 
@@ -420,7 +468,7 @@ case "$shard" in
     run_pkg_tests "$pkg" "${review_formulas_recovery_tests[@]}"
     ;;
   bdstore)
-    run_pkg_tests "$pkg" TestBdStoreConformance TestBdStoreMailWispInsert
+    run_pkg_tests "$pkg" "${bdstore_tests[@]}"
     ;;
   rest-smoke)
     run_rest_smoke_shard

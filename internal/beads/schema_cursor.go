@@ -160,8 +160,10 @@ func PinnedSchemaCursors() (main, ignored int) {
 // The raw number in ignored_schema_migrations is not the number the library
 // acts on. migrationSource.currentVersion clamps a cursor the live schema
 // contradicts down to a "reality floor" — min(raw, 11) when
-// `leases.granted_node` is missing, and 0 when `wisps`/`wisp_dependencies` are
-// — and beads documents both shapes as real in the field. Comparing the RAW
+// `leases.granted_node` is missing, min(raw, 18) or min(raw, 21) when the
+// dolt_ignored `events` or `bd_events_journal`/`bd_events_seq` tables are
+// (beads v1.3.1), and 0 when `wisps`/`wisp_dependencies` are — and beads
+// documents these shapes as real in the field. Comparing the RAW
 // cursor therefore proved nothing: a database at raw ignored=26 with the
 // sentinel absent passed this gate, the proxied open is WRITABLE
 // (OpenBestAvailable -> NewFromConfigWithOptions(..., nil), and the library
@@ -218,8 +220,8 @@ func CursorsMatchPinned(c proxyendpoint.Cursors, reality proxyendpoint.CursorRea
 //
 // A HEAD hash is the moving evidence for every one of those paths that
 // COMMITS, and a healthy open moves nothing. The two halves cost no session of
-// their own: the pre-open hash is a second column on the probe session's first
-// statement (proxyendpoint's cursorExistsWithHeadQuery), and the re-read is
+// their own: the pre-open hash is the probe session's first statement
+// (proxyendpoint's headQuery), and the re-read is
 // two statements on one pinned connection of the pool the library open itself
 // just built (ProxiedOpenedObservation): the first advances a connection
 // beads left on the pre-open session root (be-itm5, council pr2 E-S3), and the

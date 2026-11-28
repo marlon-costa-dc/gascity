@@ -1,15 +1,19 @@
 package config
 
 import (
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/gastownhall/gascity/internal/bazeltest"
+	"github.com/gastownhall/gascity/internal/builtinpacks"
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
 )
@@ -364,7 +368,107 @@ func TestRawBdInvocationsDetector(t *testing.T) {
 	}
 }
 
-// Upstream's TestEmbeddedPacksRouteBeadsCommandsThroughGC (d68ad2fc8) is not
-// adopted yet: the fork's bundled dolt formula mol-dog-stale-db.toml still runs
-// bd directly (gct-clucx). It lands with that formula fix, through the
-// upstream main sync, together with the helpers only it uses.
+// The shipped prompts, workflow pages, formulas and scripts of every pack the
+// binary embeds must not run bd directly: the public gastown and gascity packs,
+// and the bundled core, bd and dolt packs.
+func TestEmbeddedPacksRouteBeadsCommandsThroughGC(t *testing.T) {
+	scanned := map[string]int{}
+	for _, pack := range builtinpacks.All() {
+		err := fs.WalkDir(pack.FS, ".", func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				if d.Name() == "tests" || d.Name() == "vendor" || d.Name() == "testdata" {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			data, err := fs.ReadFile(pack.FS, p)
+			if err != nil {
+				return err
+			}
+			// Every text file is in scope, as in gascity-packs' detector:
+			// provider hooks (.json, .js, .ts) run commands at session events.
+			if !utf8.Valid(data) {
+				return nil
+			}
+			scanned[pack.Name]++
+			key := pack.Name + "/" + p
+			if _, ok := rawBdAllowedFiles[key]; ok {
+				return nil
+			}
+			lines := strings.Split(string(data), "\n")
+			for _, n := range rawBdInvocations(string(data)) {
+				line := strings.TrimSpace(lines[n-1])
+				// A # line in a bundled pack's script or TOML is a comment
+				// naming the bd verb its gc bd call runs. Markdown is agent
+				// instruction in every pack: a # line there is a heading, or a
+				// comment in a fenced shell block an agent runs, so it stays in
+				// scope, as does every line of the public packs.
+				if bundledPacks[pack.Name] && hashCommentExts[path.Ext(p)] && strings.HasPrefix(line, "#") {
+					continue
+				}
+				if rawBdAllowedLines[key][line] {
+					continue
+				}
+				t.Errorf("%s:%d runs bd directly; use gc bd so graph steps resolve in the binding: %s", key, n, line)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", pack.Name, err)
+		}
+	}
+	for _, name := range []string{"core", "bd", "dolt", "gastown", "gascity"} {
+		if scanned[name] == 0 {
+			t.Errorf("scanned no embedded %s pack files", name)
+		}
+	}
+}
+
+var bundledPacks = map[string]bool{"core": true, "bd": true, "dolt": true}
+
+// hashCommentExts are the file types whose # lines the scan treats as
+// comments: scripts, and TOML, whose formula strings embed shell scripts.
+var hashCommentExts = map[string]bool{".sh": true, ".bash": true, ".py": true, ".toml": true}
+
+// rawBdAllowedFiles are embedded files that run bd directly by design.
+var rawBdAllowedFiles = map[string]string{
+	"bd/assets/scripts/gc-beads-bd.sh": "the exec beads provider: it is the bd transport gc itself calls",
+	"bd/doctor/check-bd/run.sh":        "the doctor check for the bd binary: it must probe bd, not gc",
+}
+
+// rawBdAllowedLines are exact (trimmed) lines that mention bd without running
+// it against graph beads, keyed by embedded file.
+var rawBdAllowedLines = func() map[string]map[string]bool {
+	lines := map[string]map[string]bool{
+		// `gc dolt sync --purge` walks the Dolt databases and purges closed
+		// ephemeral beads per scope, pinning each store by its BEADS_DIR. It
+		// is store maintenance on a resolved path, not a graph-step write.
+		// It does not reach a split city's binding (a known S6 coverage gap).
+		"dolt/commands/sync/run.sh": {
+			`purged=$(BEADS_DIR="$beads_dir" bd purge $purge_args 2>/dev/null | grep -c "purged" || true)`: true,
+		},
+		// Prose: the order description names bd's backup verb; the exec runs
+		// it through gc bd.
+		"dolt/orders/mol-dog-backup.toml": {
+			`description = "Back up every bead scope with bd backup"`: true,
+		},
+		// The cursor hooks put BD_BIN's directory on PATH for the gc command
+		// they run; they never run bd themselves.
+		"core/overlay/per-provider/cursor/.cursor/hooks.json": {
+			`"command": "export PATH=\"$PATH:$HOME/go/bin:$HOME/.local/bin\"; if [ -n \"${BD_BIN:-}\" ]; then export PATH=\"${BD_BIN%/*}:$PATH\"; fi; \"${GC_BIN:-gc}\" prime --hook"`:                                                         true,
+			`"command": "export PATH=\"$PATH:$HOME/go/bin:$HOME/.local/bin\"; if [ -n \"${BD_BIN:-}\" ]; then export PATH=\"${BD_BIN%/*}:$PATH\"; fi; \"${GC_BIN:-gc}\" handoff --auto \"context cycle\""`:                                     true,
+			`"command": "export PATH=\"$PATH:$HOME/go/bin:$HOME/.local/bin\"; if [ -n \"${BD_BIN:-}\" ]; then export PATH=\"${BD_BIN%/*}:$PATH\"; fi; \"${GC_BIN:-gc}\" hook run --timeout 15s --timeout-exit-code 0 -- nudge drain --inject"`: true,
+			`"command": "export PATH=\"$PATH:$HOME/go/bin:$HOME/.local/bin\"; if [ -n \"${BD_BIN:-}\" ]; then export PATH=\"${BD_BIN%/*}:$PATH\"; fi; \"${GC_BIN:-gc}\" hook run --timeout 15s --timeout-exit-code 0 -- mail check --inject"`:  true,
+		},
+	}
+	// The dolt pack is also embedded as the bd pack's dolt/ subpack.
+	for key, set := range lines {
+		if strings.HasPrefix(key, "dolt/") {
+			lines["bd/"+key] = set
+		}
+	}
+	return lines
+}()

@@ -6,12 +6,63 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/gastownhall/gascity/internal/bazeltest"
 )
 
+// complexityFixtureRoot returns a one-commit git repository holding the script
+// and a minimal source in each production scope that diff mode archives.
+// Every complexity test substitutes a fake gocyclo, so none reads this
+// repository's sources or snapshots the whole tree into a git stand-in.
+func complexityFixtureRoot(t *testing.T) string {
+	t.Helper()
+	script, err := os.ReadFile(filepath.Join(repoRoot(t), "scripts", "ci", "complexity.sh"))
+	if err != nil {
+		t.Fatalf("read complexity.sh: %v", err)
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, "scripts", "ci", "complexity.sh")
+	writeTestFile(t, path, string(script))
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatalf("chmod complexity.sh: %v", err)
+	}
+	for _, scope := range []string{"cmd/gc", "internal", "pkg"} {
+		writeTestFile(t, filepath.Join(root, scope, "fixture.go"), "package fixture\n")
+	}
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"add", "-A"},
+		{"-c", "user.name=complexity test", "-c", "user.email=complexity-test@gascity.invalid", "commit", "-q", "-m", "complexity fixture"},
+	} {
+		cmd := testCommand("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
+	}
+	return root
+}
+
+func TestComplexityFixtureRootIsAOneCommitScopedRepo(t *testing.T) {
+	root := complexityFixtureRoot(t)
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := testCommand("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+	if got := git("ls-files"); got != "cmd/gc/fixture.go\ninternal/fixture.go\npkg/fixture.go\nscripts/ci/complexity.sh" {
+		t.Fatalf("fixture tracks %q, want the script and minimal production scopes", got)
+	}
+	if got := git("rev-list", "--count", "HEAD"); got != "1" {
+		t.Fatalf("fixture has %s commits, want 1", got)
+	}
+}
+
 func TestComplexityReportUpdateAndDiffUseStableJSONKeys(t *testing.T) {
-	repoRoot := repoRoot(t)
+	repoRoot := complexityFixtureRoot(t)
 	binDir := t.TempDir()
 	fake := filepath.Join(binDir, "gocyclo")
 	argsLog := filepath.Join(t.TempDir(), "args")
@@ -79,20 +130,14 @@ fi
 }
 
 func TestComplexityReportRejectsInvalidMode(t *testing.T) {
-	root := repoRoot(t)
-	if err := bazeltest.EnsureGitRepo(t, root); err != nil {
-		t.Fatalf("git stand-in for guard tree: %v", err)
-	}
+	root := complexityFixtureRoot(t)
 	if output, err := runComplexity(t, root, "/does/not/exist", filepath.Join(t.TempDir(), "baseline.json"), filepath.Join(t.TempDir(), "args"), "wat"); err == nil || !strings.Contains(string(output), "usage:") {
 		t.Fatalf("invalid mode = %v, output %s", err, output)
 	}
 }
 
 func TestComplexityDiffRejectsMissingBaseRef(t *testing.T) {
-	root := repoRoot(t)
-	if err := bazeltest.EnsureGitRepo(t, root); err != nil {
-		t.Fatalf("git stand-in for guard tree: %v", err)
-	}
+	root := complexityFixtureRoot(t)
 	fake := filepath.Join(t.TempDir(), "gocyclo")
 	writeExecutable(t, fake, "#!/bin/sh\nprintf '%s\\n' '1 gc helper internal/server.go:1:1'\n")
 	output, err := runComplexityEnv(t, root, "diff", "COMPLEXITY_TOOL="+fake, "COMPLEXITY_BASE_REF=refs/heads/does-not-exist")
@@ -102,10 +147,7 @@ func TestComplexityDiffRejectsMissingBaseRef(t *testing.T) {
 }
 
 func TestComplexityDiffIgnoresBaselineContents(t *testing.T) {
-	root := repoRoot(t)
-	if err := bazeltest.EnsureGitRepo(t, root); err != nil {
-		t.Fatalf("git stand-in for guard tree: %v", err)
-	}
+	root := complexityFixtureRoot(t)
 	fake := filepath.Join(t.TempDir(), "gocyclo")
 	writeExecutable(t, fake, "#!/bin/sh\nprintf '%s\\n' '1 gc helper internal/server.go:1:1'\n")
 	baseline := filepath.Join(t.TempDir(), "malformed.json")
@@ -119,10 +161,7 @@ func TestComplexityDiffIgnoresBaselineContents(t *testing.T) {
 }
 
 func TestComplexityDiffDuplicateKeysRespectThreshold(t *testing.T) {
-	root := repoRoot(t)
-	if err := bazeltest.EnsureGitRepo(t, root); err != nil {
-		t.Fatalf("git stand-in for guard tree: %v", err)
-	}
+	root := complexityFixtureRoot(t)
 	for _, tt := range []struct {
 		name    string
 		output  string
@@ -160,10 +199,7 @@ func TestComplexityDiffDuplicateKeysRespectThreshold(t *testing.T) {
 }
 
 func TestComplexityDiffReportsHighToLowAsImproved(t *testing.T) {
-	root := repoRoot(t)
-	if err := bazeltest.EnsureGitRepo(t, root); err != nil {
-		t.Fatalf("git stand-in for guard tree: %v", err)
-	}
+	root := complexityFixtureRoot(t)
 	fake := filepath.Join(t.TempDir(), "gocyclo")
 	writeExecutable(t, fake, `#!/bin/sh
 if [ "$COMPLEXITY_SCAN_KIND" = base ]; then
