@@ -100,7 +100,7 @@ func (s *Server) humaHandleEventList(ctx context.Context, input *EventListInput)
 			// LatestSeq is a uint64 counter; bound it before the int narrowing so
 			// a value past the platform int range can't wrap to a negative or
 			// truncated total (CodeQL go/incorrect-integer-conversion).
-			if seq > uint64(math.MaxInt) {
+			if seq > math.MaxInt {
 				total = math.MaxInt
 			} else {
 				total = int(seq)

@@ -19,7 +19,7 @@ const codeqlMergeGroupStep = "merge-group"
 
 // codeqlAnalysisSteps are the steps every leg of a pull request, push,
 // schedule or dispatch run executes, whatever its language.
-var codeqlAnalysisSteps = []string{"Checkout", "Initialize CodeQL", "Perform CodeQL Analysis"}
+var codeqlAnalysisSteps = []string{"Checkout", "Initialize CodeQL", "Perform CodeQL Analysis", "Preserve CodeQL SARIF"}
 
 func TestCodeQLMergeGroupReportsWithoutAnalysis(t *testing.T) {
 	wf := readMergeQueueWorkflow(t, mergeQueueCodeQLYML)

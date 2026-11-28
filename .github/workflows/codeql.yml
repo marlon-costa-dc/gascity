@@ -2,7 +2,7 @@ name: CodeQL
 
 on:
   push:
-    branches: [main, dc-use]
+    branches: [main, dc-use, 'diagnose/codeql-20261128']
   pull_request:
     branches: [main, dc-use, 'hotfix/**', 'release/**']
     types:
@@ -156,3 +156,13 @@ jobs:
         uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
         with:
           category: "/language:${{ matrix.language }}"
+          output: codeql-results
+
+      - name: Preserve CodeQL SARIF
+        if: always() && github.event_name != 'merge_group'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: codeql-sarif-${{ matrix.language }}
+          path: codeql-results/*.sarif
+          if-no-files-found: error
+          retention-days: 7

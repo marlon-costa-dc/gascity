@@ -290,6 +290,7 @@ var mergeQueueEventExprs = map[string]string{
 	"codeql.yml jobs.analyze.steps[Autobuild].if":                "false",
 	"codeql.yml jobs.analyze.steps[Save Go build cache].if":      "false", // push to main saves
 	"codeql.yml jobs.analyze.steps[Perform CodeQL Analysis].if":  "false",
+	"codeql.yml jobs.analyze.steps[Preserve CodeQL SARIF].if":    "false",
 }
 
 // TestMergeQueueEventExpressionsAreAccountedFor evaluates every
