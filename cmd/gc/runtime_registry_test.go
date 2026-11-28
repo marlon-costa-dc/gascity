@@ -475,6 +475,79 @@ func TestRuntimeRegistryACPConfigCarriesCancelTimeout(t *testing.T) {
 	}
 }
 
+func TestK8sSecretProjectionChanged(t *testing.T) {
+	city := func(env []config.K8sSecretEnv, mounts []config.K8sSecretMount) *config.City {
+		return &config.City{Session: config.SessionConfig{K8s: config.K8sConfig{SecretEnv: env, SecretMounts: mounts}}}
+	}
+	env := []config.K8sSecretEnv{{Name: "SERVICE_TOKEN", Secret: "service-auth", Key: "token"}}
+	otherEnv := []config.K8sSecretEnv{{Name: "SERVICE_TOKEN", Secret: "service-auth", Key: "rotated"}}
+	mounts := []config.K8sSecretMount{{Secret: "service-files", MountPath: "/run/service"}}
+	otherMounts := []config.K8sSecretMount{{Secret: "service-files", MountPath: "/run/other"}}
+	for _, tc := range []struct {
+		name           string
+		oldCfg, newCfg *config.City
+		provider       string
+		want           bool
+	}{
+		{name: "nil configs", oldCfg: nil, newCfg: nil, provider: "k8s", want: false},
+		{name: "same lists", oldCfg: city(env, mounts), newCfg: city(env, mounts), provider: "k8s", want: false},
+		{name: "env changed under k8s", oldCfg: city(env, mounts), newCfg: city(otherEnv, mounts), provider: "k8s", want: true},
+		{name: "mounts changed under hybrid", oldCfg: city(env, mounts), newCfg: city(env, otherMounts), provider: "hybrid", want: true},
+		{name: "lists changed under tmux", oldCfg: city(env, mounts), newCfg: city(otherEnv, otherMounts), provider: "tmux", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := k8sSecretProjectionChanged(tc.oldCfg, tc.newCfg, tc.provider); got != tc.want {
+				t.Errorf("k8sSecretProjectionChanged = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestK8sSecretProjectionReachesBuiltinAndHybridProviders(t *testing.T) {
+	oldConstructor := newSeamBackedK8sProvider
+	t.Cleanup(func() { newSeamBackedK8sProvider = oldConstructor })
+
+	wantEnv := []runtime.K8sSecretEnv{{Name: "SERVICE_TOKEN", Secret: "service-auth", Key: "token"}}
+	wantMounts := []runtime.K8sSecretMount{{Secret: "service-files", MountPath: "/run/service"}}
+	var calls int
+	newSeamBackedK8sProvider = func(env []runtime.K8sSecretEnv, mounts []runtime.K8sSecretMount, cityName string) (runtime.Provider, error) {
+		calls++
+		if cityName != "city" {
+			t.Errorf("K8s constructor call %d city name = %q, want city", calls, cityName)
+		}
+		if len(env) != len(wantEnv) || env[0] != wantEnv[0] {
+			t.Errorf("K8s constructor call %d secret env = %#v, want %#v", calls, env, wantEnv)
+		}
+		if len(mounts) != len(wantMounts) || mounts[0] != wantMounts[0] {
+			t.Errorf("K8s constructor call %d secret mounts = %#v, want %#v", calls, mounts, wantMounts)
+		}
+		return runtime.NewFake(), nil
+	}
+
+	sc := config.SessionConfig{RemoteMatch: "remote", K8s: config.K8sConfig{
+		SecretEnv:    []config.K8sSecretEnv{{Name: "SERVICE_TOKEN", Secret: "service-auth", Key: "token"}},
+		SecretMounts: []config.K8sSecretMount{{Secret: "service-files", MountPath: "/run/service"}},
+	}}
+
+	if _, err := buildRuntimeRegistry().New("k8s", sc, "city", t.TempDir()); err != nil {
+		t.Fatalf("builtin K8s provider construction: %v", err)
+	}
+	hybridProvider, err := newHybridProvider(sc, "city", t.TempDir())
+	if err != nil {
+		t.Fatalf("hybrid provider construction: %v", err)
+	}
+	router, ok := hybridProvider.(runtime.Router)
+	if !ok {
+		t.Fatalf("hybrid provider type %T does not expose routing", hybridProvider)
+	}
+	if route := router.RouteFor("worker-remote"); route.Label != "remote" {
+		t.Fatalf("hybrid route = %+v, want remote K8s leg", route)
+	}
+	if calls != 2 {
+		t.Fatalf("K8s provider constructor called %d times, want builtin and hybrid calls", calls)
+	}
+}
+
 // writeFSHostScript writes an exec runtime whose `protocol` answers
 // handshake; `start` records that it ran, and `is-running` answers false.
 func writeFSHostScript(t *testing.T, handshake string) (script, startedMarker string) {

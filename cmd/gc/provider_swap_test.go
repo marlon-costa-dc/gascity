@@ -55,6 +55,9 @@ func TestCarriedSessionLegs(t *testing.T) {
 		{name: "socket change", old: composed, oldName: "tmux", newName: "tmux", newCfg: city(func(c *config.City) { c.Session.Socket = "t" }), want: sessionLegs{acp: acp}},
 		{name: "remote match change", old: composed, oldName: "hybrid", newName: "hybrid", newCfg: city(func(c *config.City) { c.Session.RemoteMatch = "k8s" }), want: sessionLegs{acp: acp}},
 		{name: "non-endpoint session setting", old: composed, oldName: "tmux", newName: "tmux", newCfg: city(func(c *config.City) { c.Session.SetupTimeout = "30s" }), want: composed},
+		{name: "k8s secret projection change", old: composed, oldName: "k8s", newName: "k8s", newCfg: city(func(c *config.City) {
+			c.Session.K8s.SecretEnv = []config.K8sSecretEnv{{Name: "SERVICE_TOKEN", Secret: "service-auth", Key: "token"}}
+		}), want: sessionLegs{acp: acp}},
 		{name: "ACP config change", old: composed, oldName: "tmux", newName: "tmux", newCfg: city(func(c *config.City) { c.Session.ACP.StopGrace = "9s" }), want: sessionLegs{base: base}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

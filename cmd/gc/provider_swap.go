@@ -51,8 +51,8 @@ func sessionProviderLegs(sp runtime.Provider) sessionLegs {
 
 // carriedSessionLegs returns the legs of the running provider that a provider
 // swap carries into the new one (CONTRACT P7): the base when its selection
-// name, pack runtime declaration and socket/endpoint configuration are
-// unchanged, and the ACP leg when its configuration is. A carried leg is the
+// name, pack runtime declaration, socket/endpoint configuration and k8s
+// Secret projections are unchanged, and the ACP leg when its configuration is. A carried leg is the
 // same instance, so every runtime it serves stays reachable.
 func carriedSessionLegs(old sessionLegs, oldCfg, newCfg *config.City, oldName, newName string) sessionLegs {
 	var carried sessionLegs
@@ -60,6 +60,7 @@ func carriedSessionLegs(old sessionLegs, oldCfg, newCfg *config.City, oldName, n
 		return carried
 	}
 	if oldName == newName && !packRuntimeDeclarationChanged(oldCfg, newCfg, newName) &&
+		!k8sSecretProjectionChanged(oldCfg, newCfg, newName) &&
 		oldCfg.Session.Socket == newCfg.Session.Socket && oldCfg.Session.RemoteMatch == newCfg.Session.RemoteMatch {
 		carried.base = old.base
 	}

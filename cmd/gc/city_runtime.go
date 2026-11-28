@@ -2912,7 +2912,7 @@ func (cr *CityRuntime) reloadConfigTraced(
 		newProviderName = sessionProviderRuntimeDefault
 	}
 	compositionChanged := sessionTransportCompositionChanged(cr.cfg, nextCfg, newProviderName)
-	if newProviderName != *lastProviderName || packRuntimeDeclarationChanged(cr.cfg, nextCfg, newProviderName) || compositionChanged {
+	if sessionProviderRebuildNeeded(cr.cfg, nextCfg, *lastProviderName, newProviderName) || compositionChanged {
 		// Build through the transport resolver, not the bare registry, so a city
 		// that routes some sessions to ACP keeps its auto composition. Legs the
 		// swap leaves unchanged carry over, so their runtimes stay reachable
@@ -3055,13 +3055,7 @@ func (cr *CityRuntime) reloadConfigTraced(
 		if rErr != nil {
 			return swapFailed(fmt.Errorf("provider swap: %w", rErr))
 		}
-		providerSwapSummary = fmt.Sprintf("%s → %s", displayProviderName(*lastProviderName), displayProviderName(pendingProviderName))
-		if pendingProviderName == *lastProviderName {
-			providerSwapSummary = fmt.Sprintf("%s runtime declaration changed", displayProviderName(pendingProviderName))
-			if compositionChanged {
-				providerSwapSummary = fmt.Sprintf("%s ACP composition changed", displayProviderName(pendingProviderName))
-			}
-		}
+		providerSwapSummary = providerSwapSummaryFor(cr.cfg, nextCfg, *lastProviderName, pendingProviderName, compositionChanged)
 		// Stop only what the new provider cannot reach, and write no row
 		// (CONTRACT P7, F2): the next pass reads those rows' runtimes gone and
 		// restarts or frees them as after any other death. A failed stop

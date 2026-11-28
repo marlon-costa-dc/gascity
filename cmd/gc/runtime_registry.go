@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -11,7 +12,6 @@ import (
 	sessionacp "github.com/gastownhall/gascity/internal/runtime/acp"
 	sessionexec "github.com/gastownhall/gascity/internal/runtime/exec"
 	sessionherdr "github.com/gastownhall/gascity/internal/runtime/herdr"
-	sessionk8s "github.com/gastownhall/gascity/internal/runtime/k8s"
 	"github.com/gastownhall/gascity/internal/runtime/registry"
 	sessionssh "github.com/gastownhall/gascity/internal/runtime/ssh"
 	sessionsubprocess "github.com/gastownhall/gascity/internal/runtime/subprocess"
@@ -87,8 +87,8 @@ func buildRuntimeRegistry() *registry.Registry {
 	// resolves per city via runtimeRegistryForCity. A city without that pack
 	// that selects session = "cloudflare" falls through to the tmux fallback
 	// (RUNTIME-SEL-006) — the delivery-independence boundary (RUNTIME-PLAN-004).
-	must(r.Register("k8s", func(_ string, _ config.SessionConfig, cityName, _ string) (runtime.Provider, error) {
-		return sessionk8s.NewSeamBacked(sessionk8s.WithCityName(cityName))
+	must(r.Register("k8s", func(_ string, sc config.SessionConfig, cityName, _ string) (runtime.Provider, error) {
+		return k8sProviderFromSession(sc.K8s, cityName)
 	}))
 	// herdr (https://herdr.dev): opt-in multiplexer backend. One shared herdr
 	// session-server per city; one workspace per rig/town, one tab per agent.
@@ -226,6 +226,43 @@ func packRuntimeDeclarationChanged(oldCfg, newCfg *config.City, name string) boo
 		return true
 	}
 	return oldOK && (oldRT.Command != newRT.Command || oldRT.Protocol != newRT.Protocol)
+}
+
+// k8sSecretProjectionChanged reports whether a reload changes the Secret
+// projections a k8s or hybrid provider captured at construction.
+func k8sSecretProjectionChanged(oldCfg, newCfg *config.City, name string) bool {
+	if oldCfg == nil || newCfg == nil || (name != "k8s" && name != "hybrid") {
+		return false
+	}
+	return !slices.Equal(oldCfg.Session.K8s.SecretEnv, newCfg.Session.K8s.SecretEnv) ||
+		!slices.Equal(oldCfg.Session.K8s.SecretMounts, newCfg.Session.K8s.SecretMounts)
+}
+
+// sessionProviderRebuildNeeded reports whether a reload must rebuild the
+// session provider for reasons other than an ACP composition flip: the
+// selection name changed, the pack runtime declaration behind it changed, or
+// the k8s Secret projections a k8s or hybrid provider captured changed.
+func sessionProviderRebuildNeeded(oldCfg, newCfg *config.City, oldName, newName string) bool {
+	return oldName != newName ||
+		packRuntimeDeclarationChanged(oldCfg, newCfg, newName) ||
+		k8sSecretProjectionChanged(oldCfg, newCfg, newName)
+}
+
+// providerSwapSummaryFor describes a session provider swap for the reload
+// message: the name transition, or for an unchanged name, what changed
+// behind it.
+func providerSwapSummaryFor(oldCfg, newCfg *config.City, oldName, newName string, compositionChanged bool) string {
+	if oldName != newName {
+		return fmt.Sprintf("%s → %s", displayProviderName(oldName), displayProviderName(newName))
+	}
+	switch {
+	case compositionChanged:
+		return fmt.Sprintf("%s ACP composition changed", displayProviderName(newName))
+	case k8sSecretProjectionChanged(oldCfg, newCfg, newName):
+		return fmt.Sprintf("%s secret projection changed", displayProviderName(newName))
+	default:
+		return fmt.Sprintf("%s runtime declaration changed", displayProviderName(newName))
+	}
 }
 
 // sessionTransportCompositionChanged reports whether a reload flips whether
