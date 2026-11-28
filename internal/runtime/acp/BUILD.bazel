@@ -95,6 +95,12 @@ go_test(
         },
         "//conditions:default": {},
     }),
+    # The orphan scan observes real reparenting to PID1/systemd-user. The
+    # process-wrapper sandbox instead adopts those children as a subreaper.
+    tags = [
+        "no-remote",
+        "no-sandbox",
+    ],
     deps = [
         "//internal/bazeltest",
         "//internal/execenv",

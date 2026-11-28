@@ -53,6 +53,9 @@ func kimiSessionCandidates(searchPaths []string, workDir string) []kimiContextCa
 // layout owns the session. Diagnose the workdir only after discovery fails.
 func logKimiMissingWorkDir(searchPaths []string, workDir string) {
 	legacyKey, codeKey := kimiWorkDirHash(workDir), kimiCodeWorkDirKey(workDir)
+	if !filepath.IsLocal(legacyKey) || !filepath.IsLocal(codeKey) {
+		return
+	}
 	for _, root := range mergeKimiSearchPaths(searchPaths) {
 		if kimiDirectoryExists(filepath.Join(root, legacyKey)) || kimiDirectoryExists(filepath.Join(root, codeKey)) {
 			return

@@ -15,7 +15,10 @@ sh_test(
     name = "check_gomod_replace_test",
     srcs = ["check-gomod-replace.sh"],
     args = ["$(rootpath //:go.mod)"],
-    data = ["//:go.mod"],
+    data = [
+        "//:deps.env",
+        "//:go.mod",
+    ],
 )
 
 # Scans every non-test Go file (the guard skips _test.go, testdata/ and

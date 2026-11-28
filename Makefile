@@ -584,7 +584,11 @@ test-runtime-observation:
 	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-runtime-manifest -- -run '^TestRuntimeTmuxManifest' -count=1 -timeout 5m ./scripts
 	$(TEST_ENV) GC_TMUX_INTEGRATION=1 GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-runtime-observation -- -tags=integration -run '^(TestProvider_(AbsentServerRemainsAnEmptyFleet|BlockedSocket)|TestTmuxFetcher_.*|TestStateCache_(EmptyServerPrimesCacheAndEndsRefreshStorm|RecoversAfterServerRefills))$$' -count=1 -timeout 5m ./internal/runtime/tmux
 
-.PHONY: update-test-resource-counts
+.PHONY: test-resource-census update-test-resource-counts
+## test-resource-census: validate source inventory and the test-resource ledger
+test-resource-census:
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-resource-census -- -count=1 -timeout 5m ./internal/testpolicy/resourcecensus
+
 ## update-test-resource-counts: regenerate the source resource census using its owned generator
 update-test-resource-counts:
 	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" GC_TEST_REPO_ROOT="$(CURDIR)" go test -count=1 ./internal/testpolicy/resourcecensus -run '^TestRepositoryLedgerMatchesCensusAndDocumentation$$' -update
@@ -1449,3 +1453,16 @@ test-scripts-go:
 ## test-gastown: verify the Gas Town pack and maintenance script contracts
 test-gastown:
 	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" GC_FAST_UNIT=1 scripts/go-test-observable test-gastown -- -count=1 -timeout 15m ./examples/gastown
+
+.PHONY: test-config test-sessionlog update-workquery-goldens
+## test-config: verify configuration and generated work-query contracts
+test-config:
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-config -- -count=1 -timeout 5m ./internal/config
+
+## test-sessionlog: verify provider transcript discovery and parsing
+test-sessionlog:
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" scripts/go-test-observable test-sessionlog -- -count=1 -timeout 5m ./internal/sessionlog
+
+## update-workquery-goldens: regenerate exact shell fixtures using their owning test
+update-workquery-goldens:
+	$(TEST_ENV) GOFLAGS="$(QUALITY_GATE_GOFLAGS)" go test -count=1 ./internal/config -run '^TestWorkQueryGolden$$' -update

@@ -399,6 +399,40 @@ func TestFindKimiSessionFileByIDRejectsTraversalSessionID(t *testing.T) {
 	}
 }
 
+func TestFindKimiSessionFilesRejectNonLocalWorkDirKeys(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "sessions")
+	outside := filepath.Join(base, "outside")
+	content := []string{`{"role":"user","content":"private transcript"}`}
+	writeKimiContext(t, filepath.Join(outside, "session-1", "context.jsonl"), content)
+	writeKimiContext(t, filepath.Join(root, "session-1", "context.jsonl"), content)
+	want := writeKimiContext(t, filepath.Join(root, "valid-key", "session-1", "context.jsonl"), content)
+	if got := findKimiSessionFilesIn(root, "valid-key"); len(got) != 1 || !samePath(got[0].path, want) {
+		t.Fatalf("valid workdir key files = %v, want %q", got, want)
+	}
+	if got := findKimiSessionFileByIDIn(root, "valid-key", "session-1"); !samePath(got, want) {
+		t.Fatalf("valid workdir key session = %q, want %q", got, want)
+	}
+	for _, tt := range []struct {
+		name string
+		key  string
+	}{
+		{"empty", ""},
+		{"parent", "../outside"},
+		{"nested-parent", "nested/../../outside"},
+		{"absolute", outside},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := findKimiSessionFilesIn(root, tt.key); len(got) != 0 {
+				t.Errorf("non-local workdir key %q listed transcripts: %v", tt.key, got)
+			}
+			if got := findKimiSessionFileByIDIn(root, tt.key, "session-1"); got != "" {
+				t.Errorf("non-local workdir key %q selected transcript %q", tt.key, got)
+			}
+		})
+	}
+}
+
 func TestReadProviderFileNewerDispatchesKimi(t *testing.T) {
 	path := writeKimiContext(t, filepath.Join(t.TempDir(), "sessions", "hash", "session-123", "context.jsonl"), []string{
 		`{"role":"user","content":"before"}`,

@@ -187,6 +187,12 @@ func scopeContains(scope Scope, occurrence Occurrence) bool {
 // contributes nothing: its files live in that worktree's own index, never
 // this one's.
 func gitLsFiles(root string, pathspecs ...string) ([]string, error) {
+	// A runfiles tree can sit below a real checkout. Git would discover that
+	// ancestor and successfully return an empty listing for this untracked
+	// subtree, hiding the declared source files from the census.
+	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+		return nil, fmt.Errorf("locating source-tree git metadata: %w", err)
+	}
 	args := append([]string{"-C", root, "ls-files", "-z", "--"}, pathspecs...)
 	out, err := exec.Command("git", args...).Output()
 	if err != nil {

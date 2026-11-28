@@ -180,6 +180,9 @@ func findKimiSessionFilesIn(root, workHash string) []kimiContextCandidate {
 // checks containment lexically, so a resolved path is rejected as outside the
 // configured search roots.
 func findKimiSessionFilesInVisited(root, workHash string, visited map[string]bool) []kimiContextCandidate {
+	if !filepath.IsLocal(workHash) {
+		return nil
+	}
 	canonical := canonicalKimiSessionRoot(root)
 	if canonical == "" || visited[canonical] {
 		return nil
@@ -213,6 +216,9 @@ func findKimiSessionFileByIDIn(root, workHash, sessionID string) string {
 // findKimiSessionFileByIDInVisited keeps the caller's spelling of root in the
 // returned path for the same reason as findKimiSessionFilesInVisited.
 func findKimiSessionFileByIDInVisited(root, workHash, sessionID string, visited map[string]bool) string {
+	if !filepath.IsLocal(workHash) {
+		return ""
+	}
 	canonical := canonicalKimiSessionRoot(root)
 	if canonical == "" || visited[canonical] {
 		return ""

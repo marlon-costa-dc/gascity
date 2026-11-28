@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -23,6 +24,35 @@ import (
 //
 //	GC_TEST_REPO_ROOT="$PWD" bazel run //internal/testpolicy/resourcecensus:resourcecensus_test -- -test.run='^TestRepositoryLedgerMatchesCensusAndDocumentation$' -update
 var updateLedgerDoc = flag.Bool("update", false, "regenerate test/test-resource-counts.toml and the TESTING.md checked resource ledger block")
+
+func TestTrackedGoFilesDoesNotUseAncestorRepository(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "runfiles", "workspace")
+	if err := os.MkdirAll(filepath.Join(root, "cmd", "gc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{
+		filepath.Join(parent, "outside.go"):         "package outside\n",
+		filepath.Join(root, "cmd", "gc", "main.go"): "package main\n",
+	} {
+		if err := os.WriteFile(name, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "outside.go"}} {
+		cmd := exec.Command("git", append([]string{"-C", parent}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	files, err := TrackedGoFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"cmd/gc/main.go"}; !slices.Equal(files, want) {
+		t.Fatalf("declared source files = %v, want %v; an ancestor index must not hide runfiles", files, want)
+	}
+}
 
 func TestScanUsesImportIdentityAndParsedBuildConstraints(t *testing.T) {
 	t.Parallel()

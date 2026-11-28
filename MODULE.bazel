@@ -328,6 +328,18 @@ go_deps.module(
 )
 go_deps.module(
     indirect = True,
+    path = "github.com/josharian/intern",
+    sum = "h1:vlS4z54oSdjm0bgjRigI+G1HpF+tI+9rE5LLzOg8HmY=",
+    version = "v1.0.0",
+)
+go_deps.module(
+    indirect = True,
+    path = "github.com/mailru/easyjson",
+    sum = "h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=",
+    version = "v0.7.7",
+)
+go_deps.module(
+    indirect = True,
     path = "github.com/mohae/deepcopy",
     sum = "h1:RWengNIwukTxcDr9M+97sNutRR1RKhG96O6jWumTTnw=",
     version = "v0.0.0-20170929034955-c48cc78d4826",

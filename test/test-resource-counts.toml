@@ -21,7 +21,7 @@ calls = 1
 [[count]]
 path = "Makefile"
 resource = "test_target"
-calls = 39
+calls = 40
 
 [[count]]
 path = "cmd/gc-osc7501/e2e_test.go"
@@ -3161,6 +3161,11 @@ calls = 1
 path = "internal/testenv/testenv_test.go"
 resource = "subprocess"
 calls = 4
+
+[[count]]
+path = "internal/testpolicy/resourcecensus/census_test.go"
+resource = "subprocess"
+calls = 1
 
 [[count]]
 path = "internal/warmup/warmup_test.go"

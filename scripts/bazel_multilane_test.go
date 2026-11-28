@@ -387,16 +387,12 @@ func readStepOutput(t *testing.T, path, name string) (string, bool) {
 	return value, found
 }
 
-// multiLaneLanes runs the rbe job's Lanes step for an event, a mode and
-// fresh-test-results ("true" or "false") and returns its raw lanes output
-// (the string the lane job's if compares).
-func multiLaneLanes(t *testing.T, script, event, mode, fresh string, splitPaths ...string) (string, error) {
+// multiLaneLanes runs the rbe job's Lanes step for an event and a mode with
+// cached test results and no split-strict paths, and returns its raw lanes
+// output (the string the lane job's if compares).
+func multiLaneLanes(t *testing.T, script, event, mode string) (string, error) {
 	t.Helper()
-	paths := ""
-	if len(splitPaths) > 0 {
-		paths = splitPaths[0]
-	}
-	lanes, _, out, err := multiLaneLanesFull(t, script, event, mode, fresh, paths)
+	lanes, _, out, err := multiLaneLanesFull(t, script, event, mode, "false", "")
 	if err != nil {
 		return out, err
 	}
@@ -558,7 +554,7 @@ func TestBazelMultiLaneLaneList(t *testing.T) {
 	}
 	// skip (rbe-west off) is gone: that is mode cache now, which tests.
 	for _, mode := range []string{"bogus", "skip"} {
-		if out, err := multiLaneLanes(t, step.Run, "pull_request", mode, "false"); err == nil {
+		if out, err := multiLaneLanes(t, step.Run, "pull_request", mode); err == nil {
 			t.Errorf("Lanes step accepted mode %s: %s", mode, out)
 		}
 	}
@@ -814,7 +810,7 @@ func TestBazelMultiLaneGateUnderRequiredNameRunsLanes(t *testing.T) {
 	lanesStep := multiLaneRBEStep(t, wf, "lanes")
 	for _, event := range multiLaneEvents {
 		for _, mode := range multiLaneModes {
-			raw, err := multiLaneLanes(t, lanesStep.Run, event, mode, "false")
+			raw, err := multiLaneLanes(t, lanesStep.Run, event, mode)
 			if err != nil {
 				t.Fatalf("Lanes step (event %s, mode %s) failed: %v\n%s", event, mode, err, raw)
 			}

@@ -119,7 +119,7 @@ func integrationPackagesTargets(t *testing.T, root string) []string {
 func integrationPackagesLaneCmd(t *testing.T) string {
 	t.Helper()
 	wf := readMultiLaneWorkflow(t)
-	raw, err := multiLaneLanes(t, multiLaneRBEStep(t, wf, "lanes").Run, "pull_request", "remote", "false")
+	raw, err := multiLaneLanes(t, multiLaneRBEStep(t, wf, "lanes").Run, "pull_request", "remote")
 	if err != nil {
 		t.Fatalf("Lanes step failed: %v\n%s", err, raw)
 	}

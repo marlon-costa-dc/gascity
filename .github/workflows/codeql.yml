@@ -2,7 +2,7 @@ name: CodeQL
 
 on:
   push:
-    branches: [main, dc-use, 'diagnose/codeql-20261128']
+    branches: [main, dc-use]
   pull_request:
     branches: [main, dc-use, 'hotfix/**', 'release/**']
     types:

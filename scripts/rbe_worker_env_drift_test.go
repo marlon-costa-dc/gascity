@@ -1019,7 +1019,7 @@ func TestBazelLaneWorkerEnvStepStaleBase(t *testing.T) {
 			if testStep == nil {
 				t.Fatal("lane job has no test step")
 			}
-			raw, err := multiLaneLanes(t, multiLaneRBEStep(t, wf, "lanes").Run, "pull_request", tc.mode, "false")
+			raw, err := multiLaneLanes(t, multiLaneRBEStep(t, wf, "lanes").Run, "pull_request", tc.mode)
 			if err != nil {
 				t.Fatalf("lane selection: %v\n%s", err, raw)
 			}
