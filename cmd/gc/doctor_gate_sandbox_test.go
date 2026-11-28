@@ -1,16 +1,21 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/gastownhall/gascity/internal/beads"
 	"github.com/gastownhall/gascity/internal/config"
+	"github.com/gastownhall/gascity/internal/convergence"
 	"github.com/gastownhall/gascity/internal/doctor"
 )
 
@@ -51,6 +56,71 @@ func TestGateSandboxEnvMatchesTheGateContract(t *testing.T) {
 	// A diagnostic must never start a Dolt server as a side effect.
 	if got := lookup["BEADS_DOLT_AUTO_START"]; got != "0" {
 		t.Errorf("BEADS_DOLT_AUTO_START = %q, want %q (the check must not mutate)", got, "0")
+	}
+}
+
+// TestGateSandboxEnvResolvesCanonicalDoltTargetOverAmbientEnv is the
+// regression for gastownhall/gascity#8418: the gate-sandbox probe must pin the
+// CURRENT city's Dolt endpoint the way the controller's own preflight does,
+// not inherit whatever BEADS_DOLT_SERVER_*/GC_DOLT_* the doctor process's own
+// shell happens to carry (e.g. left over from a different city's env). A city
+// with a resolvable canonical endpoint (city-db.example.com:4406) is set up;
+// the ambient env is set to a DIFFERENT host/port, simulating a shell that
+// sourced another city's connection env. The probe env must reflect the
+// current city's own endpoint, not the ambient one.
+func TestGateSandboxEnvResolvesCanonicalDoltTargetOverAmbientEnv(t *testing.T) {
+	cityPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(cityPath, ".beads", "config.yaml"), strings.Join([]string{
+		"issue_prefix: ct",
+		"gc.endpoint_origin: city_canonical",
+		"gc.endpoint_status: verified",
+		"dolt.host: city-db.example.com",
+		"dolt.port: 4406",
+		"dolt.user: city-user",
+		"",
+	}, "\n"))
+
+	// Simulate a shell that still carries a DIFFERENT city's connection env.
+	t.Setenv("GC_DOLT_HOST", "other-city-db.example.com")
+	t.Setenv("GC_DOLT_PORT", "9999")
+	t.Setenv("BEADS_DOLT_SERVER_HOST", "other-city-db.example.com")
+	t.Setenv("BEADS_DOLT_SERVER_PORT", "9999")
+
+	lookup := gateSandboxEnvLookup(t, cityPath)
+
+	if got := lookup["GC_DOLT_HOST"]; got != "city-db.example.com" {
+		t.Errorf("GC_DOLT_HOST = %q, want the current city's resolved host %q, not the ambient one", got, "city-db.example.com")
+	}
+	if got := lookup["GC_DOLT_PORT"]; got != "4406" {
+		t.Errorf("GC_DOLT_PORT = %q, want the current city's resolved port %q, not the ambient one", got, "4406")
+	}
+	if got := lookup["BEADS_DOLT_SERVER_HOST"]; got != "city-db.example.com" {
+		t.Errorf("BEADS_DOLT_SERVER_HOST = %q, want the current city's resolved host %q, not the ambient one", got, "city-db.example.com")
+	}
+	if got := lookup["BEADS_DOLT_SERVER_PORT"]; got != "4406" {
+		t.Errorf("BEADS_DOLT_SERVER_PORT = %q, want the current city's resolved port %q, not the ambient one", got, "4406")
+	}
+}
+
+// TestGateSandboxEnvWithNoResolvableScopeLeavesAmbientEnvUntouched pins the
+// no-op case: a city with no resolvable canonical scope config (the common
+// case in the existing tests above, a bare t.TempDir()) must not have its
+// ambient Dolt env disturbed by the #8418 fix, since there is nothing to
+// resolve it against.
+func TestGateSandboxEnvWithNoResolvableScopeLeavesAmbientEnvUntouched(t *testing.T) {
+	t.Setenv("GC_DOLT_HOST", "ambient-host.example.com")
+	t.Setenv("GC_DOLT_PORT", "1234")
+
+	lookup := gateSandboxEnvLookup(t, t.TempDir())
+
+	if got := lookup["GC_DOLT_HOST"]; got != "ambient-host.example.com" {
+		t.Errorf("GC_DOLT_HOST = %q, want the ambient value %q preserved when the scope has no resolvable canonical config", got, "ambient-host.example.com")
+	}
+	if got := lookup["GC_DOLT_PORT"]; got != "1234" {
+		t.Errorf("GC_DOLT_PORT = %q, want the ambient value %q preserved when the scope has no resolvable canonical config", got, "1234")
 	}
 }
 
@@ -255,6 +325,66 @@ func TestGateSandboxRunnerIsTheExactEnvRunner(t *testing.T) {
 	}
 }
 
+func TestGateSandboxReadPinsBDAndKeepsItsLogicalRunnerName(t *testing.T) {
+	cityPath := t.TempDir()
+	binDir := t.TempDir()
+	bdPath := filepath.Join(binDir, "bd")
+	writeExecutable(t, bdPath, "#!/bin/sh\nexit 0\n")
+	old := gateSandboxCommandRunnerWithEnvContext
+	t.Cleanup(func() { gateSandboxCommandRunnerWithEnvContext = old })
+	called := false
+	gateSandboxCommandRunnerWithEnvContext = func(_ context.Context, env map[string]string) beads.CommandRunner {
+		if got := env["BD_BIN"]; got != bdPath {
+			t.Errorf("BD_BIN = %q, want controller-resolved %q", got, bdPath)
+		}
+		return func(dir, name string, args ...string) ([]byte, error) {
+			called = true
+			if dir != cityPath || name != "bd" || !slices.Equal(args, []string{"list", "--json", "--limit", "1"}) {
+				t.Errorf("runner(%q, %q, %v), want the logical bd read in %q", dir, name, args, cityPath)
+			}
+			return []byte("[]"), nil
+		}
+	}
+	if err := defaultGateSandboxRead(cityPath, []string{"PATH=" + binDir}); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("gate sandbox read did not use the bd runner")
+	}
+}
+
+func TestGateSandboxReadRejectsSilentFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fake requires POSIX sh")
+	}
+	for _, tc := range []struct {
+		name   string
+		stderr string
+	}{
+		{name: "healthy read"},
+		{name: "silent fallback", stderr: "auto-importing local records into empty database"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cityPath := t.TempDir()
+			binDir := t.TempDir()
+			writeExecutable(t, filepath.Join(binDir, "bd"), `#!/bin/sh
+if [ "$*" != "list --json --limit 1" ]; then exit 2; fi
+printf '[]\n'
+printf '%s\n' "$GATE_TEST_STDERR" >&2
+`)
+			t.Setenv("PATH", t.TempDir())
+			err := defaultGateSandboxRead(cityPath, []string{"PATH=" + binDir, "HOME=" + cityPath, "GATE_TEST_STDERR=" + tc.stderr})
+			if tc.stderr == "" {
+				if err != nil {
+					t.Fatalf("healthy read: %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), beads.ErrBDSilentFallback.Error()) {
+				t.Fatalf("read error = %v, want the bd silent-fallback diagnostic", err)
+			}
+		})
+	}
+}
+
 func TestDoctorClipGateOutput(t *testing.T) {
 	t.Parallel()
 
@@ -327,8 +457,87 @@ func TestGateSandboxBlindDetailsNameTheControllerOnlyKeys(t *testing.T) {
 	}
 }
 
-// The probe reproduces the controller's gates: the gate PATH is built from the
-// controller's PATH, not from the PATH of the gc process running doctor.
+// TestGateSandboxEnvPinsManagedDirectCityOverAmbientEnv is the managed-city
+// shape from gastownhall/gascity#8418: `gc init --beads-transport direct` writes
+// an EMPTY .beads/config.yaml. That scope resolves as legacy-minimal, not
+// authoritative, so the canonical projection skips it and the ambient
+// BEADS_DOLT_SERVER_* of another city would survive into the probe. The city's
+// own store is gc-managed, so the probe must reach the city's managed port.
+func TestGateSandboxEnvPinsManagedDirectCityOverAmbientEnv(t *testing.T) {
+	cityPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(cityPath, ".beads", "config.yaml"), "")
+	port := strconv.Itoa(writeReachableManagedDoltState(t, cityPath))
+
+	t.Setenv("GC_DOLT_HOST", "other-city-db.example.com")
+	t.Setenv("GC_DOLT_PORT", "9999")
+	t.Setenv("BEADS_DOLT_SERVER_HOST", "other-city-db.example.com")
+	t.Setenv("BEADS_DOLT_SERVER_PORT", "9999")
+
+	lookup := gateSandboxEnvLookup(t, cityPath)
+
+	if got := lookup["BEADS_DOLT_SERVER_PORT"]; got != port {
+		t.Errorf("BEADS_DOLT_SERVER_PORT = %q, want the city's managed port %q", got, port)
+	}
+	if got := lookup["GC_DOLT_PORT"]; got != port {
+		t.Errorf("GC_DOLT_PORT = %q, want the city's managed port %q", got, port)
+	}
+	// The managed layout clears GC_DOLT_HOST, so mirrorBeadsDoltEnv drops
+	// BEADS_DOLT_SERVER_HOST and bd defaults to loopback.
+	if got, ok := lookup["BEADS_DOLT_SERVER_HOST"]; ok && got != "127.0.0.1" {
+		t.Errorf("BEADS_DOLT_SERVER_HOST = %q, want it absent or loopback for a managed city", got)
+	}
+	if got, ok := lookup["GC_DOLT_HOST"]; ok {
+		t.Errorf("GC_DOLT_HOST = %q, want it cleared for a managed city", got)
+	}
+}
+
+// TestGateSandboxEnvLegacyCityWithCityTomlDoltKeepsConfiguredEndpoint pins the
+// guard on the managed projection above: a legacy-minimal city whose endpoint
+// comes from city.toml [dolt] host/port is not gc-managed, so the probe env
+// must keep that endpoint rather than be rewritten to the managed layout.
+func TestGateSandboxEnvLegacyCityWithCityTomlDoltKeepsConfiguredEndpoint(t *testing.T) {
+	cityPath := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cityPath, ".beads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(cityPath, ".beads", "config.yaml"), "")
+	registerCityDoltConfig(cityPath, config.DoltConfig{Host: "compat-db.example.com", Port: 4406})
+	t.Cleanup(func() { clearCityDoltConfig(cityPath) })
+
+	// Simulate a shell that still carries a DIFFERENT city's connection env.
+	t.Setenv("GC_DOLT_HOST", "other-city-db.example.com")
+	t.Setenv("GC_DOLT_PORT", "9999")
+	t.Setenv("BEADS_DOLT_SERVER_HOST", "other-city-db.example.com")
+	t.Setenv("BEADS_DOLT_SERVER_PORT", "9999")
+
+	lookup := gateSandboxEnvLookup(t, cityPath)
+
+	for _, key := range []string{"GC_DOLT_HOST", "BEADS_DOLT_SERVER_HOST"} {
+		if got := lookup[key]; got != "compat-db.example.com" {
+			t.Errorf("%s = %q, want the city.toml [dolt] host %q, not the ambient one", key, got, "compat-db.example.com")
+		}
+	}
+	for _, key := range []string{"GC_DOLT_PORT", "BEADS_DOLT_SERVER_PORT"} {
+		if got := lookup[key]; got != "4406" {
+			t.Errorf("%s = %q, want the city.toml [dolt] port %q, not the ambient one", key, got, "4406")
+		}
+	}
+	if got, ok := lookup["GC_DOLT_MANAGED_LOCAL"]; ok && got == "1" {
+		t.Errorf("GC_DOLT_MANAGED_LOCAL = %q, want no managed projection for a city.toml [dolt] endpoint", got)
+	}
+}
+
+// TestGateSandboxEnvIsSorted pins a stable env order for the probe.
+func TestGateSandboxEnvIsSorted(t *testing.T) {
+	env := gateSandboxEnv(t.TempDir(), "")
+	if !slices.IsSorted(env) {
+		t.Errorf("gateSandboxEnv() = %v, want sorted entries", env)
+	}
+}
+
 func TestGateSandboxEnvBuildsPATHFromTheControllerPATH(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "bd"), []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -340,7 +549,19 @@ func TestGateSandboxEnvBuildsPATHFromTheControllerPATH(t *testing.T) {
 			gatePATH = value
 		}
 	}
-	if first := strings.SplitN(gatePATH, ":", 2)[0]; first != dir {
-		t.Fatalf("gate PATH = %q, want it to lead with the controller's bd directory %q", gatePATH, dir)
+	resolved, ok := convergence.LookPathIn(gatePATH, "bd")
+	if !ok {
+		t.Fatalf("could not resolve bd in gate PATH %q", gatePATH)
+	}
+	got, err := os.Stat(resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.Stat(filepath.Join(dir, "bd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(got, want) {
+		t.Fatalf("gate PATH resolves bd to %q, want the controller's bd in %q", resolved, dir)
 	}
 }

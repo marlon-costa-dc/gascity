@@ -15,9 +15,9 @@ func TestContainerCLIToolsRebuildWithPatchedGRPC(t *testing.T) {
 	const (
 		ghVersion                 = "2.96.0"
 		ghSourceRef               = "b300f2ec7ec9dc9addc39b2ad88c54097ded7ca0"
-		doltSourceRef             = "781cbb730221ea7df4fc7995255bb336df9c3864"
+		doltSourceRef             = "05e6bceb1a210a7a8d770b74b8ef4825c165c0a8"
 		ghSourceSHA256            = "a0c18c98c73f7333f73e19b3a0bf5bd18673f3dc226193ab6478b3ea1ea18f03"
-		doltSourceSHA256          = "0b0c9bce8baef26baa7e0e5825cd2d7d6101daf6fc9673f38dac9670afb66847"
+		doltSourceSHA256          = "8bd82ec8f9693d5e69d79fb26e361438859e4af96c48f99a40f324c0f2fc6d92"
 		doltToolchainRelease      = "20260611_0.0.5_trixie"
 		doltOptcrossX8664SHA256   = "caf703fb1cbc0c9ff9a5b506f73da6c6f5233c04a455e638cdc50267a4d0c0c0"
 		doltOptcrossAarch64SHA256 = "5635d0b38343fefb0c2b600d61c49ad9ceeaa1107bccdec8a60b1789100dc0ce"
@@ -69,9 +69,9 @@ func TestContainerCLIToolsRebuildWithPatchedGRPC(t *testing.T) {
 
 func TestAgentImageRebuildsBDAndGCWithPatchedGRPC(t *testing.T) {
 	const (
-		bdSourceRef    = "f45b249ce6b40ba62aecc03949e6371e8f7c79d8"
-		bdSourceSHA256 = "51689f2a4d9f3437334d6e9f91e3b18c0793fb9cc8cf988ce511ef1f39b13214"
-		bdBuild        = "f45b249ce6b"
+		bdSourceRef    = "7ef2fd05eb0cd3bdbde051f93cfc14ccf270cdde"
+		bdSourceSHA256 = "fcf0e7a23c889b24a6c4cc0edb5053a602d3a410dc1fb0c6efaa5574c3118682"
+		bdBuild        = "7ef2fd05eb0"
 		bdBranch       = "HEAD"
 	)
 

@@ -54,7 +54,7 @@ func TestSessionAssignmentIdentifiers_MultiSessionPoolExcludesTemplateAlias(t *t
 }
 
 func TestSessionAssigneeMatches_CanonicalSingletonAliasKeepsWorkerAwake(t *testing.T) {
-	bead := AwakeSessionBead{ID: "gc-wisp-qeh0t7", SessionName: "dog-gc-wisp-qeh0t7", CanonicalSingletonAlias: "dog"}
+	bead := AwakeSessionBead{ID: "gc-wisp-qeh0t7", SessionName: "dog-gc-wisp-qeh0t7", Alias: "dog"}
 	work := []AwakeWorkBead{{ID: "gc-henbes", Assignee: "dog", Status: "in_progress"}}
 
 	if !sessionHasAssignedWork(work, nil, bead) {

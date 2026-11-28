@@ -1,6 +1,7 @@
 package scripts_test
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -235,8 +236,23 @@ func TestPrePushUsesCanonicalMachineAwareConcurrency(t *testing.T) {
 	if strings.Contains(content, `LOCAL_TEST_JOBS="${LOCAL_TEST_JOBS:-3}"`) {
 		t.Fatal("pre-push hook must not replace the canonical machine-aware default with a fixed three-job cap")
 	}
-	if !strings.Contains(content, "exec make test-fast-parallel") {
-		t.Fatal("pre-push hook must continue delegating the unchanged fast-suite inventory to make test-fast-parallel")
+	if !strings.Contains(content, `exec "$repo_root/.githooks/lib/push-suite.sh"`) {
+		t.Fatal("pre-push hook must delegate the push-time suite to .githooks/lib/push-suite.sh")
+	}
+	suite, err := os.ReadFile(filepath.Join(repoRoot, ".githooks", "lib", "push-suite.sh"))
+	if err != nil {
+		t.Fatalf("read push-suite.sh: %v", err)
+	}
+	if strings.Contains(string(suite), "LOCAL_TEST_JOBS") {
+		t.Fatal("push-suite.sh must not shadow the canonical machine-aware job count")
+	}
+	if !strings.Contains(string(suite), "run_suite make test-fast-parallel") {
+		t.Fatal("push-suite.sh's go fallback must continue delegating the unchanged fast-suite inventory to make test-fast-parallel, through run_suite")
+	}
+	for _, bare := range []string{"exec make", "exec bazel"} {
+		if strings.Contains(string(suite), bare) {
+			t.Fatalf("push-suite.sh must not %q: run_suite has to see a 141 (SIGPIPE) to fail it closed", bare)
+		}
 	}
 	for _, path := range []string{"Makefile", filepath.Join("scripts", "test-local-parallel")} {
 		content, err := os.ReadFile(filepath.Join(repoRoot, path))
@@ -486,7 +502,12 @@ func TestPreCommitFailsClosedWhenGoBlockStagesSpecAsSideEffectAndNpmAbsent(t *te
 	if err := os.MkdirAll(filepath.Dir(formatStagedGoPath), 0o755); err != nil {
 		t.Fatalf("create parent for %s: %v", formatStagedGoPath, err)
 	}
-	writeExecutable(t, formatStagedGoPath, "#!/usr/bin/env bash\nexit 0\n")
+	// The hook pipes the staged file list into this script under
+	// `set -o pipefail`. Like the real script, the stub must read its stdin
+	// to EOF: one that exits without reading races the hook's printf, which
+	// dies of SIGPIPE whenever the stub exits first, and bash exits 141
+	// without printing anything (the silent CI flake on loaded runners).
+	writeExecutable(t, formatStagedGoPath, drainStdinStub)
 	runGit("add", "-A")
 	runGit("commit", "-m", "init")
 
@@ -591,6 +612,29 @@ func TestPreCommitWarnsOnlyWhenNpmAbsentAndSpecNotStaged(t *testing.T) {
 	}
 }
 
+// drainStdinStub is the stub scripts/precommit-format-staged-go the npm-absent
+// fixtures install. It reads its stdin to EOF with the external `cat`, so every
+// tool it names must resolve on restrictedPathWithoutNpm's PATH.
+const drainStdinStub = "#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n"
+
+// TestRestrictedPathWithoutNpmProvidesToolsTheDrainStubUses pins the PATH the
+// npm-absent fixtures run under. When `cat` is missing there, the stub fails
+// with 127 without reading stdin, exits at once, and the hook's printf (under
+// `set -o pipefail`) dies of SIGPIPE: the flake drainStdinStub exists to stop.
+// The PATH must still lack npm, or the fixtures would not be npm-absent.
+func TestRestrictedPathWithoutNpmProvidesToolsTheDrainStubUses(t *testing.T) {
+	binDir := restrictedPathWithoutNpm(t, nil)
+	for _, tool := range []string{"cat"} {
+		if _, err := os.Stat(filepath.Join(binDir, tool)); err != nil {
+			t.Errorf("restrictedPathWithoutNpm has no %q, but drainStdinStub runs it: the stub fails "+
+				"with 127 without reading stdin and the hook's printf can die of SIGPIPE: %v", tool, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(binDir, "npm")); err == nil {
+		t.Errorf("restrictedPathWithoutNpm provides npm, so the npm-absent fixtures are not npm-absent")
+	}
+}
+
 // restrictedPathWithoutNpm builds a PATH containing only symlinks to the
 // real bash and git (plus any provided stub scripts), guaranteeing npm is
 // unreachable regardless of what's installed on the test host -- falling
@@ -606,7 +650,8 @@ func restrictedPathWithoutNpm(t *testing.T, stubs map[string]string) string {
 	// sh+env are required for beads-chain.sh's `#!/usr/bin/env sh` shebang
 	// under a restricted PATH (env is absolute in the shebang, but then looks
 	// up `sh` on PATH). timeout is optional; without it the chain still runs.
-	for _, name := range []string{"bash", "sh", "env", "git", "xargs"} {
+	// cat is required by drainStdinStub.
+	for _, name := range []string{"bash", "sh", "env", "git", "xargs", "cat"} {
 		realPath, err := exec.LookPath(name)
 		if err != nil {
 			t.Fatalf("resolve real %s on test host PATH: %v", name, err)
@@ -642,6 +687,7 @@ func installBeadsChainForTempRepo(t *testing.T, repoRoot, tmpRepo string) {
 		t.Fatalf("mkdir .githooks/lib: %v", err)
 	}
 	writeExecutable(t, chainPath, string(chain))
+	installLocalRuntimeProbe(t, repoRoot, tmpRepo, "ok", "")
 }
 
 func TestNativeDoltliteBeadsTargetRunsTaggedSuite(t *testing.T) {
@@ -656,9 +702,18 @@ func TestNativeDoltliteBeadsTargetRunsTaggedSuite(t *testing.T) {
 
 	cmd := exec.Command("make", "-n", "test-native-doltlite-beads")
 	cmd.Dir = repoRoot
-	out, err := cmd.CombinedOutput()
+	// The Makefile's Linux CGO fallback probes the host's cc and ICU headers
+	// at parse time and prints a line when it fires; off, the dry run is the
+	// recipe alone on any host.
+	cmd.Env = append(os.Environ(), "SYS_USR_CGO_FALLBACK=0")
+	// The recipe is on stdout. stderr carries parse-time noise such as the
+	// Makefile's $(shell go env ...) printing "go: downloading go1.x" on a
+	// fresh remote worker, which is not a command.
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("make -n test-native-doltlite-beads failed: %v\n%s", err, out)
+		t.Fatalf("make -n test-native-doltlite-beads failed: %v\n%s%s", err, out, stderr.Bytes())
 	}
 	command := string(out)
 	if err := validateNativeDoltliteDryRun(command); err != nil {

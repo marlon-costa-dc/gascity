@@ -3,9 +3,9 @@ name: Cyclomatic complexity
 on:
   workflow_call:
   push:
-    branches: [main]
+    branches: [main, dc-use]
   pull_request:
-    branches: [main]
+    branches: [main, dc-use, 'hotfix/**', 'release/**']
     types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
@@ -44,6 +44,8 @@ jobs:
           exit 0
       - name: Compare with base revision
         continue-on-error: true
+        env:
+          COMPLEXITY_BASE_REF: origin/${{ github.base_ref || 'main' }}
         run: |
           set +e
           make complexity-diff > "$RUNNER_TEMP/complexity-diff.txt" 2>&1

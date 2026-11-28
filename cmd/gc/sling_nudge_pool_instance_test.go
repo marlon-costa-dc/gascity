@@ -30,6 +30,7 @@ func namepoolAgentForNudgeTest() config.Agent {
 // running, the nudge resolves the live instance and is delivered instead of
 // failing the config lookup on the instance name.
 func TestDoSlingNudgeNamepoolInstanceReachesRunningSession(t *testing.T) {
+	t.Setenv("GC_BEADS", "file")
 	runner := newFakeRunner()
 	sp := runtime.NewFake()
 	const sessionName = "gastown__polecat-th-dpcg1"
@@ -62,7 +63,7 @@ func TestDoSlingNudgeNamepoolInstanceReachesRunningSession(t *testing.T) {
 	startNudgePoller = func(_, _, _ string) error { return nil }
 	t.Cleanup(func() { startNudgePoller = prev })
 
-	doSlingNudge(&a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, stdout, stderr)
+	doSlingNudge(&a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, "", stdout, stderr)
 
 	if strings.Contains(stderr.String(), "not found in config") {
 		t.Fatalf("stderr = %q, want no config lookup failure for the live pool instance", stderr.String())
@@ -100,7 +101,7 @@ func TestDoSlingNudgeNamepoolNoRunningInstancePokesController(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	deps.CityPath = t.TempDir() // isolated path so poke cannot hit a real socket
 
-	doSlingNudge(&a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, stdout, stderr)
+	doSlingNudge(&a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, "", stdout, stderr)
 
 	// Both poke outcomes (socket present or absent) print "No running sessions
 	// for <pool>"; asserting on the shared prefix keeps this independent of
@@ -129,7 +130,7 @@ func TestSlingNudgeFailureReadsAsWarning(t *testing.T) {
 	deps, stdout, stderr := testDeps(cfg, sp, runner.run)
 	deps.CityPath = t.TempDir()
 
-	doSlingNudge(&a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, stdout, stderr)
+	doSlingNudge(&a, deps.CityName, deps.CityPath, cfg, sp, deps.Store, "", stdout, stderr)
 
 	got := stderr.String()
 	if !strings.HasPrefix(got, "warning: ") {

@@ -797,8 +797,22 @@ func TestConditionPATHUsesResolvedToolDirs(t *testing.T) {
 	}
 
 	got := conditionPATH()
-	if !strings.HasPrefix(got, toolDir+":") && got != toolDir {
-		t.Fatalf("conditionPATH() = %q, want prefix %q", got, toolDir)
+	if !strings.Contains(":"+got+":", ":"+toolDir+":") {
+		t.Fatalf("conditionPATH() = %q, want it to include the resolved tool dir %q", got, toolDir)
+	}
+	for _, name := range []string{"bd", "gc"} {
+		found, ok := firstExecutableOnPATH(got, name)
+		if !ok {
+			t.Fatalf("resolve %s on %q: not found", name, got)
+		}
+		resolved, err := filepath.EvalSymlinks(found)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, _ := filepath.EvalSymlinks(filepath.Join(toolDir, name))
+		if resolved != want {
+			t.Errorf("gate %s resolves to %q, want %q", name, resolved, want)
+		}
 	}
 }
 
@@ -982,14 +996,20 @@ func TestRunConditionEnvVarsAvailable(t *testing.T) {
 // The gate PATH is built from the given search PATH, not the caller's own: a
 // diagnostic reproducing the controller's gates passes the controller's PATH.
 func TestConditionPATHForResolvesToolsAgainstTheGivenPATH(t *testing.T) {
+	t.Setenv("GC_HOME", t.TempDir())
 	dir := t.TempDir()
 	bd := filepath.Join(dir, "bd")
 	if err := os.WriteFile(bd, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	got := ConditionPATHFor("relative/dir:" + dir)
-	if first := strings.SplitN(got, ":", 2)[0]; first != dir {
-		t.Fatalf("ConditionPATHFor first entry = %q, want the bd directory %q (got %q)", first, dir, got)
+	resolved, ok := LookPathIn(got, "bd")
+	if !ok {
+		t.Fatalf("ConditionPATHFor did not resolve bd: %q", got)
+	}
+	target, err := filepath.EvalSymlinks(resolved)
+	if err != nil || target != bd {
+		t.Fatalf("ConditionPATHFor resolved bd to %q, %v; want %q", target, err, bd)
 	}
 	if path, ok := LookPathIn("relative/dir:"+dir, "bd"); !ok || path != bd {
 		t.Fatalf("LookPathIn = %q, %v; want %q (relative entries skipped)", path, ok, bd)
@@ -997,4 +1017,70 @@ func TestConditionPATHForResolvesToolsAgainstTheGivenPATH(t *testing.T) {
 	if _, ok := LookPathIn(dir, "missing"); ok {
 		t.Fatal("LookPathIn found a tool that is not on the PATH")
 	}
+}
+
+// TestConditionPATHPinsEachToolWhenDirectoriesHoldCompetingCopies pins the
+// live failure. The controller resolved gc from a new install first on its
+// PATH and bd from ~/.local/bin, which also held an older gc. conditionPATH
+// listed the resolved tools' directories in bd, gc, dolt, jq order, so
+// ~/.local/bin came first and the gate's `gc` ran the older copy. Here several
+// directories hold competing copies, and every tool must run exactly the binary
+// the controller resolved.
+func TestConditionPATHPinsEachToolWhenDirectoriesHoldCompetingCopies(t *testing.T) {
+	origPath := os.Getenv("PATH")
+	t.Cleanup(func() { _ = os.Setenv("PATH", origPath) })
+	t.Setenv("GC_HOME", t.TempDir())
+
+	writeTool := func(dir, name, says string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\necho "+says+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newDir, localDir, jqDir := t.TempDir(), t.TempDir(), t.TempDir()
+	writeTool(newDir, "gc", "gc-new")
+	writeTool(localDir, "bd", "bd-local")
+	writeTool(localDir, "gc", "gc-older")
+	writeTool(localDir, "dolt", "dolt-local")
+	writeTool(jqDir, "jq", "jq-usr")
+	writeTool(jqDir, "dolt", "dolt-older")
+	if err := os.Setenv("PATH", newDir+":"+localDir+":"+jqDir+":"+SafePATH); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"gc": "gc-new", "bd": "bd-local", "dolt": "dolt-local", "jq": "jq-usr"}
+
+	gatePATH := conditionPATH()
+	for name, says := range want {
+		found, ok := firstExecutableOnPATH(gatePATH, name)
+		if !ok {
+			t.Fatalf("gate `%s` with PATH=%s: not found", name, gatePATH)
+		}
+		script, err := os.ReadFile(found)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.TrimSpace(strings.TrimPrefix(string(script), "#!/bin/sh\necho ")); got != says {
+			t.Errorf("gate `%s` ran %q, want %q (the binary the controller resolved); PATH=%s", name, got, says, gatePATH)
+		}
+	}
+}
+
+// firstExecutableOnPATH resolves name the way a POSIX shell does for a gate
+// command: the first executable regular file named name in pathList's
+// directory order. Resolving it here, rather than asking a real shell, keeps
+// these tests free of subprocesses while proving the same thing: which binary
+// a gate's bare command runs.
+func firstExecutableOnPATH(pathList, name string) (string, bool) {
+	for _, dir := range filepath.SplitList(pathList) {
+		if dir == "" {
+			continue
+		}
+		candidate := filepath.Join(dir, name)
+		info, err := os.Stat(candidate)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+			continue
+		}
+		return candidate, true
+	}
+	return "", false
 }
